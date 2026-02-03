@@ -73,6 +73,12 @@ final class FolderService {
         }
     }
 
+    /// Invalidate cache for a specific folder (call before loading to ensure fresh data)
+    func invalidateCache(for url: URL) {
+        cache.removeValue(forKey: url.path)
+        saveCacheToDisk()
+    }
+
     // MARK: - Load Tree
 
     /// Load entire folder tree recursively for hierarchical List (with caching)

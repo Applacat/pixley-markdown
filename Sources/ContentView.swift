@@ -175,6 +175,8 @@ struct FileBrowserSidebar: View {
         .task(id: appState.rootFolderURL) {
             guard let rootURL = appState.rootFolderURL else { return }
             isLoading = true
+            // Always fresh scan on open - invalidate cache first
+            FolderService.shared.invalidateCache(for: rootURL)
             items = await FolderService.shared.loadTree(at: rootURL)
             expandedFolders.removeAll()
             isLoading = false
@@ -301,6 +303,8 @@ struct FileRowView: View {
             }
         } else if item.isMarkdown {
             appState.selectFile(item.url)
+            // Track in recent files
+            RecentFoldersManager.shared.addRecentFile(item.url, parentFolder: appState.rootFolderURL)
         }
     }
 
