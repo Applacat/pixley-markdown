@@ -2,25 +2,29 @@
 
 ## Quick Access to Folders
 
-The start screen has buttons for **Desktop**, **Documents**, and **Downloads**. These are the most common places where markdown files end up.
+The launcher has buttons for **Desktop**, **Documents**, and **Downloads**. These are the most common places where markdown files end up.
 
-## Recent Folders
+## Session Memory
 
-Folders you've opened before appear in the "Recent Folders" list. Click to reopen, or hover and click **Ask** to ask Pixley about the folder's contents first.
+The app remembers your last folder. When you launch the app, it automatically reopens where you left off.
 
 ## Drag and Drop
 
-You can drag a folder onto the Pixley Reader window to open it — works on both the start screen and browser window.
+You can drag a folder onto the app window to open it — works on both the launcher and the browser window.
 
 ## Large Documents
 
-If a document is very large (over 8,000 characters), Pixley will only read the beginning. You'll see a warning, and the Memory meter will adjust.
+If a document is very large (over 8,000 characters), the AI will only read the beginning. You'll see a warning, and the Memory meter will adjust.
 
 For large documents, try asking specific questions rather than "summarize everything."
 
 ## Privacy
 
-Pixley Reader uses **Apple Intelligence**, which runs entirely on your Mac. Your documents are never sent to the cloud — everything stays on your device.
+AI.md Reader uses **Apple Intelligence**, which runs entirely on your Mac. Your documents are never sent to the cloud — everything stays on your device.
+
+## Welcome Tour
+
+Want to revisit this tour? Click the **app mascot** in the launcher to return here anytime.
 
 ## Getting Help
 
@@ -31,4 +35,4 @@ If something isn't working:
 
 ---
 
-*Thanks for using Pixley Reader!*
+*Thanks for using AI.md Reader!*

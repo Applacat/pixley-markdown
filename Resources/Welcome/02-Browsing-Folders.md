@@ -19,11 +19,10 @@ If file names are long, you can scroll horizontally to see the full name. The en
 
 ## Changing Folders
 
-To open a different folder:
-1. Click the **X** button in the top toolbar
-2. You'll return to the start screen
-3. Pick a new folder
+To open a different folder, simply close this window. The launcher will appear where you can pick a new folder.
+
+You can also use **⌘ ⇧ O** (Command-Shift-O) to open a folder picker.
 
 ---
 
-*Tip: You can also drag and drop a folder onto the window to open it.*
+*Tip: You can drag and drop a folder onto the window to open it.*

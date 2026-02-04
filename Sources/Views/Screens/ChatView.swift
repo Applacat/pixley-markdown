@@ -12,38 +12,22 @@ struct ChatView: View {
     @State private var inputText: String = ""
     @State private var isLoading = false
     @State private var aiAvailable: Bool? = nil
+    @State private var isCheckingAvailability = true
     @State private var documentTruncated = false
+    @State private var isWaitingForDocument = false
 
-    // Context window tracking
-    private static let maxTokens = 4096  // Foundation Models approximate limit
-    private static let charsPerToken = 4  // Rough estimate for English text
-    private static let maxContextChars = maxTokens * charsPerToken  // ~16K chars
+    // Service for business logic (testable)
+    private let chatService = ChatService()
+    
+    // Limit message history to prevent unbounded memory growth
+    private let maxMessageHistory = 50
 
-    /// Estimated context usage for the next request
+    /// Estimated context usage for the next request (delegated to service)
     private var contextEstimate: ContextEstimate {
-        let docLength = appState.documentContent.count
-        let hasHistory = !messages.isEmpty
-
-        if hasHistory {
-            // Conversation mode: brief doc (2K) + chat history
-            let historyChars = messages.suffix(6).reduce(0) { $0 + $1.content.count }
-            let docChars = min(2000, docLength)
-            let totalChars = docChars + historyChars + 200 // 200 for prompt overhead
-            return ContextEstimate(
-                usedChars: totalChars,
-                maxChars: Self.maxContextChars,
-                mode: .conversation
-            )
-        } else {
-            // Full document mode
-            let docChars = min(Self.maxContextLength, docLength)
-            let totalChars = docChars + 200
-            return ContextEstimate(
-                usedChars: totalChars,
-                maxChars: Self.maxContextChars,
-                mode: docLength > Self.maxContextLength ? .truncated : .fullDocument
-            )
-        }
+        chatService.estimateContext(
+            documentLength: appState.documentContent.count,
+            messages: messages
+        )
     }
 
     // MARK: - Body
@@ -56,7 +40,9 @@ struct ChatView: View {
             Divider()
 
             // Content
-            if aiAvailable == false {
+            if isCheckingAvailability {
+                checkingAvailabilityView
+            } else if aiAvailable == false {
                 unavailableView
             } else if appState.selectedFile == nil {
                 noFileView
@@ -67,15 +53,11 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             await checkAvailability()
-            // Check for initial question from Ask Pixley
-            await handleInitialQuestion()
         }
-        .onChange(of: appState.selectedFile) { _, _ in
-            // Clear chat when file changes
-            messages.removeAll()
-            documentTruncated = false
-            // Check for new initial question
-            Task {
+        .task(id: appState.initialChatQuestion) {
+            // Only handle initial question when it's set from the start screen
+            // Don't clear chat on file changes - that's manual only via "Forget" button
+            if appState.initialChatQuestion != nil {
                 await handleInitialQuestion()
             }
         }
@@ -91,6 +73,13 @@ struct ChatView: View {
                     .foregroundStyle(.primary)
 
                 Spacer()
+                
+                // Show warning when approaching message limit
+                if messages.count > maxMessageHistory * 3 / 4 {
+                    Text("\(messages.count)/\(maxMessageHistory)")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
 
                 if !messages.isEmpty {
                     Button("Forget", systemImage: "brain.head.profile.slash") {
@@ -117,34 +106,72 @@ struct ChatView: View {
     private var contextMeter: some View {
         let estimate = contextEstimate
 
-        return HStack(spacing: 6) {
-            // Brain meter label
-            Label("Memory", systemImage: "brain")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+        return VStack(spacing: 4) {
+            HStack(spacing: 6) {
+                // Brain meter label
+                Label("Memory", systemImage: "brain")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
 
-            // Visual gauge
-            Gauge(value: estimate.percentage) {
-                EmptyView()
+                // Visual gauge
+                Gauge(value: estimate.percentage) {
+                    EmptyView()
+                }
+                .gaugeStyle(.accessoryLinearCapacity)
+                .tint(meterColor(for: estimate))
+                .frame(width: 50)
+
+                // Percentage
+                Text("\(Int(estimate.percentage * 100))%")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(meterColor(for: estimate))
+                    .frame(width: 32, alignment: .trailing)
             }
-            .gaugeStyle(.accessoryLinearCapacity)
-            .tint(estimate.color)
-            .frame(width: 50)
-
-            // Percentage
-            Text("\(Int(estimate.percentage * 100))%")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(estimate.color)
-                .frame(width: 32, alignment: .trailing)
+            .padding(.horizontal, 16)
+            
+            // Document truncation warning
+            if documentTruncated {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                    Text("Document truncated to fit context")
+                        .font(.caption2)
+                }
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 16)
+            }
         }
-        .padding(.horizontal, 16)
         .padding(.bottom, 8)
         .animation(.easeInOut(duration: 0.3), value: messages.count)
+    }
+
+    private func meterColor(for estimate: ContextEstimate) -> Color {
+        if estimate.isHighUsage {
+            return .red
+        } else if estimate.isMediumUsage {
+            return .orange
+        }
+        return .green
     }
 
     private func clearChat() {
         messages.removeAll()
         documentTruncated = false
+    }
+
+    // MARK: - Checking Availability View
+
+    private var checkingAvailabilityView: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            ProgressView()
+                .scaleEffect(1.2)
+            Text("Checking AI Availability...")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding()
     }
 
     // MARK: - Unavailable View
@@ -155,16 +182,40 @@ struct ChatView: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.orange)
-            Text("AI Not Available")
+            Text("AI Chat Unavailable")
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            Text("Apple Intelligence is not available on this device")
+            
+            // User-friendly availability messaging
+            availabilityMessage
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            
             Spacer()
         }
         .padding()
+    }
+    
+    @ViewBuilder
+    private var availabilityMessage: some View {
+        let availability = SystemLanguageModel.default.availability
+        
+        switch availability {
+        case .unavailable(.deviceNotEligible):
+            Text("AI features require a Mac with Apple Silicon (M1 or later)")
+        case .unavailable(.appleIntelligenceNotEnabled):
+            VStack(spacing: 8) {
+                Text("Apple Intelligence is not enabled")
+                Text("To enable: System Settings > Apple Intelligence & Siri")
+                    .font(.caption2)
+            }
+        case .unavailable(.modelNotReady):
+            Text("AI model is downloading. Please try again later.")
+        default:
+            Text("AI features are currently unavailable")
+        }
     }
 
     // MARK: - No File View
@@ -276,29 +327,71 @@ struct ChatView: View {
     // MARK: - Actions
 
     private func checkAvailability() async {
-        let availability = SystemLanguageModel.default.availability
-        aiAvailable = (availability == .available)
+        isCheckingAvailability = true
+        aiAvailable = chatService.checkAvailability()
+        isCheckingAvailability = false
     }
 
+    /// Handle initial question from start screen feature
+    /// Waits for document content to be loaded before sending question
     private func handleInitialQuestion() async {
-        // Pick up question from Ask Pixley on start screen
+        // Pick up question from start screen
         guard let question = appState.initialChatQuestion else { return }
         appState.initialChatQuestion = nil  // Clear it so we don't repeat
 
-        // Wait a moment for document content to load
-        try? await Task.sleep(for: .milliseconds(300))
+        isWaitingForDocument = true
+        defer { isWaitingForDocument = false }
+
+        // Wait for document content to load (with timeout)
+        // Poll the document content with exponential backoff
+        var attempts = 0
+        let maxAttempts = 20 // Up to ~2 seconds total
+        
+        while appState.documentContent.isEmpty && attempts < maxAttempts {
+            let delay = min(50 * (1 << min(attempts / 3, 3)), 200) // 50ms → 100ms → 200ms
+            try? await Task.sleep(for: .milliseconds(delay))
+            attempts += 1
+        }
+        
+        // If document still hasn't loaded, show helpful error
+        guard !appState.documentContent.isEmpty else {
+            let errorMessage = ChatMessage(
+                role: .assistant, 
+                content: "Unable to load the document. Please try selecting it again from the sidebar."
+            )
+            messages.append(errorMessage)
+            return
+        }
 
         let userMessage = ChatMessage(role: .user, content: question)
         messages.append(userMessage)
         await askAI(question)
     }
 
+    @MainActor
     private func sendMessage() {
         let question = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Validate input length (max ~2000 chars for a single question)
         guard !question.isEmpty else { return }
+        guard question.count <= 2000 else {
+            let errorMessage = ChatMessage(
+                role: .assistant, 
+                content: "Your question is too long. Please keep questions under 2000 characters."
+            )
+            messages.append(errorMessage)
+            return
+        }
 
         let userMessage = ChatMessage(role: .user, content: question)
         messages.append(userMessage)
+        
+        // Limit message history to prevent unbounded memory growth
+        if messages.count > maxMessageHistory {
+            // Keep the most recent messages
+            messages = Array(messages.suffix(maxMessageHistory))
+        }
+        
         inputText = ""
 
         Task {
@@ -306,83 +399,50 @@ struct ChatView: View {
         }
     }
 
-    /// Maximum characters to send as context (Foundation Models has ~4K token limit)
-    private static let maxContextLength = 8000
-
+    @MainActor
     private func askAI(_ question: String) async {
         isLoading = true
         defer { isLoading = false }
 
         // Build chat history (excluding the message we just added)
-        let priorMessages = messages.dropLast()
-        let hasConversationHistory = !priorMessages.isEmpty
+        let priorMessages = Array(messages.dropLast())
 
-        // Truncate document to avoid context overflow
-        let fullContent = appState.documentContent
-        let context: String
-        let wasTruncated = fullContent.count > Self.maxContextLength
-
-        if wasTruncated {
-            let truncated = String(fullContent.prefix(Self.maxContextLength))
-            context = truncated + "\n\n[... document truncated for length ...]"
-            if !documentTruncated {
-                documentTruncated = true
-            }
-        } else {
-            context = fullContent
-            documentTruncated = false
-        }
+        // Check if document was truncated (for UI state)
+        let (_, wasTruncated) = chatService.truncateDocument(appState.documentContent)
+        documentTruncated = wasTruncated
 
         do {
-            let systemPrompt = """
-            You are a helpful assistant analyzing a markdown document.
-            Answer questions about the document concisely and accurately.
-            If the answer is not in the document, say so.
-            When the user asks follow-up questions about your previous responses,
-            refer to the conversation history rather than re-analyzing the document.
-            """
-
-            let session = LanguageModelSession(instructions: systemPrompt)
-
-            // Build prompt with conversation context
-            var prompt: String
-
-            if hasConversationHistory {
-                // Include recent chat history for follow-up questions
-                let recentHistory = priorMessages.suffix(6) // Last 3 exchanges
-                let historyText = recentHistory.map { msg in
-                    let role = msg.role == .user ? "User" : "Assistant"
-                    return "\(role): \(msg.content)"
-                }.joined(separator: "\n\n")
-
-                prompt = """
-                Document context (for reference):
-                ---
-                \(context.prefix(2000))...
-                ---
-
-                Previous conversation:
-                \(historyText)
-
-                User's new question: \(question)
-                """
-            } else {
-                // First question - include full document context
-                prompt = """
-                Document content:
-                ---
-                \(context)
-                ---
-
-                Question: \(question)
-                """
-            }
-
-            let response = try await session.respond(to: prompt)
-            let assistantMessage = ChatMessage(role: .assistant, content: response.content)
+            let response = try await chatService.askAI(
+                question: question,
+                documentContent: appState.documentContent,
+                priorMessages: priorMessages
+            )
+            let assistantMessage = ChatMessage(role: .assistant, content: response)
             messages.append(assistantMessage)
+            
+            // Limit message history after AI response as well
+            if messages.count > maxMessageHistory {
+                messages = Array(messages.suffix(maxMessageHistory))
+            }
         } catch {
-            let errorMessage = ChatMessage(role: .assistant, content: "Sorry, I encountered an error: \(error.localizedDescription)")
+            // Create user-friendly error messages
+            let errorContent: String
+            
+            if let sessionError = error as? LanguageModelSession.GenerationError {
+                switch sessionError {
+                case .exceededContextWindowSize:
+                    errorContent = "The document is too long for me to process in one conversation. Try asking about specific sections, or start a new chat to reset my memory."
+                default:
+                    errorContent = "I encountered an error while thinking. Please try asking your question again."
+                }
+            } else {
+                errorContent = "I encountered an error: \(error.localizedDescription)\n\nPlease try your question again."
+            }
+            
+            let errorMessage = ChatMessage(
+                role: .assistant, 
+                content: errorContent
+            )
             messages.append(errorMessage)
         }
     }
@@ -421,56 +481,5 @@ struct MessageBubble: View {
         case .assistant:
             return Color.primary.opacity(0.08)
         }
-    }
-}
-
-// MARK: - Context Estimate
-
-enum ContextMode {
-    case fullDocument    // First question, full doc fits
-    case truncated       // First question, doc was truncated
-    case conversation    // Follow-up, using chat history
-}
-
-struct ContextEstimate {
-    let usedChars: Int
-    let maxChars: Int
-    let mode: ContextMode
-
-    var percentage: Double {
-        min(1.0, Double(usedChars) / Double(maxChars))
-    }
-
-    var usedTokensApprox: Int {
-        usedChars / 4
-    }
-
-    var maxTokensApprox: Int {
-        maxChars / 4
-    }
-
-    var modeLabel: String {
-        switch mode {
-        case .fullDocument: return "Full doc"
-        case .truncated: return "Truncated"
-        case .conversation: return "Chat"
-        }
-    }
-
-    var modeIcon: String {
-        switch mode {
-        case .fullDocument: return "doc.text"
-        case .truncated: return "doc.badge.ellipsis"
-        case .conversation: return "bubble.left.and.bubble.right"
-        }
-    }
-
-    var color: Color {
-        if percentage > 0.9 {
-            return .red
-        } else if percentage > 0.7 {
-            return .orange
-        }
-        return .green
     }
 }

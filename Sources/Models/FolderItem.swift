@@ -4,7 +4,7 @@ import Foundation
 
 /// Represents a file or folder in the file browser.
 /// Uses `children` for native SwiftUI hierarchical List support.
-struct FolderItem: Identifiable, Hashable {
+struct FolderItem: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let url: URL

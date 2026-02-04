@@ -1,6 +1,6 @@
 # Keyboard Shortcuts
 
-Pixley Reader supports these keyboard shortcuts:
+AI.md Reader supports these keyboard shortcuts:
 
 ## In the Browser
 

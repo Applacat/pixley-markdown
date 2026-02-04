@@ -1,6 +1,29 @@
 import Foundation
 
-// MARK: - Recent Folder
+// MARK: - Recent Item
+
+/// A recently opened item (folder or file) with its security-scoped bookmark
+struct RecentItem: Identifiable, Codable {
+    let id: UUID
+    let name: String
+    let path: String
+    let bookmarkData: Data
+    let dateOpened: Date
+    let isFolder: Bool
+    let parentPath: String?  // For files, the folder they're in
+
+    init(url: URL, bookmarkData: Data, isFolder: Bool, parentPath: String? = nil) {
+        self.id = UUID()
+        self.name = url.lastPathComponent
+        self.path = url.path
+        self.bookmarkData = bookmarkData
+        self.dateOpened = Date()
+        self.isFolder = isFolder
+        self.parentPath = parentPath
+    }
+}
+
+// MARK: - Recent Folder (Legacy compatibility)
 
 /// A recently opened folder with its security-scoped bookmark
 struct RecentFolder: Identifiable, Codable {
@@ -80,6 +103,13 @@ final class RecentFoldersManager {
         save(folders)
     }
 
+    /// Remove a folder from recents by path
+    func removeFolderByPath(_ path: String) {
+        var folders = getRecentFolders()
+        folders.removeAll { $0.path == path }
+        save(folders)
+    }
+
     /// Resolve a bookmark to get a usable URL (starts security scope)
     func resolveBookmark(_ folder: RecentFolder) -> URL? {
         var isStale = false
@@ -93,8 +123,9 @@ final class RecentFoldersManager {
             return nil
         }
 
-        // Start accessing security-scoped resource
-        guard url.startAccessingSecurityScopedResource() else {
+        // Don't start security scope here - caller (AppState.setRootFolder) handles it
+        // Just validate the URL exists
+        guard FileManager.default.fileExists(atPath: url.path) else {
             return nil
         }
 
@@ -109,6 +140,84 @@ final class RecentFoldersManager {
     /// Clear all recent folders
     func clearAll() {
         UserDefaults.standard.removeObject(forKey: userDefaultsKey)
+        UserDefaults.standard.removeObject(forKey: recentFilesKey)
+    }
+
+    // MARK: - Session Restore
+
+    /// Returns the most recently opened folder for session restore.
+    /// This is the folder to reopen when the app launches.
+    func lastSessionFolder() -> RecentFolder? {
+        getRecentFolders().first
+    }
+
+    // MARK: - Recent Files
+
+    private let recentFilesKey = "recentFiles"
+    private let maxRecentFiles = 4
+
+    /// Get list of recent files, sorted by most recently opened
+    func getRecentFiles() -> [RecentItem] {
+        guard let data = UserDefaults.standard.data(forKey: recentFilesKey),
+              let files = try? JSONDecoder().decode([RecentItem].self, from: data) else {
+            return []
+        }
+        return files.sorted { $0.dateOpened > $1.dateOpened }
+    }
+
+    /// Add a file to recents (called when user clicks a file in the tree)
+    func addRecentFile(_ url: URL, parentFolder: URL?) {
+        // Files inherit access from their parent folder, no separate bookmark needed
+        // But we store the path for display
+        let item = RecentItem(
+            url: url,
+            bookmarkData: Data(),  // Files use parent folder's security scope
+            isFolder: false,
+            parentPath: parentFolder?.path
+        )
+
+        var files = getRecentFiles()
+
+        // Remove existing entry for same path
+        files.removeAll { $0.path == url.path }
+
+        // Add new entry at the beginning
+        files.insert(item, at: 0)
+
+        // Trim to max (4 recent files)
+        if files.count > maxRecentFiles {
+            files = Array(files.prefix(maxRecentFiles))
+        }
+
+        saveFiles(files)
+    }
+
+    /// Remove a file from recents
+    func removeRecentFile(_ item: RecentItem) {
+        var files = getRecentFiles()
+        files.removeAll { $0.path == item.path }
+        saveFiles(files)
+    }
+
+    /// Get combined recents (folders + files) for display
+    func getAllRecents() -> [RecentItem] {
+        let folders = getRecentFolders().map { folder in
+            RecentItem(
+                url: URL(fileURLWithPath: folder.path),
+                bookmarkData: folder.bookmarkData,
+                isFolder: true,
+                parentPath: nil
+            )
+        }
+        let files = getRecentFiles()
+
+        // Combine and sort by date
+        return (folders + files).sorted { $0.dateOpened > $1.dateOpened }
+    }
+
+    private func saveFiles(_ files: [RecentItem]) {
+        guard let data = try? JSONEncoder().encode(files) else { return }
+        UserDefaults.standard.set(data, forKey: recentFilesKey)
     }
 
     // MARK: - Private

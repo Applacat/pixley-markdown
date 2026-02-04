@@ -115,18 +115,49 @@ struct MarkdownView: View {
         errorMessage = nil
 
         do {
-            let data = try Data(contentsOf: fileURL)
-            if let text = String(data: data, encoding: .utf8) {
-                content = text
-                appState.documentContent = text
-            } else {
-                errorMessage = "Unable to decode file as text"
-            }
+            // Move file I/O to background thread to avoid blocking main thread
+            let text = try await Task.detached(priority: .userInitiated) {
+                // Security: Check file size before loading to prevent DoS
+                let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+                let fileSize = attributes[.size] as? Int ?? 0
+                
+                guard fileSize <= MarkdownConfig.maxTextSize else {
+                    throw FileLoadError.fileTooLarge(size: fileSize)
+                }
+                
+                let data = try Data(contentsOf: fileURL)
+                guard let text = String(data: data, encoding: .utf8) else {
+                    throw FileLoadError.invalidEncoding
+                }
+                return text
+            }.value
+
+            content = text
+            appState.documentContent = text
+        } catch let error as FileLoadError {
+            errorMessage = error.localizedDescription
         } catch {
             errorMessage = error.localizedDescription
         }
 
         isLoading = false
+    }
+}
+
+// MARK: - File Load Errors
+
+enum FileLoadError: LocalizedError {
+    case fileTooLarge(size: Int)
+    case invalidEncoding
+    
+    var errorDescription: String? {
+        switch self {
+        case .fileTooLarge(let size):
+            let mb = Double(size) / 1_048_576
+            return "File is too large (\(String(format: "%.1f", mb)) MB). Maximum supported size is 10 MB."
+        case .invalidEncoding:
+            return "Unable to decode file as UTF-8 text"
+        }
     }
 }
 

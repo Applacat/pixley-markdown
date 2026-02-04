@@ -1,8 +1,8 @@
 import AppKit
 import Foundation
 
-/// A focused Markdown highlighter with lazy-compiled patterns and debouncing support
-@MainActor
+/// A focused Markdown highlighter with lazy-compiled patterns and debouncing support.
+/// Core highlighting logic is nonisolated for testability; only debouncing requires @MainActor.
 final class MarkdownHighlighter {
 
     // MARK: - Theme
@@ -35,19 +35,6 @@ final class MarkdownHighlighter {
         )
     }
 
-    // MARK: - Properties
-
-    let theme: Theme
-    let baseFont: NSFont
-
-    /// Compiled patterns - created once, reused for every highlight call
-    private let patterns: [(NSRegularExpression, HighlightRule)]
-
-    // MARK: - Debouncing
-
-    private var debounceWorkItem: DispatchWorkItem?
-    private let debounceDelay: TimeInterval = 0.1
-
     // MARK: - Highlight Rules
 
     private enum HighlightRule {
@@ -61,6 +48,14 @@ final class MarkdownHighlighter {
         case blockquote
         case separator
     }
+
+    // MARK: - Properties
+
+    let theme: Theme
+    let baseFont: NSFont
+
+    /// Compiled patterns - created once, reused for every highlight call
+    private let patterns: [(NSRegularExpression, HighlightRule)]
 
     // MARK: - Initialization
 
@@ -94,9 +89,20 @@ final class MarkdownHighlighter {
         }
     }
 
-    // MARK: - Highlighting
+    // MARK: - Highlighting (Core - Testable)
 
+    /// Pure highlighting logic - no MainActor constraint for testability
+    /// Security: Refuses to highlight files over 1MB to prevent regex DoS
     func highlight(_ text: String) -> NSAttributedString {
+        // Security: Don't highlight extremely large files (prevents regex catastrophic backtracking)
+        // Files over 1MB are shown as plain text with base styling
+        guard text.utf8.count <= MarkdownConfig.maxHighlightSize else {
+            return NSAttributedString(string: text, attributes: [
+                .font: baseFont,
+                .foregroundColor: NSColor.labelColor
+            ])
+        }
+        
         let attributed = NSMutableAttributedString(string: text, attributes: [
             .font: baseFont,
             .foregroundColor: NSColor.labelColor
@@ -163,26 +169,37 @@ final class MarkdownHighlighter {
             str.addAttribute(.foregroundColor, value: theme.separator, range: match.range)
         }
     }
+}
+
+// MARK: - Debouncing Extension (MainActor)
+
+/// Debouncing wrapper - only this part needs MainActor isolation
+@MainActor
+final class DebouncedHighlighter {
+
+    let highlighter: MarkdownHighlighter  // Changed from private to internal
+    private var debounceTask: Task<Void, Never>?
+    private let debounceDelay: Duration
+
+    init(highlighter: MarkdownHighlighter = MarkdownHighlighter(), debounceDelay: Duration = .milliseconds(100)) {
+        self.highlighter = highlighter
+        self.debounceDelay = debounceDelay
+    }
 
     /// Debounced highlighting - call this from text change handlers
-    nonisolated func highlightDebounced(_ text: String, completion: @escaping @MainActor (NSAttributedString) -> Void) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            self.debounceWorkItem?.cancel()
+    func highlightDebounced(_ text: String, completion: @escaping @MainActor (NSAttributedString) -> Void) {
+        debounceTask?.cancel()
 
-            let workItem = DispatchWorkItem { [weak self] in
-                Task { @MainActor in
-                    guard let self else { return }
-                    let result = self.highlight(text)
-                    completion(result)
-                }
-            }
+        let delay = debounceDelay
+        let highlighterRef = highlighter
 
-            self.debounceWorkItem = workItem
-            DispatchQueue.main.asyncAfter(
-                deadline: .now() + self.debounceDelay,
-                execute: workItem
-            )
+        debounceTask = Task { @MainActor [weak self] in
+            guard self != nil else { return }
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+
+            let result = highlighterRef.highlight(text)
+            completion(result)
         }
     }
 }

@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "PixleyReader",
+    name: "AIMDReader",
     platforms: [.macOS(.v26)],
     targets: [
         .executableTarget(
-            name: "PixleyReader",
+            name: "AIMDReader",
             path: ".",
             exclude: [
                 "cal",
@@ -15,12 +15,13 @@ let package = Package(
                 "project.yml",
                 "CLAUDE.md",
                 "Resources/Info.plist",
-                "Resources/PixleyWriter.entitlements"
+                "Resources/AIMDReader.entitlements"
             ],
             sources: ["Sources"],
             resources: [
                 .process("Resources/Assets.xcassets"),
-                .copy("Resources/Welcome")
+                .copy("Resources/Welcome"),
+                .copy("Resources/PrivacyInfo.xcprivacy")
             ]
         )
     ]

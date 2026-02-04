@@ -1,0 +1,51 @@
+Welcome Flow Refactor - Implementation Progress
+===============================================
+
+Phase 1: Foundation
+-------------------
+[DONE] US-1: First Launch Detection
+  - Added hasLaunchedBeforeKey constant to PixleyReaderApp
+  - Added LaunchState enum and determineLaunchState() function
+  - Flag is set after welcome browser appears
+
+[DONE] US-3: Session Restore on Launch
+  - Added lastSessionFolder() to RecentFoldersManager
+  - determineLaunchState() checks for valid session
+  - Falls back to launcher if folder unavailable
+
+Phase 2: Minimal Launcher
+-------------------------
+[DONE] US-4: Minimal Launcher View
+  - Refactored StartView to centered single-column (480x520)
+  - Removed Ask Pixley section
+  - Removed recents list
+  - Kept folder shortcuts and drag-drop
+
+[DONE] US-5: Pixley Photo Easter Egg
+  - Single-click on Pixley photo opens Welcome folder
+  - Existing openWelcomeFolder() preserved
+
+[DONE] US-6: Auto-Show Launcher on Window Close
+  - BrowserView.onDisappear calls openWindow(id: "start")
+  - StartView redirects to browser if rootFolderURL already set
+
+Phase 3: First Launch Experience
+--------------------------------
+[DONE] US-2: First Launch Welcome Experience
+  - performFirstLaunch() copies Welcome folder and opens browser
+  - Added isFirstLaunchWelcome flag to AppState
+  - FileBrowserSidebar auto-expands all folders on first launch
+  - FileBrowserSidebar auto-selects first markdown file
+
+Phase 4: Content Update
+-----------------------
+[DONE] US-7: Update Welcome Content
+  - Updated 01-Welcome.md - removed "start screen" references
+  - Updated 02-Browsing-Folders.md - updated changing folders section
+  - Updated 03-Ask-Pixley.md - now describes browser-only chat panel
+  - Updated 06-Tips-and-Tricks.md - mentions session memory and easter egg
+
+===============================================
+Status: COMPLETE
+Created: 2026-02-02
+Completed: 2026-02-02

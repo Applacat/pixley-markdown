@@ -1,12 +1,12 @@
 import Foundation
 import FoundationModels
 
-// MARK: - Pixley Intent Contract
+// MARK: - App Intent Contract
 
-/// The contract Pixley must fulfill when interpreting user requests.
+/// The contract the app must fulfill when interpreting user requests.
 /// Covers navigation, file operations, and questions.
-@Generable(description: "Pixley's interpretation of what the user wants to do")
-struct PixleyIntent {
+@Generable(description: "The app's interpretation of what the user wants to do")
+struct AppIntent {
 
     @Guide(description: "The primary action type")
     @Guide(.anyOf([
@@ -28,15 +28,15 @@ struct PixleyIntent {
     @Guide(description: "Search or filter query if action is 'find' or 'summarize'")
     let query: String
 
-    @Guide(description: "Brief explanation of what Pixley understood")
+    @Guide(description: "Brief explanation of what the app understood")
     let interpretation: String
 }
 
-// MARK: - Pixley Response
+// MARK: - App Response
 
-/// Pixley's response after processing an intent.
-struct PixleyResponse {
-    let intent: PixleyIntent
+/// The app's response after processing an intent.
+struct AppResponse {
+    let intent: AppIntent
     let message: String
     let shouldNavigate: Bool
     let targetURL: URL?

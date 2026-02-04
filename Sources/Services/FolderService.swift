@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.pixley.reader", category: "FolderService")
+private let logger = Logger(subsystem: "com.aimd.reader", category: "FolderService")
 
 // MARK: - Cached Folder Item
 
@@ -30,7 +30,6 @@ final class FolderService {
     static let shared = FolderService()
 
     private var cache: [String: CachedFolder] = [:]
-    private let cacheQueue = DispatchQueue(label: "com.pixley.reader.cache")
 
     private init() {
         loadCacheFromDisk()
@@ -40,7 +39,7 @@ final class FolderService {
 
     private var cacheFileURL: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("PixleyReader")
+            .appendingPathComponent("AIMDReader")
             .appendingPathComponent("folder_cache.json")
     }
 
@@ -63,6 +62,12 @@ final class FolderService {
 
         if let data = try? JSONEncoder().encode(cache) {
             try? data.write(to: url)
+
+            // Exclude from backup - this is regenerable cache data
+            var resourceValues = URLResourceValues()
+            resourceValues.isExcludedFromBackup = true
+            var mutableURL = url
+            try? mutableURL.setResourceValues(resourceValues)
         }
     }
 
@@ -84,7 +89,7 @@ final class FolderService {
     /// Load entire folder tree recursively for hierarchical List (with caching)
     func loadTree(at url: URL) async -> [FolderItem] {
         let path = url.path
-        let modDate = getModificationDate(for: url)
+        let modDate = Self.getModificationDate(for: url)
 
         // Check cache
         if let cached = cache[path], cached.modificationDate == modDate {
@@ -95,7 +100,7 @@ final class FolderService {
         // Cache miss - full scan
         logger.debug("Cache miss for \(url.lastPathComponent), scanning...")
         let items = await Task.detached(priority: .userInitiated) {
-            self.loadTreeSync(at: url)
+            Self.loadTreeSync(at: url)
         }.value
 
         // Save to cache
@@ -109,19 +114,20 @@ final class FolderService {
     /// Load with smart diff - only rescan modified folders
     func loadTreeWithDiff(at url: URL) async -> [FolderItem] {
         let path = url.path
-        let modDate = getModificationDate(for: url)
+        let modDate = Self.getModificationDate(for: url)
 
         // Check if root folder changed
         if let cached = cache[path], cached.modificationDate == modDate {
             // Root unchanged - check children for changes
             logger.debug("Root unchanged, checking children...")
+            let cachedItems = cached.items
             let items = await Task.detached(priority: .userInitiated) {
-                self.loadTreeWithDiffSync(at: url, cached: cached.items)
+                Self.loadTreeWithDiffSync(at: url, cached: cachedItems)
             }.value
 
             // Update cache
-            let cachedItems = convertCachedItems(items)
-            cache[path] = CachedFolder(path: path, modificationDate: modDate ?? Date.distantPast, items: cachedItems)
+            let newCachedItems = convertCachedItems(items)
+            cache[path] = CachedFolder(path: path, modificationDate: modDate ?? Date.distantPast, items: newCachedItems)
             saveCacheToDisk()
 
             return items
@@ -131,7 +137,7 @@ final class FolderService {
         return await loadTree(at: url)
     }
 
-    private nonisolated func loadTreeWithDiffSync(at url: URL, cached: [CachedItem]) -> [FolderItem] {
+    private nonisolated static func loadTreeWithDiffSync(at url: URL, cached: [CachedItem]) -> [FolderItem] {
         let fm = FileManager.default
 
         guard let contents = try? fm.contentsOfDirectory(
@@ -155,7 +161,7 @@ final class FolderService {
 
             let isFolder = isDirectory.boolValue
             let itemPath = itemURL.path
-            let itemModDate = getModificationDateSync(for: itemURL)
+            let itemModDate = Self.getModificationDateSync(for: itemURL)
 
             if isFolder {
                 // Check if folder is cached and unchanged
@@ -163,14 +169,14 @@ final class FolderService {
                    let cachedChildren = cachedItem.children,
                    cachedItem.modificationDate == itemModDate {
                     // Use cached - recursively check children
-                    let children = loadTreeWithDiffSync(at: itemURL, cached: cachedChildren)
+                    let children = Self.loadTreeWithDiffSync(at: itemURL, cached: cachedChildren)
                     // Recompute count from children (they may have changed)
                     let mdCount = children.reduce(0) { $0 + $1.markdownCount }
                     let item = FolderItem(url: itemURL, isFolder: true, markdownCount: mdCount, children: children)
                     items.append(item)
                 } else {
                     // Changed - full rescan of this subtree
-                    let children = loadTreeSync(at: itemURL)
+                    let children = Self.loadTreeSync(at: itemURL)
                     let mdCount = children.reduce(0) { $0 + $1.markdownCount }
                     let item = FolderItem(url: itemURL, isFolder: true, markdownCount: mdCount, children: children)
                     items.append(item)
@@ -190,7 +196,7 @@ final class FolderService {
         }
     }
 
-    private nonisolated func loadTreeSync(at url: URL) -> [FolderItem] {
+    private nonisolated static func loadTreeSync(at url: URL) -> [FolderItem] {
         let fm = FileManager.default
 
         guard let contents = try? fm.contentsOfDirectory(
@@ -214,8 +220,9 @@ final class FolderService {
 
             if isFolder {
                 // Recursively load children first
-                let children = loadTreeSync(at: itemURL)
-                // Sum children's counts (OOD: parent = sum of children)
+                let children = Self.loadTreeSync(at: itemURL)
+                // OOD: FolderItem structure naturally aggregates children's markdown counts
+                // The tree hierarchy makes this computation self-evident
                 let mdCount = children.reduce(0) { $0 + $1.markdownCount }
                 let item = FolderItem(url: itemURL, isFolder: true, markdownCount: mdCount, children: children)
                 items.append(item)
@@ -237,11 +244,11 @@ final class FolderService {
 
     // MARK: - Cache Conversion
 
-    private nonisolated func getModificationDate(for url: URL) -> Date? {
+    private nonisolated static func getModificationDate(for url: URL) -> Date? {
         try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 
-    private nonisolated func getModificationDateSync(for url: URL) -> Date? {
+    private nonisolated static func getModificationDateSync(for url: URL) -> Date? {
         try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 
@@ -252,7 +259,7 @@ final class FolderService {
                 name: item.name,
                 isFolder: item.isFolder,
                 markdownCount: item.markdownCount,
-                modificationDate: getModificationDate(for: item.url),
+                modificationDate: Self.getModificationDate(for: item.url),
                 children: item.children.map { convertCachedItems($0) }
             )
         }

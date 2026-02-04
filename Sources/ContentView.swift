@@ -25,7 +25,13 @@ struct BrowserView: View {
             }
         }
         .onDisappear {
-            // Reopen start window when browser closes
+            // Invalidate cache for this folder
+            if let folderURL = appState.rootFolderURL {
+                FolderService.shared.invalidateCache(for: folderURL)
+            }
+            
+            // Clear folder state and reopen start window when browser closes
+            appState.closeFolder()
             openWindow(id: "start")
         }
     }
@@ -36,8 +42,8 @@ struct BrowserView: View {
         @Bindable var appState = appState
 
         return NavigationSplitView {
-            FileBrowserSidebar()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+            OutlineFileListWrapper()
+                .navigationSplitViewColumnWidth(min: 280, ideal: 400, max: 600)
         } detail: {
             if appState.selectedFile != nil {
                 MarkdownView()
@@ -51,7 +57,13 @@ struct BrowserView: View {
                 .inspectorColumnWidth(min: 250, ideal: 280, max: 400)
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            // Font size controls + AI Chat toggle
+            ToolbarItemGroup(placement: .primaryAction) {
+                FontSizeControls()
+                
+                Divider()
+                    .frame(height: 16)
+                
                 Button {
                     withAnimation {
                         appState.isAIChatVisible.toggle()
@@ -66,7 +78,6 @@ struct BrowserView: View {
                 }
                 .help(appState.isAIChatVisible ? "Hide AI Chat" : "Show AI Chat")
             }
-
         }
         #endif
         .dropDestination(for: URL.self) { urls, _ in
@@ -149,212 +160,121 @@ struct BrowserView: View {
     }
 }
 
-// MARK: - File Browser Sidebar
+// MARK: - Outline File List Wrapper
 
-/// Hierarchical file browser with tap-to-expand folders and generous hit targets.
-struct FileBrowserSidebar: View {
-
+/// Wrapper for OutlineFileList that handles loading and filtering
+struct OutlineFileListWrapper: View {
+    
     @Environment(AppState.self) private var appState
-
-    @State private var items: [FolderItem] = []
+    @State private var rootItems: [FolderItem] = []
     @State private var isLoading = false
-    @State private var expandedFolders: Set<String> = []
-
+    
     var body: some View {
         Group {
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if items.isEmpty {
-                ContentUnavailableView("Empty Folder", systemImage: "folder")
             } else {
-                fileList
+                OutlineFileList(
+                    items: filteredItems(rootItems),
+                    selection: Binding(
+                        get: { appState.selectedFile },
+                        set: { newValue in
+                            if let url = newValue {
+                                appState.selectFile(url)
+                                RecentFoldersManager.shared.addRecentFile(url, parentFolder: appState.rootFolderURL)
+                            }
+                        }
+                    )
+                )
             }
         }
-        .navigationTitle(appState.rootFolderURL?.lastPathComponent ?? "Files")
         .task(id: appState.rootFolderURL) {
-            guard let rootURL = appState.rootFolderURL else { return }
-            isLoading = true
-            // Always fresh scan on open - invalidate cache first
-            FolderService.shared.invalidateCache(for: rootURL)
-            items = await FolderService.shared.loadTree(at: rootURL)
-            expandedFolders.removeAll()
-            isLoading = false
+            await loadRootFolder()
         }
     }
-
-    private var fileList: some View {
-        ScrollView([.vertical, .horizontal], showsIndicators: true) {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(items) { item in
-                    FileRowView(
-                        item: item,
-                        expandedFolders: $expandedFolders,
-                        depth: 0
-                    )
-                }
+    
+    private func loadRootFolder() async {
+        guard let rootURL = appState.rootFolderURL else { return }
+        isLoading = true
+        FolderService.shared.invalidateCache(for: rootURL)
+        rootItems = await FolderService.shared.loadTree(at: rootURL)
+        
+        // First launch welcome: select first markdown
+        if appState.isFirstLaunchWelcome {
+            if let firstMarkdown = findFirstMarkdown(in: rootItems) {
+                appState.selectFile(firstMarkdown.url)
             }
-            .frame(minWidth: 220)  // Minimum sidebar width
+            appState.isFirstLaunchWelcome = false
         }
-        .background(.regularMaterial)
+        
+        isLoading = false
+    }
+    
+    // Always filter to markdown-only (recursive, preserves filtered children)
+    private func filteredItems(_ items: [FolderItem]) -> [FolderItem] {
+        items.compactMap { item in
+            if item.isFolder {
+                // Keep folder if it has markdown files
+                let filteredChildren = filteredItems(item.children ?? [])
+                if filteredChildren.isEmpty {
+                    return nil
+                }
+                // Create new FolderItem with filtered children
+                return FolderItem(
+                    url: item.url,
+                    isFolder: true,
+                    markdownCount: filteredChildren.reduce(0) { $0 + $1.markdownCount },
+                    children: filteredChildren
+                )
+            } else {
+                // Only keep markdown files
+                return item.isMarkdown ? item : nil
+            }
+        }
+    }
+    
+    private func findFirstMarkdown(in items: [FolderItem]) -> FolderItem? {
+        for item in items {
+            if item.isMarkdown { return item }
+            if let children = item.children,
+               let found = findFirstMarkdown(in: children) {
+                return found
+            }
+        }
+        return nil
     }
 }
 
-// MARK: - File Row View
+// MARK: - Font Size Controls
 
-/// Recursive row view for files and folders.
-/// - Folders: tap to expand/collapse, shows chevron + markdown count
-/// - Files: tap to select (if markdown)
-struct FileRowView: View {
-    let item: FolderItem
-    @Binding var expandedFolders: Set<String>
-    let depth: Int
-
-    @Environment(AppState.self) private var appState
-
-    private var isExpanded: Bool {
-        expandedFolders.contains(item.id)
-    }
-
-    private var isSelected: Bool {
-        appState.selectedFile == item.url
-    }
-
+/// Toolbar controls for adjusting markdown display settings
+struct FontSizeControls: View {
+    
+    @AppStorage("fontSize") private var fontSize: Double = 14.0
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // The row itself
-            rowButton
-
-            // Children (if folder is expanded)
-            if item.isFolder && isExpanded, let children = item.children {
-                ForEach(children) { child in
-                    FileRowView(
-                        item: child,
-                        expandedFolders: $expandedFolders,
-                        depth: depth + 1
-                    )
-                }
+        HStack(spacing: 4) {
+            // Decrease font size
+            Button {
+                fontSize = max(10, fontSize - 1)
+            } label: {
+                Image(systemName: "minus")
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var rowButton: some View {
-        Button {
-            handleTap()
-        } label: {
-            HStack(spacing: 0) {
-                // Indentation
-                if depth > 0 {
-                    Spacer()
-                        .frame(width: CGFloat(depth) * 20)
-                }
-
-                // Chevron for folders
-                if item.isFolder {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 20)
-                } else {
-                    Spacer().frame(width: 20)
-                }
-
-                // Icon
-                Image(systemName: icon)
-                    .font(.system(size: 16))
-                    .foregroundStyle(iconColor)
-                    .frame(width: 24)
-
-                // Name - no truncation, shows full text
-                Text(item.name)
-                    .foregroundStyle(textColor)
-                    .fixedSize(horizontal: true, vertical: false)
-
-                // Spacer ensures row extends to fill width
-                Spacer(minLength: 16)
-
-                // Markdown count for folders
-                if item.isFolder && item.markdownCount > 0 {
-                    Text("\(item.markdownCount)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.trailing, 4)
-                }
+            .help("Decrease font size")
+            .disabled(fontSize <= 10)
+            
+            // Increase font size
+            Button {
+                fontSize = min(32, fontSize + 1)
+            } label: {
+                Image(systemName: "plus")
             }
-            .padding(.vertical, 10)
-            .padding(.horizontal, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+            .help("Increase font size")
+            .disabled(fontSize >= 32)
         }
-        .buttonStyle(SidebarRowStyle(isSelected: isSelected, isFolder: item.isFolder))
-        .disabled(!item.isFolder && !item.isMarkdown)
-    }
-
-    private func handleTap() {
-        if item.isFolder {
-            // Toggle expansion
-            withAnimation(.easeInOut(duration: 0.2)) {
-                if isExpanded {
-                    expandedFolders.remove(item.id)
-                } else {
-                    expandedFolders.insert(item.id)
-                }
-            }
-        } else if item.isMarkdown {
-            appState.selectFile(item.url)
-            // Track in recent files
-            RecentFoldersManager.shared.addRecentFile(item.url, parentFolder: appState.rootFolderURL)
-        }
-    }
-
-    private var icon: String {
-        if item.isFolder {
-            return isExpanded ? "folder.fill" : "folder.fill"
-        }
-        if item.isMarkdown { return "doc.text.fill" }
-        return "doc.fill"
-    }
-
-    private var iconColor: Color {
-        if item.isFolder { return .blue }
-        if item.isMarkdown { return .primary }
-        return .secondary
-    }
-
-    private var textColor: Color {
-        if item.isFolder || item.isMarkdown { return .primary }
-        return .secondary
+        .controlSize(.small)
     }
 }
 
-// MARK: - Sidebar Row Style
 
-/// Button style for sidebar rows - generous hit target with hover and selection states
-struct SidebarRowStyle: ButtonStyle {
-    let isSelected: Bool
-    let isFolder: Bool
-
-    @State private var isHovered = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(backgroundColor(isPressed: configuration.isPressed))
-            )
-            .onHover { isHovered = $0 }
-    }
-
-    private func backgroundColor(isPressed: Bool) -> Color {
-        if isSelected && !isFolder {
-            return Color.accentColor.opacity(0.2)
-        } else if isPressed {
-            return Color.primary.opacity(0.1)
-        } else if isHovered {
-            return Color.primary.opacity(0.05)
-        }
-        return .clear
-    }
-}

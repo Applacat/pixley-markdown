@@ -1,0 +1,132 @@
+{
+  "id": "welcome-flow-refactor",
+  "title": "Welcome Flow Refactor",
+  "status": "ready",
+  "created": "2026-02-02",
+  "summary": "Eliminate confusing welcome screen. Replace with first-launch welcome folder, session restore, and minimal centered launcher.",
+  "user_stories": [
+    {
+      "id": "US-1",
+      "title": "First Launch Detection",
+      "description": "Add hasLaunchedBefore UserDefaults flag to detect first-time users",
+      "acceptance_criteria": [
+        "UserDefaults.standard.bool(forKey: \"hasLaunchedBefore\") returns false on first launch",
+        "Flag is set to true after welcome browser view appears",
+        "Deleting app data resets the flag"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-2",
+      "title": "First Launch Welcome Experience",
+      "description": "On first launch, open browser directly with Welcome folder and auto-select first file",
+      "acceptance_criteria": [
+        "On first launch, browser window opens with bundled Welcome folder",
+        "Sidebar shows all 6 welcome files, folder auto-expanded",
+        "01-Welcome.md is auto-selected and displayed",
+        "No launcher/start window is shown",
+        "hasLaunchedBefore flag is set after view appears"
+      ],
+      "phase": 3
+    },
+    {
+      "id": "US-3",
+      "title": "Session Restore on Launch",
+      "description": "Returning users get their last folder reopened automatically",
+      "acceptance_criteria": [
+        "RecentFoldersManager.lastSessionFolder() returns most recent folder",
+        "On launch, attempt to resolve and open last session folder",
+        "If successful, browser opens directly (no launcher)",
+        "If folder unavailable, silently fall back to launcher"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-4",
+      "title": "Minimal Launcher View",
+      "description": "Simplified centered launcher with only folder shortcuts",
+      "acceptance_criteria": [
+        "Launcher window is 480x520 pixels",
+        "Content is centered (not two-panel)",
+        "Shows Pixley photo, title, subtitle",
+        "Shows folder shortcuts: Desktop, Documents, Downloads, Choose Folder",
+        "Shows footer: or drop a folder anywhere",
+        "NO Ask Pixley section",
+        "NO recents list",
+        "Supports drag-and-drop"
+      ],
+      "phase": 2
+    },
+    {
+      "id": "US-5",
+      "title": "Pixley Photo Easter Egg",
+      "description": "Click Pixley photo to reopen welcome tour",
+      "acceptance_criteria": [
+        "Single-click on Pixley photo opens Welcome folder",
+        "Same behavior as current openWelcomeFolder()",
+        "No visible label or hint"
+      ],
+      "phase": 2
+    },
+    {
+      "id": "US-6",
+      "title": "Auto-Show Launcher on Window Close",
+      "description": "App never has zero windows - launcher appears when browser closes",
+      "acceptance_criteria": [
+        "Closing browser window shows minimal launcher",
+        "Closing folder via menu shows minimal launcher",
+        "Clicking dock icon when no windows shows launcher"
+      ],
+      "phase": 2
+    },
+    {
+      "id": "US-7",
+      "title": "Update Welcome Content",
+      "description": "Update welcome markdown files to match new flow",
+      "acceptance_criteria": [
+        "01-Welcome.md does not mention start screen",
+        "Content reflects user is already viewing the app",
+        "03-Ask-Pixley.md updated for browser-only Ask Pixley",
+        "All welcome files reviewed for accuracy"
+      ],
+      "phase": 4
+    }
+  ],
+  "phases": [
+    {
+      "number": 1,
+      "name": "Foundation",
+      "stories": ["US-1", "US-3"],
+      "description": "Add hasLaunchedBefore flag and lastSessionFolder() method"
+    },
+    {
+      "number": 2,
+      "name": "Minimal Launcher",
+      "stories": ["US-4", "US-5", "US-6"],
+      "description": "Refactor StartView to centered single-column, handle window lifecycle"
+    },
+    {
+      "number": 3,
+      "name": "First Launch Experience",
+      "stories": ["US-2"],
+      "description": "Implement first-launch welcome folder flow with auto-expand and auto-select"
+    },
+    {
+      "number": 4,
+      "name": "Content Update",
+      "stories": ["US-7"],
+      "description": "Update welcome markdown files to match new flow"
+    }
+  ],
+  "out_of_scope": [
+    "Recents in minimal launcher",
+    "Ask Pixley in launcher",
+    "Multiple window support",
+    "Light mode"
+  ],
+  "verification": {
+    "build": "cd PixleyWriter && swift build",
+    "run": "cd PixleyWriter && swift run",
+    "reset_first_launch": "defaults delete com.pixley.reader hasLaunchedBefore"
+  }
+}

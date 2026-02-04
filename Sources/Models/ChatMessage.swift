@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Chat Message
 
 /// A message in the AI chat conversation.
-struct ChatMessage: Identifiable {
+struct ChatMessage: Identifiable, Sendable {
     let id: UUID
     let role: Role
     let content: String
