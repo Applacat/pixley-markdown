@@ -339,30 +339,54 @@ struct ChatView: View {
         isWaitingForDocument = true
         defer { isWaitingForDocument = false }
 
-        // Wait for document content using ChatService's structured concurrency helper
-        let result = await chatService.waitForDocument(
-            isCurrentlyEmpty: appState.documentContent.isEmpty,
-            setLoadCallback: { callback in
-                appState.onDocumentLoaded = callback
-            },
-            clearLoadCallback: {
-                appState.onDocumentLoaded = nil
-            }
-        )
+        // Wait for document content if not already loaded
+        if appState.documentContent.isEmpty {
+            let didLoad = await waitForDocumentWithTimeout()
 
-        // Handle timeout or still-empty document
-        if result == .timeout || appState.documentContent.isEmpty {
-            let errorMessage = ChatMessage(
-                role: .assistant,
-                content: "Unable to load the document. Please try selecting it again from the sidebar."
-            )
-            messages.append(errorMessage)
-            return
+            guard didLoad && !appState.documentContent.isEmpty else {
+                let errorMessage = ChatMessage(
+                    role: .assistant,
+                    content: "Unable to load the document. Please try selecting it again from the sidebar."
+                )
+                messages.append(errorMessage)
+                return
+            }
         }
 
         let userMessage = ChatMessage(role: .user, content: question)
         messages.append(userMessage)
         await askAI(question)
+    }
+
+    /// Wait for document to load with timeout using TaskGroup for clean cancellation
+    private func waitForDocumentWithTimeout() async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            // Task 1: Wait for callback from MarkdownView
+            group.addTask { @MainActor in
+                await withCheckedContinuation { continuation in
+                    self.appState.onDocumentLoaded = {
+                        continuation.resume(returning: true)
+                    }
+                }
+            }
+
+            // Task 2: Timeout
+            group.addTask {
+                try? await Task.sleep(for: ChatService.documentLoadTimeout)
+                return false
+            }
+
+            // First result wins, cancel the other
+            let result = await group.next() ?? false
+            group.cancelAll()
+
+            // Clean up callback
+            await MainActor.run {
+                self.appState.onDocumentLoaded = nil
+            }
+
+            return result
+        }
     }
 
     @MainActor
