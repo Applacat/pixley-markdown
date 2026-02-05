@@ -206,9 +206,9 @@ struct AIMDReaderApp: App {
         panel.message = "Choose a folder to browse markdown files"
         panel.prompt = "Choose"
 
-        panel.begin { [weak self] response in
+        panel.begin { response in
             guard response == .OK, let folderURL = panel.url else { return }
-            self?.appState.setRootFolder(folderURL)
+            self.appState.setRootFolder(folderURL)
         }
     }
 
@@ -282,10 +282,10 @@ struct AIMDReaderApp: App {
         panel.message = "Grant access to open this markdown file"
         panel.prompt = "Allow"
 
-        panel.begin { [weak self] response in
+        panel.begin { response in
             guard response == .OK, let selectedURL = panel.url else { return }
-            self?.appState.setRootFolder(selectedURL)
-            self?.appState.selectFile(file)
+            self.appState.setRootFolder(selectedURL)
+            self.appState.selectFile(file)
         }
     }
     #endif
