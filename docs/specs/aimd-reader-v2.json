@@ -1,0 +1,287 @@
+{
+  "title": "QoL Improvements v2 - OOD-Aligned",
+  "description": "Architectural refactoring + QoL features addressing OOD feedback. Creates aimdRenderer package with pluggable themes.",
+  "created": "2026-02-04",
+  "status": "approved",
+  "vision": "Build reusable aimdRenderer package for markdown parsing and rendering across products",
+  "phases": [
+    {
+      "id": "phase-1",
+      "title": "Foundation Package",
+      "stories": ["US-F1", "US-F2"]
+    },
+    {
+      "id": "phase-2",
+      "title": "Foundation App",
+      "stories": ["US-F3", "US-F4", "US-F5"]
+    },
+    {
+      "id": "phase-3",
+      "title": "Persistence",
+      "stories": ["US-F6"]
+    },
+    {
+      "id": "phase-4",
+      "title": "Epic 1: Settings",
+      "stories": ["US-1.1", "US-1.2", "US-1.3", "US-1.4"]
+    },
+    {
+      "id": "phase-5",
+      "title": "Epic 2: Search",
+      "stories": ["US-2.1", "US-2.2", "US-2.3", "US-2.4", "US-2.5"]
+    },
+    {
+      "id": "phase-6",
+      "title": "Epic 4: Reading",
+      "stories": ["US-4.1", "US-4.2", "US-4.3", "US-4.4", "US-4.5"]
+    }
+  ],
+  "stories": {
+    "US-F1": {
+      "title": "Create aimdRenderer Package with DocumentModel",
+      "phase": "Foundation Package",
+      "acceptance_criteria": [
+        "Swift Package created at Packages/aimdRenderer",
+        "DocumentModel struct with content and lines",
+        "Line struct with number, range, content",
+        "Package builds successfully",
+        "Main app imports aimdRenderer"
+      ]
+    },
+    "US-F2": {
+      "title": "Add AST Parsing with swift-markdown",
+      "phase": "Foundation Package",
+      "acceptance_criteria": [
+        "swift-markdown added as dependency",
+        "MarkdownAST type wraps parsed document",
+        "DocumentModel includes ast property",
+        "Can parse and access headings, code blocks, paragraphs",
+        "Unit tests pass"
+      ]
+    },
+    "US-F3": {
+      "title": "Theme/Renderer Protocol System",
+      "phase": "Foundation App",
+      "acceptance_criteria": [
+        "MarkdownTheme protocol with associated Output type",
+        "Methods for each block type",
+        "SwiftUITheme implementation",
+        "10+ syntax highlighting color schemes",
+        "Theme renders markdown to SwiftUI views"
+      ]
+    },
+    "US-F4": {
+      "title": "AppCoordinator and State Decomposition",
+      "phase": "Foundation App",
+      "acceptance_criteria": [
+        "AppCoordinator class created",
+        "NavigationState with rootFolderURL, selectedFile",
+        "UIState with isAIChatVisible",
+        "DocumentState with documentModel, fileHasChanges",
+        "Old AppState removed",
+        "Views use new state containers",
+        "App functions as before"
+      ]
+    },
+    "US-F5": {
+      "title": "SettingsRepository Abstraction",
+      "phase": "Foundation App",
+      "acceptance_criteria": [
+        "SettingsRepository protocol defined",
+        "AppearanceSettings, RenderingSettings, BehaviorSettings",
+        "UserDefaultsSettingsRepository implementation",
+        "Views access settings through repository",
+        "Existing settings migrated"
+      ]
+    },
+    "US-F6": {
+      "title": "FileMetadataRepository with SwiftData",
+      "phase": "Persistence",
+      "acceptance_criteria": [
+        "FileMetadataRepository protocol defined",
+        "FileMetadata SwiftData model",
+        "Bookmark SwiftData model",
+        "SwiftDataMetadataRepository implementation",
+        "Can save/retrieve scroll position",
+        "Can manage favorites",
+        "Can manage bookmarks"
+      ]
+    },
+    "US-1.1": {
+      "title": "Settings Window Infrastructure",
+      "phase": "Epic 1: Settings",
+      "acceptance_criteria": [
+        "Cmd+, opens Settings window",
+        "Tabbed interface: Appearance, Rendering, Behavior",
+        "Settings persist after restart",
+        "Uses SettingsRepository"
+      ]
+    },
+    "US-1.2": {
+      "title": "Appearance Settings Tab",
+      "phase": "Epic 1: Settings",
+      "acceptance_criteria": [
+        "Color scheme picker",
+        "Syncs with toolbar toggle",
+        "Changes apply immediately"
+      ]
+    },
+    "US-1.3": {
+      "title": "Rendering Settings Tab",
+      "phase": "Epic 1: Settings",
+      "acceptance_criteria": [
+        "Syntax theme picker with preview",
+        "Font family picker",
+        "Font size slider",
+        "Heading scale picker",
+        "Line numbers toggle",
+        "Changes apply immediately"
+      ]
+    },
+    "US-1.4": {
+      "title": "Behavior Settings Tab",
+      "phase": "Epic 1: Settings",
+      "acceptance_criteria": [
+        "Link behavior setting",
+        "Link underline toggle",
+        "Settings persist"
+      ]
+    },
+    "US-2.1": {
+      "title": "File Tree Filter",
+      "phase": "Epic 2: Search",
+      "acceptance_criteria": [
+        "Search field in sidebar",
+        "Filters files immediately",
+        "Partial matches supported",
+        "Parent folders visible",
+        "Clear button",
+        "Empty state"
+      ]
+    },
+    "US-2.2": {
+      "title": "Content Search (Cmd+F)",
+      "phase": "Epic 2: Search",
+      "acceptance_criteria": [
+        "Cmd+F opens search overlay",
+        "Uses DocumentModel.lines",
+        "Matches highlighted",
+        "Match count displayed",
+        "Escape closes"
+      ]
+    },
+    "US-2.3": {
+      "title": "Search Navigation (Cmd+G)",
+      "phase": "Epic 2: Search",
+      "acceptance_criteria": [
+        "Cmd+G next match",
+        "Cmd+Shift+G previous match",
+        "Current match distinct",
+        "Auto-scroll to match",
+        "Wraps around"
+      ]
+    },
+    "US-2.4": {
+      "title": "File Tree Keyboard Navigation",
+      "phase": "Epic 2: Search",
+      "acceptance_criteria": [
+        "Arrow keys navigate",
+        "Left/Right expand/collapse folders",
+        "Enter opens file",
+        "Escape deselects",
+        "Selection highlighted"
+      ]
+    },
+    "US-2.5": {
+      "title": "Quick Switcher (Cmd+P)",
+      "phase": "Epic 2: Search",
+      "acceptance_criteria": [
+        "Cmd+P opens overlay",
+        "Fuzzy matching",
+        "Results sorted by relevance",
+        "Up/Down navigate",
+        "Enter opens file",
+        "Escape closes"
+      ]
+    },
+    "US-4.1": {
+      "title": "Reading Progress Persistence",
+      "phase": "Epic 4: Reading",
+      "acceptance_criteria": [
+        "Scroll position saved when leaving file",
+        "Position restored when reopening",
+        "Persists across restart",
+        "New files start at top"
+      ]
+    },
+    "US-4.2": {
+      "title": "Reading Progress Indicator",
+      "phase": "Epic 4: Reading",
+      "acceptance_criteria": [
+        "Progress indicator visible",
+        "Shows scroll percentage",
+        "Does not obstruct content",
+        "Updates in real-time"
+      ]
+    },
+    "US-4.3": {
+      "title": "File Favorites",
+      "phase": "Epic 4: Reading",
+      "acceptance_criteria": [
+        "Star icon on file rows",
+        "Click toggles favorite",
+        "Favorites section in sidebar",
+        "Persists via SwiftData",
+        "Can unfavorite"
+      ]
+    },
+    "US-4.4": {
+      "title": "Line Bookmarks",
+      "phase": "Epic 4: Reading",
+      "acceptance_criteria": [
+        "Click gutter to bookmark",
+        "Visible marker in gutter",
+        "Bookmarks panel",
+        "Click jumps to line",
+        "Can delete bookmarks",
+        "Persists via SwiftData"
+      ]
+    },
+    "US-4.5": {
+      "title": "File Watching",
+      "phase": "Epic 4: Reading",
+      "acceptance_criteria": [
+        "Changes detected within 2 seconds",
+        "Reload pill appears",
+        "Click reloads content",
+        "No false positives",
+        "Uses DispatchSource/FSEvents"
+      ]
+    }
+  },
+  "out_of_scope": [
+    "External LLM providers (Claude, OpenAI, MLX)",
+    "LLMProvider protocol",
+    "iCloud sync",
+    "Export/share",
+    "HTML/PDF renderers",
+    "Split View (deferred to applacatCanvas v2.0/v3.0)"
+  ],
+  "future": {
+    "v2_v3": [
+      "applacatCanvas package for multi-block layouts",
+      "Split View via applacatCanvas",
+      "HTML/PDF renderer themes",
+      "LLM Provider protocol when needed"
+    ]
+  },
+  "dependencies": [
+    "Apple swift-markdown",
+    "SwiftData"
+  ],
+  "verification": {
+    "build_package": "swift build (in Packages/aimdRenderer)",
+    "test_package": "swift test",
+    "build_app": "xcodebuild -scheme AIMDReader build"
+  }
+}

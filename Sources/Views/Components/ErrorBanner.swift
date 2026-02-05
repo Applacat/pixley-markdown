@@ -81,21 +81,4 @@ extension View {
 }
 
 // MARK: - Preview
-
-#Preview("Warning") {
-    VStack {
-        Spacer()
-        ErrorBanner(error: .warning(message: "Content exceeds size limit. Some features may be disabled.")) { }
-    }
-    .frame(width: 400, height: 200)
-    .background(.gray.opacity(0.2))
-}
-
-#Preview("Error") {
-    VStack {
-        Spacer()
-        ErrorBanner(error: .error(message: "File too large (15.2 MB). Maximum is 10 MB.")) { }
-    }
-    .frame(width: 400, height: 200)
-    .background(.gray.opacity(0.2))
-}
+// Note: #Preview macros require Xcode - not available in CLI builds

@@ -186,18 +186,15 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
 // MARK: - Environment Key
 
 /// Environment key for accessing settings repository
+/// Note: Returns concrete type for SwiftUI Environment compatibility
 @MainActor
 private struct SettingsRepositoryKey: EnvironmentKey {
-    nonisolated(unsafe) static let defaultValue: SettingsRepository = {
-        MainActor.assumeIsolated {
-            UserDefaultsSettingsRepository.shared
-        }
-    }()
+    static let defaultValue: UserDefaultsSettingsRepository = UserDefaultsSettingsRepository.shared
 }
 
 extension EnvironmentValues {
     @MainActor
-    public var settings: SettingsRepository {
+    public var settings: UserDefaultsSettingsRepository {
         get { self[SettingsRepositoryKey.self] }
         set { self[SettingsRepositoryKey.self] = newValue }
     }

@@ -25,6 +25,9 @@ struct AIMDReaderApp: App {
     @State private var appState = AppState()
     @State private var launchState: LaunchState = .minimalLauncher
 
+    /// Settings repository - injected into Environment for all views
+    private let settings = UserDefaultsSettingsRepository.shared
+
     // MARK: - Welcome Folder Location
 
     /// Welcome folder in Application Support (persists reliably, backed up)
@@ -63,7 +66,8 @@ struct AIMDReaderApp: App {
         Window("AI.md Reader", id: "start") {
             StartView(performLaunchIfNeeded: performLaunchIfNeeded)
                 .environment(appState)
-                .preferredColorScheme(appState.colorSchemeOverride)
+                .environment(\.settings, settings)
+                .preferredColorScheme(settings.appearance.colorScheme)
         }
         #if os(macOS)
         .defaultLaunchBehavior(.presented)
@@ -76,7 +80,8 @@ struct AIMDReaderApp: App {
         WindowGroup("AI.md Reader", id: "browser") {
             BrowserView()
                 .environment(appState)
-                .preferredColorScheme(appState.colorSchemeOverride)
+                .environment(\.settings, settings)
+                .preferredColorScheme(settings.appearance.colorScheme)
                 .onOpenURL { url in
                     handleOpenURL(url)
                 }

@@ -131,6 +131,46 @@ if messages.count > maxMessageHistory * 3 / 4 {
 
 ---
 
+#### 10. BONUS: Fix Janky Sidebar ✅
+**File:** `OutlineFileList.swift`
+
+**Issues Fixed:**
+- ❌ **expandAll() called on EVERY update** → Caused constant flickering
+- ❌ **Full reloadData() every time** → Very inefficient
+- ❌ **No expansion state preservation** → User's expand/collapse lost
+- ❌ **Regular highlight style** → Not native macOS sidebar feel
+- ❌ **No double-click support** → Only disclosure triangle worked
+
+**After:**
+```swift
+// Native source list style
+outlineView.selectionHighlightStyle = .sourceList
+
+// Explicit row height for consistency  
+outlineView.rowHeight = 24
+
+// Double-click to expand/collapse
+outlineView.doubleAction = #selector(Coordinator.handleDoubleClick(_:))
+
+// Intelligent updates - only reload when data changes
+if itemsChanged {
+    let expandedItems = saveExpansionState()
+    outlineView.reloadData()
+    restoreExpansionState(expandedItems)
+}
+```
+
+**Impact:**
+- ✅ Feels like native macOS Finder sidebar
+- ✅ Smooth, no flickering
+- ✅ User's expand/collapse state preserved
+- ✅ Double-click folders to expand (native behavior)
+- ✅ Proper spacing and visual polish
+- ✅ **NEW:** Toggle to show/hide non-markdown files (hidden by default)
+- ✅ **NEW:** Wider sidebar (280-500pt) for better filename visibility
+
+---
+
 ## Summary
 
 ### What We Fixed:
@@ -141,6 +181,7 @@ if messages.count > maxMessageHistory * 3 / 4 {
 - ✅ Tutorial button has proper error handling
 - ✅ Chat history limit is now visible to users
 - ✅ AI availability messages are helpful and actionable
+- ✅ **Sidebar is now native and smooth** - No more jank!
 
 ### What We Didn't Change (Intentionally):
 - ❌ Auto-launch tutorial on first run (user prefers exploration)

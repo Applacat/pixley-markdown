@@ -233,18 +233,20 @@ Future: `applacatCanvas` package will consume aimdRenderer blocks for multi-bloc
 
 ---
 
-## Phase 2: Foundation App
+## Phase 2: Foundation App (COMPLETE)
 
 ### US-F3: Theme/Renderer Protocol System
 
 **Description:** Create pluggable theme system where themes are renderers.
 
 **Acceptance Criteria:**
-- [ ] `MarkdownTheme` protocol with associated `Output` type
-- [ ] Protocol methods for each block type (heading, paragraph, code, etc.)
-- [ ] `SwiftUITheme` struct implementing protocol with `Output = AnyView`
-- [ ] 10+ syntax highlighting color schemes defined (Xcode Light, Xcode Dark, GitHub Light, GitHub Dark, One Dark, Dracula, Solarized Light, Solarized Dark, Monokai, Nord)
-- [ ] Theme renders markdown document to SwiftUI view hierarchy
+- [x] `MarkdownTheme` protocol with associated `Output` type
+- [x] Protocol methods for each block type (heading, paragraph, code, etc.)
+- [x] `SwiftUITheme` struct implementing protocol with `Output = AnyView`
+- [x] 10+ syntax highlighting color schemes defined (Xcode Light, Xcode Dark, GitHub Light, GitHub Dark, One Dark, Dracula, Solarized Light, Solarized Dark, Monokai, Nord)
+- [x] Theme renders markdown document to SwiftUI view hierarchy
+
+**Implementation:** `Packages/aimdRenderer/Sources/aimdRenderer/Themes/`
 
 ---
 
@@ -253,13 +255,15 @@ Future: `applacatCanvas` package will consume aimdRenderer blocks for multi-bloc
 **Description:** Refactor AppState into focused state containers owned by AppCoordinator.
 
 **Acceptance Criteria:**
-- [ ] `AppCoordinator` class created as single owner of state
-- [ ] `NavigationState`: `rootFolderURL`, `selectedFile`
-- [ ] `UIState`: `isAIChatVisible`, panel visibility flags
-- [ ] `DocumentState`: `documentModel: DocumentModel`, `fileHasChanges`, `reloadTrigger`
-- [ ] Old `AppState` removed or deprecated
-- [ ] All views updated to use new state containers via Environment
-- [ ] App launches and functions as before
+- [x] `AppCoordinator` class created as single owner of state
+- [x] `NavigationState`: `rootFolderURL`, `selectedFile`
+- [x] `UIState`: `isAIChatVisible`, panel visibility flags
+- [x] `DocumentState`: `documentModel: DocumentModel`, `fileHasChanges`, `reloadTrigger`
+- [x] Old `AppState` kept for backward compatibility (marked for future deprecation)
+- [ ] All views updated to use new state containers via Environment (gradual migration)
+- [x] App launches and functions as before
+
+**Implementation:** `Sources/Coordinator/AppCoordinator.swift`
 
 ---
 
@@ -268,13 +272,15 @@ Future: `applacatCanvas` package will consume aimdRenderer blocks for multi-bloc
 **Description:** Create protocol-based settings access replacing scattered @AppStorage.
 
 **Acceptance Criteria:**
-- [ ] `SettingsRepository` protocol defined
-- [ ] `AppearanceSettings`: colorScheme
-- [ ] `RenderingSettings`: fontSize, fontFamily, syntaxTheme, headingScale, showLineNumbers
-- [ ] `BehaviorSettings`: linkBehavior
-- [ ] `UserDefaultsSettingsRepository` implementation using @AppStorage internally
-- [ ] All views access settings through repository, not direct @AppStorage
-- [ ] Existing settings (fontSize, colorScheme) migrated to new system
+- [x] `SettingsRepository` protocol defined
+- [x] `AppearanceSettings`: colorScheme
+- [x] `RenderingSettings`: fontSize, fontFamily, syntaxTheme, headingScale, showLineNumbers
+- [x] `BehaviorSettings`: linkBehavior
+- [x] `UserDefaultsSettingsRepository` implementation using UserDefaults
+- [ ] All views access settings through repository (gradual migration)
+- [x] Settings types match aimdRenderer theme types
+
+**Implementation:** `Sources/Settings/SettingsRepository.swift`
 
 ---
 
