@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "AIMDReader",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v15)],
     dependencies: [
         .package(path: "Packages/aimdRenderer")
     ],

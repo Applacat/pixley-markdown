@@ -72,39 +72,12 @@ struct BrowserView: View {
             lastSelectedFilePath = newFile?.path ?? ""
         }
         #if os(macOS)
-        .inspector(isPresented: Binding(
-            get: { coordinator.ui.isAIChatVisible },
-            set: { coordinator.isAIChatVisible = $0 }
-        )) {
-            ChatView()
-                .inspectorColumnWidth(min: 250, ideal: 280, max: 400)
-        }
+        .modifier(AIChatModifier(coordinator: coordinator))
         .navigationTitle(coordinator.navigation.selectedFile?.deletingPathExtension().lastPathComponent ?? "AI.md Reader")
         .toolbar {
             // Font size stepper (trailing edge, own pill)
             ToolbarItem(placement: .primaryAction) {
                 FontSizeControls()
-            }
-
-            // AI Chat toggle (rightmost, next to inspector)
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-                        coordinator.toggleAIChat()
-                    } else {
-                        withAnimation {
-                            coordinator.toggleAIChat()
-                        }
-                    }
-                } label: {
-                    Label(
-                        coordinator.ui.isAIChatVisible ? "Hide AI Chat" : "Show AI Chat",
-                        systemImage: coordinator.ui.isAIChatVisible
-                            ? "bubble.left.and.bubble.right.fill"
-                            : "bubble.left.and.bubble.right"
-                    )
-                }
-                .help(coordinator.ui.isAIChatVisible ? "Hide AI Chat" : "Show AI Chat")
             }
         }
         #endif
@@ -386,4 +359,46 @@ struct FontSizeControls: View {
     }
 }
 
+// MARK: - AI Chat Modifier
 
+/// Wraps AI Chat inspector and toolbar button behind macOS 26 availability.
+/// On macOS <26, this modifier is a no-op — no chat UI is shown.
+struct AIChatModifier: ViewModifier {
+    let coordinator: AppCoordinator
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content
+                .inspector(isPresented: Binding(
+                    get: { coordinator.ui.isAIChatVisible },
+                    set: { coordinator.isAIChatVisible = $0 }
+                )) {
+                    ChatView()
+                        .inspectorColumnWidth(min: 250, ideal: 280, max: 400)
+                }
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                                coordinator.toggleAIChat()
+                            } else {
+                                withAnimation {
+                                    coordinator.toggleAIChat()
+                                }
+                            }
+                        } label: {
+                            Label(
+                                coordinator.ui.isAIChatVisible ? "Hide AI Chat" : "Show AI Chat",
+                                systemImage: coordinator.ui.isAIChatVisible
+                                    ? "bubble.left.and.bubble.right.fill"
+                                    : "bubble.left.and.bubble.right"
+                            )
+                        }
+                        .help(coordinator.ui.isAIChatVisible ? "Hide AI Chat" : "Show AI Chat")
+                    }
+                }
+        } else {
+            content
+        }
+    }
+}

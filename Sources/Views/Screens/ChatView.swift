@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(FoundationModels)
 import FoundationModels
+#endif
 import AppKit
 
 // MARK: - Chat View
@@ -8,6 +10,7 @@ import AppKit
 /// Uses Apple Foundation Models for on-device AI inference.
 /// Shows "Thinking..." while awaiting, then full response at once
 /// (plain text respond(to:) doesn't support token streaming).
+@available(macOS 26, *)
 struct ChatView: View {
 
     @Environment(\.coordinator) private var coordinator
@@ -378,6 +381,7 @@ struct ChatView: View {
 
 // MARK: - Message Bubble
 
+@available(macOS 26, *)
 struct MessageBubble: View {
 
     let message: ChatMessage

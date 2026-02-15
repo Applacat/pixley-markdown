@@ -1,0 +1,10 @@
+# Progress: Downgrade macOS Deployment Target from 26 to 15 (Sequoia)
+
+## Phase 1: Build Configuration + Foundation Models Gating
+- [DONE] US-1: Change Deployment Target
+- [DONE] US-2: Gate Foundation Models Behind Availability Check
+
+## Phase 2: UI Gating + Content Updates
+- [DONE] US-3: Hide AI Chat UI on macOS <26
+- [DONE] US-4: Hide AI Chat Help Menu Item on macOS <26
+- [DONE] US-5: Update Welcome Tutorial

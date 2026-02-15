@@ -39,7 +39,7 @@ struct StartView: View {
             // If we have a root folder (from first launch or session restore),
             // redirect to browser immediately
             if coordinator.navigation.rootFolderURL != nil {
-                openWindow(id: "browser")
+                activateOrOpenBrowser()
                 dismissWindow(id: "start")
             } else {
                 // No folder context - show launcher
@@ -50,7 +50,7 @@ struct StartView: View {
             // React to menu commands (Help, About) that request browser window
             if shouldOpen {
                 coordinator.consumeOpenBrowser()  // Consume the flag
-                openWindow(id: "browser")
+                activateOrOpenBrowser()
                 dismissWindow(id: "start")
             }
         }
@@ -69,6 +69,7 @@ struct StartView: View {
                     VStack(spacing: 16) {
                         Image("AIMD")
                             .resizable()
+                            .interpolation(.high)
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 140, height: 140)
                             .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
@@ -223,7 +224,7 @@ struct StartView: View {
     private func openFolder(_ url: URL) {
         RecentFoldersManager.shared.addFolder(url)
         coordinator.openFolder(url)
-        openWindow(id: "browser")
+        activateOrOpenBrowser()
         dismissWindow(id: "start")
     }
 
@@ -248,7 +249,7 @@ struct StartView: View {
                     RecentFoldersManager.shared.addFolder(folderURL)
                     coordinator.openFolder(folderURL)
                     coordinator.selectFile(url)
-                    openWindow(id: "browser")
+                    activateOrOpenBrowser()
                     dismissWindow(id: "start")
                 }
             }
@@ -266,7 +267,7 @@ struct StartView: View {
 
         coordinator.openFolder(welcomeURL)
         coordinator.setFirstLaunchWelcome(true)
-        openWindow(id: "browser")
+        activateOrOpenBrowser()
         dismissWindow(id: "start")
     }
 
@@ -301,8 +302,23 @@ struct StartView: View {
             question: "What is this app and what can I do with it?"
         )
 
-        openWindow(id: "browser")
+        activateOrOpenBrowser()
         dismissWindow(id: "start")
+    }
+
+    // MARK: - Window Management
+
+    /// Activates an existing browser window if one is visible, otherwise opens a new one.
+    /// Prevents duplicate browser windows from being created by WindowGroup.
+    private func activateOrOpenBrowser() {
+        if let browserWindow = NSApp.windows.first(where: {
+            $0.identifier?.rawValue.contains("browser") == true && $0.isVisible
+        }) {
+            browserWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            openWindow(id: "browser")
+        }
     }
 }
 

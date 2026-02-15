@@ -37,7 +37,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             coordinator.openFolder(parentFolder)
             coordinator.selectFile(url)
         }
-        coordinator.requestOpenBrowser()
+
+        // Activate existing browser window if one exists, otherwise request a new one
+        if let browserWindow = NSApp.windows.first(where: {
+            $0.identifier?.rawValue.contains("browser") == true && $0.isVisible
+        }) {
+            browserWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            coordinator.requestOpenBrowser()
+        }
     }
 }
 
@@ -142,8 +151,10 @@ struct AIMDReaderApp: App {
                     openWelcomeToPage("02-Browsing-Folders.md")
                 }
                 
-                Button("AI Chat") {
-                    openWelcomeToPage("03-AI-Chat.md")
+                if #available(macOS 26, *) {
+                    Button("AI Chat") {
+                        openWelcomeToPage("03-AI-Chat.md")
+                    }
                 }
 
                 Button("Keyboard Shortcuts") {

@@ -1,5 +1,7 @@
 # AI Chat
 
+> **Note:** AI Chat requires **macOS 26 (Tahoe)** or later.
+
 When viewing a document, you can open the AI Chat panel to ask questions about it.
 
 ## Opening the Chat

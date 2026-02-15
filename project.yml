@@ -2,18 +2,18 @@ name: AIMDReader
 options:
   bundleIdPrefix: com.aimd
   deploymentTarget:
-    macOS: "26.0"
+    macOS: "15.0"
   createIntermediateGroups: true
   generateEmptyDirectories: true
 
 settings:
   base:
-    MARKETING_VERSION: "1.1.0"
-    CURRENT_PROJECT_VERSION: "2"
+    MARKETING_VERSION: "1.2.0"
+    CURRENT_PROJECT_VERSION: "3"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
-    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
     ARCHS: [arm64]
     ONLY_ACTIVE_ARCH: NO
     SWIFT_VERSION: "6.0"

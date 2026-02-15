@@ -70,6 +70,9 @@ struct OutlineFileList: NSViewRepresentable {
             // Restore from persistent expandedPaths (tracked incrementally via delegate)
             context.coordinator.restoreExpansionState(outlineView: outlineView)
         }
+
+        // Sync selection from coordinator → NSOutlineView
+        context.coordinator.syncSelection(outlineView: outlineView)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -228,6 +231,67 @@ struct OutlineFileList: NSViewRepresentable {
             cell.configure(with: folderItem, indentLevel: indentLevel, outlineView: outlineView, isFavorite: favorited, onToggleFavorite: onToggleFavorite)
 
             return cell
+        }
+
+        // MARK: - Selection Sync
+
+        /// Syncs the coordinator's selectedFile to the NSOutlineView's visual selection.
+        /// Called from updateNSView when the binding changes externally (e.g., AppDelegate, session restore).
+        func syncSelection(outlineView: NSOutlineView) {
+            let targetURL = selection.wrappedValue
+
+            // Get the currently selected item in the outline view
+            let currentRow = outlineView.selectedRow
+            if let targetURL {
+                // Check if the outline view already has this item selected
+                if currentRow >= 0,
+                   let currentItem = outlineView.item(atRow: currentRow) as? FolderItem,
+                   currentItem.url == targetURL {
+                    return // Already in sync
+                }
+
+                // Find and select the target item
+                if let row = findRow(for: targetURL, in: outlineView) {
+                    outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                    outlineView.scrollRowToVisible(row)
+                }
+            } else if currentRow >= 0 {
+                // No selection expected — deselect
+                outlineView.deselectAll(nil)
+            }
+        }
+
+        /// Recursively searches the outline view for a row matching the given URL.
+        /// Expands parent folders as needed to reveal the item.
+        private func findRow(for url: URL, in outlineView: NSOutlineView) -> Int? {
+            // Walk through items recursively to find and expand path to target
+            func search(items: [FolderItem], expandParents: Bool) -> FolderItem? {
+                for item in items {
+                    if item.url == url { return item }
+                    if item.isFolder, let children = item.children {
+                        if let found = search(items: children, expandParents: expandParents) {
+                            // Expand this folder so the child is visible
+                            if expandParents {
+                                outlineView.expandItem(item)
+                                expandedPaths.insert(item.url.path)
+                            }
+                            return found
+                        }
+                    }
+                }
+                return nil
+            }
+
+            guard let _ = search(items: items, expandParents: true) else { return nil }
+
+            // Now that parents are expanded, find the row
+            let rowCount = outlineView.numberOfRows
+            for row in 0..<rowCount {
+                if let item = outlineView.item(atRow: row) as? FolderItem, item.url == url {
+                    return row
+                }
+            }
+            return nil
         }
 
         func outlineViewSelectionDidChange(_ notification: Notification) {

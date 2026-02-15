@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(FoundationModels)
 import FoundationModels
+#endif
 import os.log
 
 // MARK: - Chat Service
@@ -17,6 +19,7 @@ import os.log
 /// 3. Fresh session per conversation — never reuse across "Forget" resets
 /// 4. 3-turn auto-reset — after 3 Q&A turns, create fresh session
 /// 5. Document truncation — cap at ~2500 chars to leave headroom
+@available(macOS 26, *)
 @MainActor
 final class ChatService {
 
@@ -175,6 +178,7 @@ final class ChatService {
 // MARK: - Chat Result
 
 /// Result of a chat request, covering all outcomes.
+@available(macOS 26, *)
 enum ChatResult {
     /// Successful response
     case success(String)
