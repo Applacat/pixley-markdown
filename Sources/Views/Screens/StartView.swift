@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Start View
 
@@ -6,7 +7,7 @@ import SwiftUI
 /// Shows when no folder is open. Click app icon to open Welcome tour (easter egg).
 struct StartView: View {
 
-    @Environment(AppState.self) private var appState
+    @Environment(\.coordinator) private var coordinator
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
 
@@ -37,7 +38,7 @@ struct StartView: View {
 
             // If we have a root folder (from first launch or session restore),
             // redirect to browser immediately
-            if appState.rootFolderURL != nil {
+            if coordinator.navigation.rootFolderURL != nil {
                 openWindow(id: "browser")
                 dismissWindow(id: "start")
             } else {
@@ -45,10 +46,10 @@ struct StartView: View {
                 isReady = true
             }
         }
-        .onChange(of: appState.shouldOpenBrowser) { _, shouldOpen in
+        .onChange(of: coordinator.ui.shouldOpenBrowser) { _, shouldOpen in
             // React to menu commands (Help, About) that request browser window
             if shouldOpen {
-                appState.shouldOpenBrowser = false  // Consume the flag
+                coordinator.consumeOpenBrowser()  // Consume the flag
                 openWindow(id: "browser")
                 dismissWindow(id: "start")
             }
@@ -128,17 +129,15 @@ struct StartView: View {
             Spacer()
 
             // Footer hint
-            Text("or drop a folder anywhere")
+            Text("or drop a folder or .md file anywhere")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.ultraThinMaterial)
-        .dropDestination(for: URL.self) { urls, _ in
-            handleDrop(urls)
-        } isTargeted: { targeted in
-            isDropTargeted = targeted
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            handleDrop(providers)
         }
         .overlay {
             if isDropTargeted {
@@ -223,63 +222,50 @@ struct StartView: View {
 
     private func openFolder(_ url: URL) {
         RecentFoldersManager.shared.addFolder(url)
-        appState.setRootFolder(url)
+        coordinator.openFolder(url)
         openWindow(id: "browser")
         dismissWindow(id: "start")
     }
 
-    private func handleDrop(_ urls: [URL]) -> Bool {
-        guard let url = urls.first else { return false }
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
-              isDirectory.boolValue else { return false }
-        openFolder(url)
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first,
+              provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { return false }
+
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+            guard let data = item as? Data,
+                  let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+
+            Task { @MainActor in
+                var isDirectory: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return }
+
+                if isDirectory.boolValue {
+                    openFolder(url)
+                } else {
+                    let ext = url.pathExtension.lowercased()
+                    guard ext == "md" || ext == "markdown" else { return }
+                    let folderURL = url.deletingLastPathComponent()
+                    RecentFoldersManager.shared.addFolder(folderURL)
+                    coordinator.openFolder(folderURL)
+                    coordinator.selectFile(url)
+                    openWindow(id: "browser")
+                    dismissWindow(id: "start")
+                }
+            }
+        }
         return true
-    }
-
-    // MARK: - Welcome Folder Location
-
-    /// Welcome folder in Application Support (persists reliably, backed up)
-    private static var welcomeFolderURL: URL? {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("AIMDReader")
-            .appendingPathComponent("Welcome")
-    }
-
-    /// Ensures Welcome folder exists in Application Support, copying from bundle if needed
-    private static func ensureWelcomeFolder() -> URL? {
-        guard let targetURL = welcomeFolderURL else { return nil }
-
-        // Already exists - use it
-        if FileManager.default.fileExists(atPath: targetURL.path) {
-            return targetURL
-        }
-
-        // Copy from bundle
-        guard let bundleURL = Bundle.main.url(forResource: "Welcome", withExtension: nil) else {
-            return nil
-        }
-
-        do {
-            let parentDir = targetURL.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: bundleURL, to: targetURL)
-            return targetURL
-        } catch {
-            return nil  // Silent fallback
-        }
     }
 
     // MARK: - Welcome Folder (Easter Egg)
 
     private func openWelcomeFolder() {
         // Ensure Welcome folder exists in Application Support (copy from bundle if needed)
-        guard let welcomeURL = Self.ensureWelcomeFolder() else {
+        guard let welcomeURL = WelcomeManager.ensureWelcomeFolder() else {
             return
         }
 
-        appState.setRootFolder(welcomeURL)
-        appState.isFirstLaunchWelcome = true
+        coordinator.openFolder(welcomeURL)
+        coordinator.setFirstLaunchWelcome(true)
         openWindow(id: "browser")
         dismissWindow(id: "start")
     }
@@ -291,7 +277,7 @@ struct StartView: View {
     /// Same code path as manual file selection + typing question
     private func openWelcomeFolderWithPrompt() {
         // Ensure Welcome folder exists in Application Support (copy from bundle if needed)
-        guard let welcomeURL = Self.ensureWelcomeFolder() else {
+        guard let welcomeURL = WelcomeManager.ensureWelcomeFolder() else {
             showWelcomeError = true
             return
         }
@@ -310,7 +296,7 @@ struct StartView: View {
         // 1. Opened folder manually
         // 2. Selected file manually
         // 3. Typed question manually
-        appState.openWithFileContext(
+        coordinator.openWithFileContext(
             fileURL: welcomeFile,
             question: "What is this app and what can I do with it?"
         )
@@ -331,7 +317,7 @@ struct FolderShortcutButton: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 16))
+                    .font(.body)
                     .foregroundStyle(.blue)
                     .frame(width: 24)
 
@@ -377,12 +363,16 @@ struct FolderButtonStyle: ButtonStyle {
 struct MascotButtonStyle: ButtonStyle {
     @State private var isHovered = false
 
+    private var reduceMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.95 : (isHovered ? 1.02 : 1.0))
+            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.95 : (isHovered ? 1.02 : 1.0)))
             .opacity(configuration.isPressed ? 0.9 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
-            .animation(.easeInOut(duration: 0.15), value: isHovered)
+            .animation(reduceMotion ? .none : .easeInOut(duration: 0.15), value: configuration.isPressed)
+            .animation(reduceMotion ? .none : .easeInOut(duration: 0.15), value: isHovered)
             .onHover { isHovered = $0 }
     }
 }

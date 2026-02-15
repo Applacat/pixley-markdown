@@ -9,15 +9,17 @@ struct OutlineFileList: NSViewRepresentable {
 
     let items: [FolderItem]
     @Binding var selection: URL?
+    var isFavorite: ((URL) -> Bool)? = nil
+    var onToggleFavorite: ((URL) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
-        // Outline view
-        let outlineView = NSOutlineView()
+        // Outline view with keyboard handling
+        let outlineView = KeyHandlingOutlineView()
         outlineView.headerView = nil
         outlineView.indentationPerLevel = 10
         outlineView.rowSizeStyle = .default
         outlineView.rowHeight = 24  // Explicit row height for consistency
-        outlineView.selectionHighlightStyle = .sourceList  // macOS source list style
+        outlineView.style = .sourceList  // macOS source list style
         outlineView.autoresizesOutlineColumn = true
         outlineView.usesAlternatingRowBackgroundColors = false
         outlineView.floatsGroupRows = false
@@ -52,29 +54,26 @@ struct OutlineFileList: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let outlineView = context.coordinator.outlineView else { return }
-        
-        // Only update if data actually changed
+
+        // Keep callback references current
+        context.coordinator.isFavorite = isFavorite
+        context.coordinator.onToggleFavorite = onToggleFavorite
+        context.coordinator.selection = _selection
+
+        // Only reload if data actually changed
         let itemsChanged = context.coordinator.items.count != items.count
-        
+
         if itemsChanged {
-            // Save expansion state before reloading
-            let expandedItems = context.coordinator.saveExpansionState(outlineView: outlineView)
-            
-            // Update data
             context.coordinator.items = items
-            context.coordinator.selection = _selection
             outlineView.reloadData()
-            
-            // Restore expansion state
-            context.coordinator.restoreExpansionState(outlineView: outlineView, expandedItems: expandedItems)
-        } else {
-            // Just update the binding reference
-            context.coordinator.selection = _selection
+
+            // Restore from persistent expandedPaths (tracked incrementally via delegate)
+            context.coordinator.restoreExpansionState(outlineView: outlineView)
         }
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(items: items, selection: _selection)
+        Coordinator(items: items, selection: _selection, isFavorite: isFavorite, onToggleFavorite: onToggleFavorite)
     }
 
     // MARK: - Coordinator
@@ -85,7 +84,11 @@ struct OutlineFileList: NSViewRepresentable {
         var items: [FolderItem]
         var selection: Binding<URL?>
         weak var outlineView: NSOutlineView?
+        var isFavorite: ((URL) -> Bool)?
+        var onToggleFavorite: ((URL) -> Void)?
         private var hasPerformedInitialExpansion = false
+        /// Persistent set of expanded folder paths — maintained incrementally
+        private var expandedPaths = Set<String>()
 
         /// Static placeholder to avoid repeated allocations in data source methods
         /// This is used only as a safety fallback and should never actually appear in UI
@@ -95,75 +98,59 @@ struct OutlineFileList: NSViewRepresentable {
             markdownCount: 0
         )
 
-        init(items: [FolderItem], selection: Binding<URL?>) {
+        init(items: [FolderItem], selection: Binding<URL?>, isFavorite: ((URL) -> Bool)? = nil, onToggleFavorite: ((URL) -> Void)? = nil) {
             self.items = items
             self.selection = selection
+            self.isFavorite = isFavorite
+            self.onToggleFavorite = onToggleFavorite
         }
         
         // MARK: - Expansion State Management
         
-        func saveExpansionState(outlineView: NSOutlineView) -> Set<String> {
-            var expandedPaths = Set<String>()
-            
-            func collectExpanded(_ item: Any?) {
-                if let folderItem = item as? FolderItem {
-                    if outlineView.isItemExpanded(folderItem) {
-                        expandedPaths.insert(folderItem.url.path)
-                    }
-                    if let children = folderItem.children {
-                        for child in children where child.isFolder {
-                            collectExpanded(child)
-                        }
-                    }
-                } else {
-                    // Root level
-                    for rootItem in items where rootItem.isFolder {
-                        collectExpanded(rootItem)
-                    }
-                }
-            }
-            
-            collectExpanded(nil)
-            return expandedPaths
-        }
-        
-        func restoreExpansionState(outlineView: NSOutlineView, expandedItems: Set<String>) {
-            func restore(_ item: Any?) {
-                if let folderItem = item as? FolderItem {
-                    if expandedItems.contains(folderItem.url.path) {
-                        outlineView.expandItem(folderItem, expandChildren: false)
-                    }
-                    if let children = folderItem.children {
-                        for child in children where child.isFolder {
-                            restore(child)
-                        }
-                    }
-                } else {
-                    // Root level
-                    for rootItem in items where rootItem.isFolder {
-                        restore(rootItem)
-                    }
-                }
-            }
-            
+        /// Restores expansion state from the persistent expandedPaths set.
+        func restoreExpansionState(outlineView: NSOutlineView) {
             // Expand all on first load (welcome experience)
             if !hasPerformedInitialExpansion {
                 expandAllInitial(outlineView: outlineView, items: items)
                 hasPerformedInitialExpansion = true
             } else {
-                restore(nil)
+                restoreFromPaths(outlineView: outlineView, items: items)
             }
         }
-        
+
+        private func restoreFromPaths(outlineView: NSOutlineView, items: [FolderItem]) {
+            for item in items where item.isFolder {
+                if expandedPaths.contains(item.url.path) {
+                    outlineView.expandItem(item, expandChildren: false)
+                }
+                if let children = item.children {
+                    restoreFromPaths(outlineView: outlineView, items: children)
+                }
+            }
+        }
+
         private func expandAllInitial(outlineView: NSOutlineView, items: [FolderItem]) {
             for item in items {
                 if item.isFolder {
+                    expandedPaths.insert(item.url.path)
                     outlineView.expandItem(item, expandChildren: false)
                     if let children = item.children {
                         expandAllInitial(outlineView: outlineView, items: children)
                     }
                 }
             }
+        }
+
+        // MARK: - Expansion Tracking (NSOutlineViewDelegate)
+
+        func outlineViewItemDidExpand(_ notification: Notification) {
+            guard let folderItem = notification.userInfo?["NSObject"] as? FolderItem else { return }
+            expandedPaths.insert(folderItem.url.path)
+        }
+
+        func outlineViewItemDidCollapse(_ notification: Notification) {
+            guard let folderItem = notification.userInfo?["NSObject"] as? FolderItem else { return }
+            expandedPaths.remove(folderItem.url.path)
         }
         
         // MARK: - Double Click Handler
@@ -237,7 +224,8 @@ struct OutlineFileList: NSViewRepresentable {
             }
 
             // Configure content with indentation awareness
-            cell.configure(with: folderItem, indentLevel: indentLevel, outlineView: outlineView)
+            let favorited = folderItem.isMarkdown ? (isFavorite?(folderItem.url) ?? false) : false
+            cell.configure(with: folderItem, indentLevel: indentLevel, outlineView: outlineView, isFavorite: favorited, onToggleFavorite: onToggleFavorite)
 
             return cell
         }
@@ -274,16 +262,54 @@ struct OutlineFileList: NSViewRepresentable {
     }
 }
 
+// MARK: - Key Handling Outline View
+
+/// NSOutlineView subclass that adds Return and Escape key handling.
+/// Up/Down arrows and Left/Right expand/collapse are handled natively by NSOutlineView.
+final class KeyHandlingOutlineView: NSOutlineView {
+    override func keyDown(with event: NSEvent) {
+        switch event.keyCode {
+        case 36: // Return
+            let row = selectedRow
+            guard row >= 0, let item = item(atRow: row) as? FolderItem else {
+                super.keyDown(with: event)
+                return
+            }
+            if item.isFolder {
+                // Toggle folder expansion
+                if isItemExpanded(item) {
+                    collapseItem(item)
+                } else {
+                    expandItem(item)
+                }
+            }
+            // For files, the selection change already triggers opening via the delegate
+            // so Return on a file is effectively a no-op (already selected = already open)
+
+        case 53: // Escape
+            deselectAll(nil)
+
+        default:
+            super.keyDown(with: event)
+        }
+    }
+}
+
 // MARK: - File Cell View
 
-/// Custom cell view with icon, name, and markdown count badge for folders.
+/// Custom cell view with icon, name, favorite star, and markdown count badge for folders.
 final class FileCellView: NSTableCellView {
 
     private let iconView = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
+    private let starButton = NSButton()
     private let countLabel = NSTextField(labelWithString: "")
     private var countMinWidthConstraint: NSLayoutConstraint!
     private var countTrailingConstraint: NSLayoutConstraint!
+    private var starWidthConstraint: NSLayoutConstraint!
+    private var itemURL: URL?
+    private var isFavorited = false
+    private var onToggleFavorite: ((URL) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -311,6 +337,18 @@ final class FileCellView: NSTableCellView {
         addSubview(nameLabel)
         textField = nameLabel
 
+        // Configure star button
+        starButton.translatesAutoresizingMaskIntoConstraints = false
+        starButton.bezelStyle = .inline
+        starButton.isBordered = false
+        starButton.imagePosition = .imageOnly
+        starButton.imageScaling = .scaleProportionallyDown
+        starButton.target = self
+        starButton.action = #selector(starClicked)
+        addSubview(starButton)
+
+        starWidthConstraint = starButton.widthAnchor.constraint(equalToConstant: 16)
+
         // Configure countLabel
         countLabel.translatesAutoresizingMaskIntoConstraints = false
         countLabel.font = .systemFont(ofSize: 11)
@@ -334,23 +372,31 @@ final class FileCellView: NSTableCellView {
 
             nameLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 6),
             nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            
-            // Name should compress before count gets clipped
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -8),
+
+            // Star sits between name and count
+            starButton.leadingAnchor.constraint(greaterThanOrEqualTo: nameLabel.trailingAnchor, constant: 4),
+            starButton.trailingAnchor.constraint(equalTo: countLabel.leadingAnchor, constant: -4),
+            starButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            starButton.heightAnchor.constraint(equalToConstant: 16),
+            starWidthConstraint,
 
             countTrailingConstraint,
             countLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
 
-        // Make name compress first, count stays visible
+        // Make name compress first
         nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         nameLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        
+
+        starButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         countLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         countLabel.setContentHuggingPriority(.required, for: .horizontal)
     }
 
-    func configure(with item: FolderItem, indentLevel: Int, outlineView: NSOutlineView) {
+    func configure(with item: FolderItem, indentLevel: Int, outlineView: NSOutlineView, isFavorite: Bool = false, onToggleFavorite: ((URL) -> Void)? = nil) {
+        self.itemURL = item.url
+        self.onToggleFavorite = onToggleFavorite
+
         nameLabel.stringValue = item.name
         nameLabel.textColor = (item.isMarkdown || item.isFolder) ? .labelColor : .secondaryLabelColor
 
@@ -358,9 +404,21 @@ final class FileCellView: NSTableCellView {
         iconView.contentTintColor = item.isFolder ? .systemBlue : (item.isMarkdown ? .labelColor : .secondaryLabelColor)
 
         // Adjust trailing padding to compensate for indentation
-        // NSOutlineView shifts content right, but doesn't resize the cell
         let indentationOffset = CGFloat(indentLevel) * outlineView.indentationPerLevel
         countTrailingConstraint.constant = -(4 + indentationOffset)
+
+        // Star for markdown files only
+        if item.isMarkdown {
+            self.isFavorited = isFavorite
+            let starName = isFavorite ? "star.fill" : "star"
+            starButton.image = NSImage(systemSymbolName: starName, accessibilityDescription: isFavorite ? "Unfavorite" : "Favorite")
+            starButton.contentTintColor = isFavorite ? .systemYellow : .tertiaryLabelColor
+            starButton.isHidden = false
+            starWidthConstraint.constant = 16
+        } else {
+            starButton.isHidden = true
+            starWidthConstraint.constant = 0
+        }
 
         // Show markdown count for folders only
         if item.isFolder && item.markdownCount > 0 {
@@ -372,6 +430,17 @@ final class FileCellView: NSTableCellView {
             countLabel.isHidden = true
             countMinWidthConstraint.isActive = false
         }
+    }
+
+    @objc private func starClicked() {
+        guard let url = itemURL else { return }
+        onToggleFavorite?(url)
+
+        // Toggle star appearance immediately for instant feedback
+        isFavorited.toggle()
+        let starName = isFavorited ? "star.fill" : "star"
+        starButton.image = NSImage(systemSymbolName: starName, accessibilityDescription: isFavorited ? "Unfavorite" : "Favorite")
+        starButton.contentTintColor = isFavorited ? .systemYellow : .tertiaryLabelColor
     }
 
     private func icon(for item: FolderItem) -> NSImage? {

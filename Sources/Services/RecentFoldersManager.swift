@@ -195,6 +195,19 @@ final class RecentFoldersManager {
         getRecentFolders().first
     }
 
+    /// Returns the most recently opened file within a given folder for session restore.
+    func lastSessionFile(forFolderPath folderPath: String) -> URL? {
+        let files = getRecentFiles()
+        guard let match = files.first(where: { $0.parentPath == folderPath }) else {
+            return nil
+        }
+        let url = URL(fileURLWithPath: match.path)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+        return url
+    }
+
     // MARK: - Recent Files
 
     private let recentFilesKey = "recentFiles"

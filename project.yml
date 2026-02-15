@@ -8,8 +8,8 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.1.0"
+    CURRENT_PROJECT_VERSION: "2"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
@@ -17,6 +17,9 @@ settings:
     ARCHS: [arm64]
     ONLY_ACTIVE_ARCH: NO
     SWIFT_VERSION: "6.0"
+
+localPackages:
+  - Packages/aimdRenderer
 
 targets:
   AIMDReader:
@@ -29,6 +32,10 @@ targets:
       - path: Resources/Welcome
         type: folder
         buildPhase: resources
+      - path: Resources/ACKNOWLEDGMENTS.md
+        buildPhase: resources
+    dependencies:
+      - package: aimdRenderer
     settings:
       base:
         PRODUCT_NAME: AI.md Reader

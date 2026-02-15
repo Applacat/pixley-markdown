@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Error Banner
 
@@ -11,29 +12,31 @@ struct ErrorBanner: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Indicator icon
+            // Indicator icon (scales with Dynamic Type)
             Image(systemName: error.isWarning ? "exclamationmark.triangle.fill" : "xmark.circle.fill")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(indicatorColor)
+                .accessibilityHidden(true)
 
-            // Error message
+            // Error message (scales with Dynamic Type)
             Text(error.message)
-                .font(.system(size: 13, weight: .medium))
+                .font(.callout.weight(.medium))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
 
             Spacer()
 
-            // Dismiss button
+            // Dismiss button (scales with Dynamic Type)
             Button {
                 onDismiss()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .help("Dismiss")
+            .accessibilityLabel("Dismiss error")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -56,19 +59,30 @@ struct ErrorBanner: View {
 
 // MARK: - Error Banner Container
 
-/// View modifier that overlays an error banner when AppState has a currentError.
+/// View modifier that overlays an error banner when coordinator.ui has a currentError.
 struct ErrorBannerOverlay: ViewModifier {
 
-    @Environment(AppState.self) private var appState
+    @Environment(\.coordinator) private var coordinator
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottom) {
-            if let error = appState.currentError {
+            if let error = coordinator.ui.currentError {
                 ErrorBanner(error: error) {
-                    appState.dismissError()
+                    coordinator.dismissError()
                 }
-                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appState.currentError)
+                .animation(
+                    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                        ? .none
+                        : .spring(response: 0.4, dampingFraction: 0.8),
+                    value: coordinator.ui.currentError
+                )
             }
+        }
+        .task(id: coordinator.ui.currentError) {
+            guard coordinator.ui.currentError != nil else { return }
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            coordinator.dismissError()
         }
     }
 }

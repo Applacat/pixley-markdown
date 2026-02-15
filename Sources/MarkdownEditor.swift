@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import aimdRenderer
 
 // MARK: - Configuration
 
@@ -9,7 +10,7 @@ enum MarkdownConfig {
     /// Maximum allowed text size (10MB) to prevent DoS attacks
     /// Accessible from any context without actor isolation
     static let maxTextSize = 10_485_760
-    
+
     /// Maximum text size for syntax highlighting (1MB)
     /// Files larger than this show plain text
     static let maxHighlightSize = 1_048_576
@@ -17,13 +18,26 @@ enum MarkdownConfig {
 
 // MARK: - Markdown Editor
 
-/// NSTextView wrapper with Markdown syntax highlighting
+/// NSTextView wrapper with Markdown syntax highlighting.
+/// Now uses aimdRenderer's SyntaxTheme system through SettingsRepository.
 struct MarkdownEditor: NSViewRepresentable {
     @Binding var text: String
-    @AppStorage("fontSize") private var fontSize: Double = 14.0
+    @Environment(\.settings) private var settings
 
     /// Callback for reporting errors (optional)
     var onError: ((AppError) -> Void)? = nil
+
+    /// Callback when scroll position changes (0.0–1.0)
+    var onScrollPositionChanged: ((Double) -> Void)? = nil
+
+    /// Scroll position to restore (0.0–1.0), set once after content loads
+    var restoreScrollPosition: Double? = nil
+
+    /// Bookmarked line numbers (1-based) to display in the gutter
+    var bookmarkedLines: Set<Int> = []
+
+    /// Called when user clicks gutter to toggle a bookmark at a line
+    var onToggleBookmark: ((Int) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -31,27 +45,54 @@ struct MarkdownEditor: NSViewRepresentable {
             return scrollView
         }
 
-        // Configure text view
+        // Configure text view (read-only viewer)
+        textView.isEditable = false
         textView.isRichText = false
-        textView.allowsUndo = true
-        
-        // Respect user preferences for text substitutions
-        textView.isAutomaticQuoteSubstitutionEnabled = true
-        textView.isAutomaticDashSubstitutionEnabled = true
-        textView.isAutomaticTextReplacementEnabled = true
-        textView.isAutomaticSpellingCorrectionEnabled = true
-        
-        // Apply user preferences
-        textView.font = NSFont.systemFont(ofSize: fontSize)
-        textView.textColor = .labelColor
-        textView.backgroundColor = .textBackgroundColor
-        textView.insertionPointColor = .labelColor
 
-        // Appearance
-        textView.textContainerInset = NSSize(width: 16, height: 16)
+        // Get theme colors from settings (resolve light/dark variant from appearance)
+        let syntaxTheme = settings.rendering.syntaxTheme.rendererTheme(for: settings.appearance.colorScheme)
+        let palette = syntaxTheme.palette
+
+        // Apply user preferences with theme colors
+        let fontSize = settings.rendering.fontSize
+        textView.font = MarkdownHighlighter.resolveFont(family: settings.rendering.fontFamily, size: fontSize, weight: .regular)
+        textView.textColor = NSColor(hex: palette.foreground) ?? .labelColor
+        textView.backgroundColor = NSColor(hex: palette.background) ?? .textBackgroundColor
+        textView.insertionPointColor = NSColor(hex: palette.foreground) ?? .labelColor
+
+        // We manage theme colors explicitly — don't let AppKit remap them
+        textView.usesAdaptiveColorMappingForDarkAppearance = false
+
+        // Scale insets proportionally with font size (base 16pt at font size 14)
+        let insetScale = max(1.0, fontSize / 14.0)
+        let scaledInset = round(16.0 * insetScale)
+        textView.textContainerInset = NSSize(width: scaledInset, height: scaledInset)
+
+        // Native find bar (Cmd+F) with incremental search
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
+
+        // Line numbers + bookmarks
+        let lineNumberView = LineNumberRulerView(textView: textView)
+        lineNumberView.bookmarkedLines = bookmarkedLines
+        lineNumberView.onToggleBookmark = onToggleBookmark
+        scrollView.verticalRulerView = lineNumberView
+        scrollView.hasVerticalRuler = true
+        scrollView.rulersVisible = settings.rendering.showLineNumbers
 
         // Delegate
         textView.delegate = context.coordinator
+
+        // Scroll position tracking
+        context.coordinator.onScrollPositionChanged = onScrollPositionChanged
+        let clipView = scrollView.contentView
+        clipView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.scrollViewDidScroll(_:)),
+            name: NSView.boundsDidChangeNotification,
+            object: clipView
+        )
 
         // Initial content
         context.coordinator.applyHighlighting(to: textView, text: text)
@@ -62,24 +103,62 @@ struct MarkdownEditor: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
 
-        // Check if font size changed
-        let fontChanged = context.coordinator.fontSize != fontSize
-        
-        if fontChanged {
-            // Update font size and recreate highlighter
-            context.coordinator.updateFontSize(fontSize)
-            // Re-apply highlighting with new font size
+        let currentFontSize = settings.rendering.fontSize
+        let currentTheme = settings.rendering.syntaxTheme
+        let currentFontFamily = settings.rendering.fontFamily
+        let currentHeadingScale = settings.rendering.headingScale
+        let currentColorScheme = settings.appearance.colorScheme
+
+        // Check if any rendering settings changed
+        let fontChanged = context.coordinator.fontSize != currentFontSize
+        let themeChanged = context.coordinator.syntaxTheme != currentTheme
+        let fontFamilyChanged = context.coordinator.fontFamily != currentFontFamily
+        let headingScaleChanged = context.coordinator.headingScale != currentHeadingScale
+        let appearanceChanged = context.coordinator.colorScheme != currentColorScheme
+
+        if fontChanged || themeChanged || fontFamilyChanged || headingScaleChanged || appearanceChanged {
+            // Update settings and recreate highlighter
+            context.coordinator.updateSettings(fontSize: currentFontSize, theme: currentTheme, fontFamily: currentFontFamily, headingScale: currentHeadingScale, colorScheme: currentColorScheme)
+
+            // Update text view colors
+            let palette = currentTheme.rendererTheme(for: currentColorScheme).palette
+            textView.textColor = NSColor(hex: palette.foreground) ?? .labelColor
+            textView.backgroundColor = NSColor(hex: palette.background) ?? .textBackgroundColor
+            textView.insertionPointColor = NSColor(hex: palette.foreground) ?? .labelColor
+
+            // Re-apply highlighting with new settings
             context.coordinator.applyHighlighting(to: textView, text: text)
         }
-        
-        // Re-apply highlighting if text changed externally (but font didn't)
+
+        // Re-apply highlighting if text changed externally (but settings didn't)
         else if textView.string != text {
             context.coordinator.applyHighlighting(to: textView, text: text)
+
+            // Restore scroll position after content loads
+            if let position = restoreScrollPosition {
+                context.coordinator.restoreScrollPosition(position, in: scrollView)
+            }
+        }
+
+        // Update scroll callback reference
+        context.coordinator.onScrollPositionChanged = onScrollPositionChanged
+
+        // Toggle line numbers + update bookmarks
+        scrollView.rulersVisible = settings.rendering.showLineNumbers
+        if let ruler = scrollView.verticalRulerView as? LineNumberRulerView {
+            ruler.bookmarkedLines = bookmarkedLines
+            ruler.onToggleBookmark = onToggleBookmark
+            ruler.needsDisplay = true
         }
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(self, fontSize: fontSize, onError: onError)
+        let fontSize = settings.rendering.fontSize
+        let syntaxTheme = settings.rendering.syntaxTheme
+        let fontFamily = settings.rendering.fontFamily
+        let headingScale = settings.rendering.headingScale
+        let colorScheme = settings.appearance.colorScheme
+        return Coordinator(self, fontSize: fontSize, syntaxTheme: syntaxTheme, fontFamily: fontFamily, headingScale: headingScale, colorScheme: colorScheme, onError: onError)
     }
 
     @MainActor
@@ -87,20 +166,39 @@ struct MarkdownEditor: NSViewRepresentable {
         var parent: MarkdownEditor
         private var debouncedHighlighter: DebouncedHighlighter
         private var isUpdating = false
-        var fontSize: Double
+        var onScrollPositionChanged: ((Double) -> Void)?
+        var fontSize: CGFloat
+        var syntaxTheme: SyntaxThemeSetting
+        var fontFamily: String?
+        var headingScale: HeadingScaleSetting
+        var colorScheme: ColorScheme?
         var onError: ((AppError) -> Void)?
 
-        init(_ parent: MarkdownEditor, fontSize: Double, onError: ((AppError) -> Void)? = nil) {
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        init(_ parent: MarkdownEditor, fontSize: CGFloat, syntaxTheme: SyntaxThemeSetting, fontFamily: String? = nil, headingScale: HeadingScaleSetting = .normal, colorScheme: ColorScheme? = nil, onError: ((AppError) -> Void)? = nil) {
             self.parent = parent
             self.fontSize = fontSize
+            self.syntaxTheme = syntaxTheme
+            self.fontFamily = fontFamily
+            self.headingScale = headingScale
+            self.colorScheme = colorScheme
             self.onError = onError
-            let highlighter = MarkdownHighlighter(fontSize: fontSize)
+            let resolved = syntaxTheme.rendererTheme(for: colorScheme)
+            let highlighter = MarkdownHighlighter(syntaxTheme: resolved, fontSize: fontSize, fontFamily: fontFamily, headingScale: headingScale.highlighterScale)
             self.debouncedHighlighter = DebouncedHighlighter(highlighter: highlighter, debounceDelay: .milliseconds(150))
         }
-        
-        func updateFontSize(_ newSize: Double) {
-            fontSize = newSize
-            let newHighlighter = MarkdownHighlighter(fontSize: newSize)
+
+        func updateSettings(fontSize: CGFloat, theme: SyntaxThemeSetting, fontFamily: String? = nil, headingScale: HeadingScaleSetting = .normal, colorScheme: ColorScheme? = nil) {
+            self.fontSize = fontSize
+            self.syntaxTheme = theme
+            self.fontFamily = fontFamily
+            self.headingScale = headingScale
+            self.colorScheme = colorScheme
+            let resolved = theme.rendererTheme(for: colorScheme)
+            let newHighlighter = MarkdownHighlighter(syntaxTheme: resolved, fontSize: fontSize, fontFamily: fontFamily, headingScale: headingScale.highlighterScale)
             debouncedHighlighter = DebouncedHighlighter(highlighter: newHighlighter, debounceDelay: .milliseconds(150))
         }
 
@@ -157,6 +255,41 @@ struct MarkdownEditor: NSViewRepresentable {
                     textView.textStorage?.setAttributedString(attributed)
                     textView.selectedRanges = selectedRanges
                 }
+            }
+        }
+
+        // MARK: - Scroll Position
+
+        @objc nonisolated func scrollViewDidScroll(_ notification: Notification) {
+            // Safe: AppKit always delivers this on the main thread
+            nonisolated(unsafe) let object = notification.object
+            MainActor.assumeIsolated {
+                guard let clipView = object as? NSClipView,
+                      let documentView = clipView.documentView else { return }
+
+                let contentHeight = documentView.frame.height
+                let visibleHeight = clipView.bounds.height
+                let scrollableHeight = contentHeight - visibleHeight
+                guard scrollableHeight > 0 else { return }
+
+                let position = clipView.bounds.origin.y / scrollableHeight
+                let clamped = min(max(position, 0.0), 1.0)
+                onScrollPositionChanged?(clamped)
+            }
+        }
+
+        func restoreScrollPosition(_ position: Double, in scrollView: NSScrollView) {
+            guard let documentView = scrollView.documentView else { return }
+
+            // Defer to next layout pass so text is fully laid out
+            DispatchQueue.main.async {
+                let contentHeight = documentView.frame.height
+                let visibleHeight = scrollView.contentView.bounds.height
+                let scrollableHeight = contentHeight - visibleHeight
+                guard scrollableHeight > 0 else { return }
+
+                let yOffset = position * scrollableHeight
+                documentView.scroll(NSPoint(x: 0, y: yOffset))
             }
         }
     }

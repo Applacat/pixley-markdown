@@ -23,20 +23,20 @@ The AI remembers your conversation. You can ask follow-up questions like:
 - "Tell me more about the second point"
 - "What else should I know?"
 
-## The Memory Meter
+## Requirements
 
-At the top of the chat, you'll see a **Memory** gauge. This shows how much of the AI's "brain" is being used:
+AI Chat uses **Apple Intelligence** and runs entirely on your device. Enable it in **System Settings > Apple Intelligence & Siri**.
 
-- **Green** — Plenty of room
-- **Orange** — Getting full
-- **Red** — Near the limit
+No external servers, no cloud — your documents never leave your Mac.
 
-When the meter fills up, the AI might struggle to remember earlier parts of the conversation.
+## Context Limits
+
+The on-device AI has a limited context window. After 3 questions, the conversation automatically resets to stay within limits. You'll see a banner when this happens.
 
 ## Forgetting
 
-Click **Forget** (or press **ESC**) to clear the conversation and reset the memory meter. This starts fresh with the full document context.
+Click **Forget** (or press **ESC**) to clear the conversation and start fresh with the full document context.
 
 ---
 
-*Tip: For very long documents, the AI only sees the first ~8,000 characters. Follow-up questions use less context so the chat can be more conversational.*
+*Tip: For very long documents, the AI uses the first ~2500 characters. Try asking specific questions rather than "summarize everything."*

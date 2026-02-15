@@ -1,199 +1,187 @@
 import Foundation
 import FoundationModels
-
-// MARK: - Context Mode
-
-enum ContextMode: Sendable {
-    case fullDocument    // First question, full doc fits
-    case truncated       // First question, doc was truncated
-    case conversation    // Follow-up, using chat history
-}
-
-// MARK: - Context Estimate
-
-struct ContextEstimate: Sendable {
-    let usedChars: Int
-    let maxChars: Int
-    let mode: ContextMode
-
-    var percentage: Double {
-        min(1.0, Double(usedChars) / Double(maxChars))
-    }
-
-    var usedTokensApprox: Int {
-        usedChars / 4
-    }
-
-    var maxTokensApprox: Int {
-        maxChars / 4
-    }
-
-    var modeLabel: String {
-        switch mode {
-        case .fullDocument: return "Full doc"
-        case .truncated: return "Truncated"
-        case .conversation: return "Chat"
-        }
-    }
-
-    var modeIcon: String {
-        switch mode {
-        case .fullDocument: return "doc.text"
-        case .truncated: return "doc.badge.ellipsis"
-        case .conversation: return "bubble.left.and.bubble.right"
-        }
-    }
-
-    var isHighUsage: Bool {
-        percentage > 0.9
-    }
-
-    var isMediumUsage: Bool {
-        percentage > 0.7 && percentage <= 0.9
-    }
-}
+import os.log
 
 // MARK: - Chat Service
 
-/// Service for AI chat functionality - extracts business logic from ChatView for testability.
+/// Service for AI chat functionality using Apple Foundation Models.
+///
+/// Foundation Models is stateful — LanguageModelSession maintains its own
+/// transcript internally. Document context goes in `instructions` once,
+/// and questions are sent via `respond(to:)`.
+///
+/// Crash prevention strategy:
+/// 1. Catch ALL GenerationError types (context exceeded, guardrail, language)
+/// 2. Timeout — races respond() against a sleep; if sleep wins, the respond task
+///    is cancelled and the session is reset
+/// 3. Fresh session per conversation — never reuse across "Forget" resets
+/// 4. 3-turn auto-reset — after 3 Q&A turns, create fresh session
+/// 5. Document truncation — cap at ~2500 chars to leave headroom
 @MainActor
 final class ChatService {
 
-    // MARK: - Context Estimation
+    private static let log = Logger(subsystem: "com.aimd.reader", category: "ChatService")
 
-    /// Calculate context estimate for the memory meter
-    func estimateContext(
-        documentLength: Int,
-        messages: [ChatMessage]
-    ) -> ContextEstimate {
-        let hasHistory = !messages.isEmpty
+    // MARK: - Properties
 
-        if hasHistory {
-            // Conversation mode: brief doc + chat history
-            let historyChars = messages.suffix(ChatConfiguration.recentMessageCount).reduce(0) { $0 + $1.content.count }
-            let docChars = min(ChatConfiguration.conversationDocExcerpt, documentLength)
-            let totalChars = docChars + historyChars + ChatConfiguration.promptOverhead
-            return ContextEstimate(
-                usedChars: totalChars,
-                maxChars: ChatConfiguration.maxContextChars,
-                mode: .conversation
-            )
-        } else {
-            // Full document mode
-            let docChars = min(ChatConfiguration.maxContextLength, documentLength)
-            let totalChars = docChars + ChatConfiguration.promptOverhead
-            return ContextEstimate(
-                usedChars: totalChars,
-                maxChars: ChatConfiguration.maxContextChars,
-                mode: documentLength > ChatConfiguration.maxContextLength ? .truncated : .fullDocument
-            )
-        }
-    }
+    private var session: LanguageModelSession?
 
-    // MARK: - Document Truncation
+    /// Number of completed Q&A round-trips in this session
+    private(set) var turnCount = 0
 
-    /// Truncate document if it exceeds max context length
-    func truncateDocument(_ content: String) -> (text: String, wasTruncated: Bool) {
-        let wasTruncated = content.count > ChatConfiguration.maxContextLength
+    /// Whether the last response triggered an auto-reset
+    private(set) var didAutoReset = false
 
-        if wasTruncated {
-            let truncated = String(content.prefix(ChatConfiguration.maxContextLength))
-            return (truncated + "\n\n[... document truncated for length ...]", true)
-        } else {
-            return (content, false)
-        }
-    }
+    /// The document content used to initialize the current session
+    private var currentDocumentContent: String = ""
 
-    // MARK: - Prompt Building
+    // MARK: - Session Management
 
-    /// Build the prompt for the AI request
-    func buildPrompt(
-        question: String,
-        documentContent: String,
-        priorMessages: [ChatMessage]
-    ) -> String {
-        let hasConversationHistory = !priorMessages.isEmpty
-        let (context, _) = truncateDocument(documentContent)
+    /// Creates a fresh session with document context baked into instructions.
+    func startSession(documentContent: String) {
+        let truncated = String(documentContent.prefix(ChatConfiguration.maxDocumentChars))
+        currentDocumentContent = truncated
 
-        if hasConversationHistory {
-            // Include recent chat history for follow-up questions
-            let recentHistory = priorMessages.suffix(ChatConfiguration.recentMessageCount)
-            let historyText = recentHistory.map { msg in
-                let role = msg.role == .user ? "User" : "Assistant"
-                return "\(role): \(msg.content)"
-            }.joined(separator: "\n\n")
+        session = LanguageModelSession(instructions: """
+            You are a helpful assistant analyzing a markdown document.
+            Answer questions about the document concisely and accurately.
+            If the answer is not in the document, say so.
 
-            return """
-            Document context (for reference):
-            ---
-            \(context.prefix(ChatConfiguration.conversationDocExcerpt))...
-            ---
-
-            Previous conversation:
-            \(historyText)
-
-            User's new question: \(question)
-            """
-        } else {
-            // First question - include full document context
-            return """
             Document content:
             ---
-            \(context)
+            \(truncated)
             ---
+            """)
+        turnCount = 0
+        didAutoReset = false
+        Self.log.info("Session started with \(truncated.count) chars of document content")
+    }
 
-            Question: \(question)
-            """
+    /// Resets the session completely (user pressed "Forget").
+    func resetSession() {
+        if turnCount > 0 {
+            Self.log.info("Session reset after \(self.turnCount) turns")
+        }
+        session = nil
+        turnCount = 0
+        didAutoReset = false
+        currentDocumentContent = ""
+    }
+
+    // MARK: - Ask Question
+
+    /// Sends a question to Foundation Models and returns the full response.
+    ///
+    /// Plain text `respond(to:)` does not support token streaming —
+    /// the caller should show a "Thinking..." indicator while awaiting.
+    ///
+    /// Includes a built-in timeout: if `respond(to:)` doesn't return within
+    /// `ChatConfiguration.responseTimeout`, the call is cancelled, the session
+    /// is reset, and an error result is returned.
+    ///
+    /// Returns a `ChatResult` indicating success, auto-reset, or error.
+    func ask(question: String, documentContent: String) async -> ChatResult {
+        didAutoReset = false
+
+        // Ensure session exists (auto-create if needed)
+        if session == nil {
+            startSession(documentContent: documentContent)
+        }
+
+        // Check if we need auto-reset before this turn
+        if turnCount >= ChatConfiguration.maxTurnsBeforeReset {
+            Self.log.info("Auto-reset: turn limit reached (\(self.turnCount) turns)")
+            startSession(documentContent: documentContent)
+            didAutoReset = true
+        }
+
+        guard let session else {
+            return .error("Session could not be created.")
+        }
+
+        Self.log.info("Asking question: turn=\(self.turnCount + 1), question=\(question.prefix(80), privacy: .private)")
+
+        // Race respond() vs timeout.
+        // The respond task extracts .content (String) so only Sendable types cross
+        // the task boundary — Response<String> stays inside the task.
+        let respondTask = Task<String, Error> {
+            let response = try await session.respond(to: question)
+            return response.content
+        }
+
+        let watchdog = Task {
+            try await Task.sleep(for: ChatConfiguration.responseTimeout)
+            respondTask.cancel()
+        }
+
+        do {
+            let content = try await respondTask.value
+            watchdog.cancel()
+
+            turnCount += 1
+            Self.log.info("Response received: \(content.count) chars, turn=\(self.turnCount)")
+
+            if didAutoReset {
+                return .successWithReset(content)
+            }
+            return .success(content)
+        } catch let error as LanguageModelSession.GenerationError {
+            watchdog.cancel()
+            return handleGenerationError(error, documentContent: documentContent)
+        } catch is CancellationError {
+            watchdog.cancel()
+            // If the respondTask was cancelled, the watchdog fired (timeout)
+            if respondTask.isCancelled {
+                Self.log.error("Response timed out after \(ChatConfiguration.responseTimeout)")
+                startSession(documentContent: documentContent)
+                return .error("The AI took too long to respond. The conversation has been reset — please try again.")
+            }
+            return .cancelled
+        } catch {
+            watchdog.cancel()
+            Self.log.error("Unexpected error: \(error.localizedDescription)")
+            return .error("Error: \(error.localizedDescription)")
         }
     }
 
-    // MARK: - System Prompt
+    // MARK: - Error Handling
 
-    var systemPrompt: String {
-        """
-        You are a helpful assistant analyzing a markdown document.
-        Answer questions about the document concisely and accurately.
-        If the answer is not in the document, say so.
-        When the user asks follow-up questions about your previous responses,
-        refer to the conversation history rather than re-analyzing the document.
-        """
+    private func handleGenerationError(
+        _ error: LanguageModelSession.GenerationError,
+        documentContent: String
+    ) -> ChatResult {
+        switch error {
+        case .exceededContextWindowSize:
+            Self.log.warning("Context window exceeded at turn \(self.turnCount)")
+            startSession(documentContent: documentContent)
+            return .error("Context limit reached. The conversation has been reset — please ask your question again.")
+
+        case .guardrailViolation:
+            Self.log.warning("Guardrail violation")
+            return .error("I can't respond to that question. Please try rephrasing.")
+
+        case .unsupportedLanguageOrLocale:
+            Self.log.warning("Unsupported language/locale")
+            return .error("This language isn't supported by on-device AI. Please try asking in English.")
+
+        default:
+            Self.log.error("Unknown GenerationError: \(String(describing: error))")
+            startSession(documentContent: documentContent)
+            return .error("An unexpected AI error occurred. The conversation has been reset.")
+        }
     }
+}
 
-    // MARK: - AI Request
+// MARK: - Chat Result
 
-    /// Send a question to the AI and get a response
-    func askAI(
-        question: String,
-        documentContent: String,
-        priorMessages: [ChatMessage]
-    ) async throws -> String {
-        let session = LanguageModelSession(instructions: systemPrompt)
-        let prompt = buildPrompt(
-            question: question,
-            documentContent: documentContent,
-            priorMessages: priorMessages
-        )
-
-        let response = try await session.respond(to: prompt)
-        return response.content
-    }
-
-    // MARK: - Availability Check
-
-    /// Check if Apple Intelligence is available
-    func checkAvailability() -> Bool {
-        SystemLanguageModel.default.availability == .available
-    }
-
-    // MARK: - Document Loading Coordination
-
-    /// Result of waiting for document content
-    enum DocumentWaitResult: Sendable {
-        case loaded
-        case timeout
-        case alreadyLoaded
-    }
-
-    /// Default timeout for document loading
-    static let documentLoadTimeout: Duration = .seconds(3)
+/// Result of a chat request, covering all outcomes.
+enum ChatResult {
+    /// Successful response
+    case success(String)
+    /// Successful response, but session was auto-reset first
+    case successWithReset(String)
+    /// Error message to display to user
+    case error(String)
+    /// Request was cancelled
+    case cancelled
 }

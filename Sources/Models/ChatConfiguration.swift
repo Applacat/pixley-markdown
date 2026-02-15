@@ -3,39 +3,28 @@ import Foundation
 // MARK: - Chat Configuration
 
 /// Centralized configuration constants for chat functionality.
-/// Consolidates scattered constants from ChatView, ChatService, and ChatInputValidator.
+/// Tuned for Apple Foundation Models' 4096-token context window.
 enum ChatConfiguration {
 
     // MARK: - Message Limits
 
-    /// Maximum number of messages to keep in chat history
+    /// Maximum number of messages to keep in chat history display
     static let maxMessageHistory = 50
 
     /// Maximum allowed input length (characters) for user questions
     static let maxInputLength = 2000
 
-    // MARK: - Context Limits
+    // MARK: - Foundation Models Limits
 
-    /// Approximate token limit for AI context
-    static let maxContextTokens = 4096
+    /// Maximum document characters to include in instructions (~800 tokens).
+    /// Leaves headroom for conversation within the 4096-token context window.
+    static let maxDocumentChars = 2500
 
-    /// Estimated characters per token (rough approximation)
-    static let charsPerToken = 4
+    /// Auto-reset session after this many Q&A round-trips.
+    /// Prevents context window exhaustion on long conversations.
+    static let maxTurnsBeforeReset = 3
 
-    /// Maximum characters for context window (computed from tokens)
-    static let maxContextChars = maxContextTokens * charsPerToken  // ~16K chars
-
-    /// Maximum document length before truncation
-    static let maxContextLength = 8000
-
-    // MARK: - Conversation Context
-
-    /// Character limit for document excerpt in conversation mode
-    static let conversationDocExcerpt = 2000
-
-    /// Number of recent messages to include in follow-up prompts
-    static let recentMessageCount = 6
-
-    /// Overhead characters for prompt structure
-    static let promptOverhead = 200
+    /// Timeout for each Foundation Models respond() call.
+    /// Prevents app freeze if the model hangs.
+    static let responseTimeout: Duration = .seconds(30)
 }

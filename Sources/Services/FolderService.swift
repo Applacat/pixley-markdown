@@ -30,6 +30,7 @@ final class FolderService {
     static let shared = FolderService()
 
     private var cache: [String: CachedFolder] = [:]
+    private var cacheSaveTask: Task<Void, Never>?
 
     private init() {
         // Load cache asynchronously to avoid blocking main thread during init
@@ -64,6 +65,17 @@ final class FolderService {
         }
     }
 
+    /// Schedules a debounced cache write (2-second delay).
+    /// Multiple rapid invalidations coalesce into a single disk write.
+    private func scheduleCacheSave() {
+        cacheSaveTask?.cancel()
+        cacheSaveTask = Task {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            saveCacheToDisk()
+        }
+    }
+
     private func saveCacheToDisk() {
         guard let url = cacheFileURL else { return }
 
@@ -72,7 +84,7 @@ final class FolderService {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         if let data = try? JSONEncoder().encode(cache) {
-            try? data.write(to: url)
+            try? data.write(to: url, options: .completeFileProtectionUntilFirstUserAuthentication)
 
             // Exclude from backup - this is regenerable cache data
             var resourceValues = URLResourceValues()
@@ -115,7 +127,7 @@ final class FolderService {
 
         if invalidatedCount > 0 {
             logger.debug("Invalidated \(invalidatedCount) cache entries for \(url.lastPathComponent) and ancestors")
-            saveCacheToDisk()
+            scheduleCacheSave()
         }
     }
 
@@ -123,7 +135,7 @@ final class FolderService {
     /// Use this for targeted invalidation when you know parent counts aren't affected.
     func invalidateCacheForSingleFolder(at url: URL) {
         if cache.removeValue(forKey: url.path) != nil {
-            saveCacheToDisk()
+            scheduleCacheSave()
         }
     }
 
@@ -149,7 +161,7 @@ final class FolderService {
         // Save to cache
         let cachedItems = convertCachedItems(items)
         cache[path] = CachedFolder(path: path, modificationDate: modDate ?? Date.distantPast, items: cachedItems)
-        saveCacheToDisk()
+        scheduleCacheSave()
 
         return items
     }
@@ -171,7 +183,7 @@ final class FolderService {
             // Update cache
             let newCachedItems = convertCachedItems(items)
             cache[path] = CachedFolder(path: path, modificationDate: modDate ?? Date.distantPast, items: newCachedItems)
-            saveCacheToDisk()
+            scheduleCacheSave()
 
             return items
         }

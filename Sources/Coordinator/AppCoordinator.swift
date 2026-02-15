@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import Foundation
 
 // MARK: - App Coordinator
@@ -31,9 +32,20 @@ public final class AppCoordinator {
     /// Document state (content, loading, changes)
     public let document = DocumentState()
 
+
+    // MARK: - Repositories
+
+    /// File metadata repository for persistence (optional - set after container init)
+    public var metadata: FileMetadataRepository?
+
     // MARK: - Initialization
 
     public init() {}
+
+    /// Initialize with a metadata repository
+    public init(metadata: FileMetadataRepository) {
+        self.metadata = metadata
+    }
 
     // MARK: - Navigation Actions
 
@@ -55,7 +67,38 @@ public final class AppCoordinator {
         document.clearChanges()
     }
 
+    /// Sets the first-launch welcome flag (auto-select first file)
+    public func setFirstLaunchWelcome(_ value: Bool) {
+        navigation.isFirstLaunchWelcome = value
+    }
+
+    /// Updates the sidebar filter query
+    public func setSidebarFilter(_ query: String) {
+        navigation.sidebarFilterQuery = query
+    }
+
+    /// Computed binding for sidebar filter query (two-way binding for TextField)
+    public var sidebarFilterQuery: String {
+        get { navigation.sidebarFilterQuery }
+        set { navigation.sidebarFilterQuery = newValue }
+    }
+
+    /// Updates the pre-filtered display items
+    func setDisplayItems(_ items: [FolderItem]) {
+        navigation.displayItems = items
+    }
+
     // MARK: - Document Actions
+
+    /// Loads (or reloads) the document for the currently selected file
+    public func loadDocument() async {
+        guard let url = navigation.selectedFile else {
+            document.clearContent()
+            return
+        }
+        await document.loadFile(url: url)
+        metadata?.updateLastOpened(for: url)
+    }
 
     /// Triggers a reload of the current document
     public func reloadDocument() {
@@ -70,11 +113,6 @@ public final class AppCoordinator {
     /// Clears the document change indicator
     public func clearDocumentChanges() {
         document.clearChanges()
-    }
-
-    /// Updates document content after loading
-    public func setDocumentContent(_ content: String) {
-        document.setContent(content)
     }
 
     // MARK: - UI Actions
@@ -94,6 +132,41 @@ public final class AppCoordinator {
         ui.dismissError()
     }
 
+    /// Signals that the browser window should open
+    public func requestOpenBrowser() {
+        ui.shouldOpenBrowser = true
+    }
+
+    /// Consumes the browser open flag
+    public func consumeOpenBrowser() {
+        ui.shouldOpenBrowser = false
+    }
+
+    /// Clears the initial chat question (consumed after use)
+    public func consumeInitialChatQuestion() -> String? {
+        let question = ui.initialChatQuestion
+        ui.initialChatQuestion = nil
+        return question
+    }
+
+    /// Computed binding for AI chat visibility (two-way binding for inspector)
+    public var isAIChatVisible: Bool {
+        get { ui.isAIChatVisible }
+        set { ui.isAIChatVisible = newValue }
+    }
+
+    // MARK: - Quick Switcher Actions
+
+    /// Toggles the Quick Switcher overlay
+    public func toggleQuickSwitcher() {
+        ui.isQuickSwitcherVisible.toggle()
+    }
+
+    /// Dismisses the Quick Switcher overlay
+    public func dismissQuickSwitcher() {
+        ui.isQuickSwitcherVisible = false
+    }
+
     // MARK: - Composite Actions
 
     /// Opens browser with a specific file selected and chat ready
@@ -105,6 +178,53 @@ public final class AppCoordinator {
         ui.isAIChatVisible = true
         document.clearContent()
     }
+
+    // MARK: - Metadata Actions
+
+    /// Saves scroll position for the currently selected file
+    public func saveScrollPosition(_ position: Double) {
+        guard let url = navigation.selectedFile else { return }
+        metadata?.saveScrollPosition(position, for: url)
+    }
+
+    /// Gets scroll position for a file
+    public func getScrollPosition(for url: URL) -> Double {
+        metadata?.getMetadata(for: url)?.scrollPosition ?? 0.0
+    }
+
+    /// Toggles favorite status for a file
+    public func toggleFavorite(for url: URL) {
+        guard let repo = metadata else { return }
+        let current = repo.isFavorite(url)
+        repo.setFavorite(!current, for: url)
+    }
+
+    /// Checks if a file is favorited
+    public func isFavorite(_ url: URL) -> Bool {
+        metadata?.isFavorite(url) ?? false
+    }
+
+    /// Gets all favorite files
+    public func getFavorites() -> [URL] {
+        metadata?.getFavorites() ?? []
+    }
+
+    /// Adds a bookmark at the specified line
+    public func addBookmark(lineNumber: Int, note: String? = nil) {
+        guard let url = navigation.selectedFile else { return }
+        metadata?.addBookmark(for: url, lineNumber: lineNumber, note: note)
+    }
+
+    /// Gets bookmarks for current file
+    public func getBookmarks() -> [Bookmark] {
+        guard let url = navigation.selectedFile else { return [] }
+        return metadata?.getBookmarks(for: url) ?? []
+    }
+
+    /// Deletes a bookmark
+    public func deleteBookmark(_ id: UUID) {
+        metadata?.deleteBookmark(id)
+    }
 }
 
 // MARK: - Navigation State
@@ -115,13 +235,19 @@ public final class AppCoordinator {
 public final class NavigationState {
 
     /// Root folder selected by user (nil until user selects one)
-    public var rootFolderURL: URL? = nil
+    public private(set) var rootFolderURL: URL? = nil
 
     /// Currently selected file to view
-    public var selectedFile: URL? = nil
+    public private(set) var selectedFile: URL? = nil
 
     /// Flag for first-launch welcome (auto-select first file)
-    public var isFirstLaunchWelcome: Bool = false
+    public internal(set) var isFirstLaunchWelcome: Bool = false
+
+    /// Sidebar search/filter query
+    internal var sidebarFilterQuery: String = ""
+
+    /// Pre-filtered display items (shared with Quick Switcher)
+    internal var displayItems: [FolderItem] = []
 
     // MARK: - Actions
 
@@ -134,6 +260,7 @@ public final class NavigationState {
 
         rootFolderURL = url
         selectedFile = nil
+        sidebarFilterQuery = ""
     }
 
     func closeFolder() {
@@ -155,19 +282,22 @@ public final class NavigationState {
 public final class UIState {
 
     /// Whether the AI Chat panel is visible
-    public var isAIChatVisible: Bool = false
+    public internal(set) var isAIChatVisible: Bool = false
 
     /// Flag to trigger browser window opening (consumed by views)
-    public var shouldOpenBrowser: Bool = false
+    public internal(set) var shouldOpenBrowser: Bool = false
 
     /// Initial question for chat (set from start screen, cleared after use)
-    public var initialChatQuestion: String? = nil
+    public internal(set) var initialChatQuestion: String? = nil
 
     /// Current error to display in the status bar
-    var currentError: AppError? = nil
+    private(set) var currentError: AppError? = nil
 
     /// Color scheme override for the session (nil = follow system)
-    public var colorSchemeOverride: ColorScheme? = nil
+    public internal(set) var colorSchemeOverride: ColorScheme? = nil
+
+    /// Whether the Quick Switcher overlay is visible
+    public internal(set) var isQuickSwitcherVisible: Bool = false
 
     // MARK: - Actions
 
@@ -177,14 +307,6 @@ public final class UIState {
 
     func showError(_ error: AppError) {
         currentError = error
-
-        // Auto-dismiss after 5 seconds
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(5))
-            if self?.currentError == error {
-                self?.currentError = nil
-            }
-        }
     }
 
     func dismissError() {
@@ -195,32 +317,67 @@ public final class UIState {
 // MARK: - Document State
 
 /// State container for document content and loading.
+/// DocumentState is the single source of truth for document text.
+/// It owns file loading — views read from it, never load independently.
 @MainActor
 @Observable
 public final class DocumentState {
 
     /// Current document content (loaded from file)
-    public var content: String = ""
+    public private(set) var content: String = ""
+
+    /// Whether the document is currently loading
+    public private(set) var isLoading: Bool = false
+
+    /// File load error message (nil = no error)
+    public private(set) var errorMessage: String? = nil
 
     /// Whether the current file has unseen external changes
-    public var hasChanges: Bool = false
+    public private(set) var hasChanges: Bool = false
 
     /// Reload trigger (incremented to force reload)
-    public var reloadTrigger: Int = 0
+    public private(set) var reloadTrigger: Int = 0
 
-    /// Callback for when document finishes loading
-    public var onLoaded: (@MainActor () -> Void)? = nil
+    // MARK: - File Loading
+
+    /// Loads file content from disk. This is the authoritative load path.
+    /// MarkdownView and ChatView both read from `content` after this completes.
+    func loadFile(url: URL) async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let text = try await Task.detached(priority: .userInitiated) {
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                let fileSize = attributes[.size] as? Int ?? 0
+
+                guard fileSize <= MarkdownConfig.maxTextSize else {
+                    throw FileLoadError.fileTooLarge(size: fileSize)
+                }
+
+                let data = try Data(contentsOf: url)
+                guard let text = String(data: data, encoding: .utf8) else {
+                    throw FileLoadError.invalidEncoding
+                }
+                return text
+            }.value
+
+            content = text
+            hasChanges = false
+        } catch {
+            errorMessage = error.localizedDescription
+            content = ""
+        }
+
+        isLoading = false
+    }
 
     // MARK: - Actions
-
-    func setContent(_ newContent: String) {
-        content = newContent
-        hasChanges = false
-    }
 
     func clearContent() {
         content = ""
         hasChanges = false
+        errorMessage = nil
     }
 
     func markChanged() {
@@ -234,5 +391,38 @@ public final class DocumentState {
     func triggerReload() {
         reloadTrigger += 1
         hasChanges = false
+    }
+}
+
+// MARK: - File Load Errors
+
+enum FileLoadError: LocalizedError {
+    case fileTooLarge(size: Int)
+    case invalidEncoding
+
+    var errorDescription: String? {
+        switch self {
+        case .fileTooLarge(let size):
+            let mb = Double(size) / 1_048_576
+            return "File is too large (\(String(format: "%.1f", mb)) MB). Maximum supported size is 10 MB."
+        case .invalidEncoding:
+            return "Unable to decode file as UTF-8 text"
+        }
+    }
+}
+
+// MARK: - Environment Key
+
+/// Environment key for injecting AppCoordinator into the view hierarchy.
+/// The shared instance provides a default for views that don't have a coordinator injected.
+/// In practice, the app always injects a coordinator explicitly via .environment(\.coordinator, coordinator).
+private struct AppCoordinatorKey: @preconcurrency EnvironmentKey {
+    @MainActor static var defaultValue = AppCoordinator()
+}
+
+extension EnvironmentValues {
+    public var coordinator: AppCoordinator {
+        get { self[AppCoordinatorKey.self] }
+        set { self[AppCoordinatorKey.self] = newValue }
     }
 }

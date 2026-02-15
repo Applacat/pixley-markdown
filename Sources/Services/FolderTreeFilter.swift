@@ -6,6 +6,11 @@ import Foundation
 /// Extracted from ContentView for testability.
 struct FolderTreeFilter {
 
+    /// Cache for filterByName results keyed by (itemCount, query).
+    /// Invalidated when the source items change.
+    @MainActor
+    private static var nameFilterCache: (itemCount: Int, query: String, result: [FolderItem])?
+
     // MARK: - Filter Markdown Only
 
     /// Filters a folder tree to only include markdown files and folders containing them.
@@ -34,6 +39,66 @@ struct FolderTreeFilter {
                 return item.isMarkdown ? item : nil
             }
         }
+    }
+
+    // MARK: - Filter By Name
+
+    /// Filters a folder tree to items matching a search query by filename.
+    /// - Parameters:
+    ///   - items: The root items to filter
+    ///   - query: Case-insensitive partial match on filename
+    /// - Returns: Filtered items preserving parent folders of matches. Empty query returns items unchanged.
+    @MainActor
+    static func filterByName(_ items: [FolderItem], query: String) -> [FolderItem] {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return items }
+
+        // Check cache
+        if let cached = nameFilterCache,
+           cached.itemCount == items.count,
+           cached.query == trimmed {
+            return cached.result
+        }
+
+        let result = _filterByName(items, query: trimmed)
+        nameFilterCache = (itemCount: items.count, query: trimmed, result: result)
+        return result
+    }
+
+    private static func _filterByName(_ items: [FolderItem], query: String) -> [FolderItem] {
+        return items.compactMap { item in
+            if item.isFolder {
+                let filteredChildren = _filterByName(item.children ?? [], query: query)
+                if filteredChildren.isEmpty { return nil }
+                return FolderItem(
+                    url: item.url,
+                    isFolder: true,
+                    markdownCount: filteredChildren.reduce(0) { $0 + $1.markdownCount },
+                    children: filteredChildren
+                )
+            } else {
+                // Case-insensitive partial match on filename
+                return item.name.localizedCaseInsensitiveContains(query) ? item : nil
+            }
+        }
+    }
+
+    // MARK: - Flatten Markdown Files
+
+    /// Flattens a folder tree into a flat list of all markdown files.
+    /// - Parameter items: The root items to flatten
+    /// - Returns: All markdown files from the tree, depth-first order
+    static func flattenMarkdownFiles(_ items: [FolderItem]) -> [FolderItem] {
+        var result: [FolderItem] = []
+        for item in items {
+            if item.isMarkdown {
+                result.append(item)
+            }
+            if let children = item.children {
+                result.append(contentsOf: flattenMarkdownFiles(children))
+            }
+        }
+        return result
     }
 
     // MARK: - Find First Markdown

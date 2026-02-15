@@ -14,13 +14,13 @@ You can drag a folder onto the app window to open it — works on both the launc
 
 ## Large Documents
 
-If a document is very large (over 8,000 characters), the AI will only read the beginning. You'll see a warning, and the Memory meter will adjust.
+The AI uses the first ~2500 characters of your document. For large documents, try asking specific questions rather than "summarize everything."
 
-For large documents, try asking specific questions rather than "summarize everything."
+After 3 questions, the conversation automatically resets to stay within the AI's context limits. You'll see a banner when this happens.
 
 ## Privacy
 
-AI.md Reader uses **Apple Intelligence**, which runs entirely on your Mac. Your documents are never sent to the cloud — everything stays on your device.
+AI.md Reader uses **Apple Intelligence** for AI chat, which runs entirely on your Mac. Your documents are never sent to the cloud — everything stays on your device.
 
 ## Welcome Tour
 

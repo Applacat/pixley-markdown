@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - File Load Trigger
 
@@ -12,34 +13,36 @@ private struct FileLoadTrigger: Equatable {
 // MARK: - Markdown View
 
 /// The center panel displaying markdown content with syntax highlighting.
+/// Reads document content from DocumentState (the single source of truth).
 struct MarkdownView: View {
 
-    @Environment(AppState.self) private var appState
+    @Environment(\.coordinator) private var coordinator
 
-    @State private var content: String = ""
-    @State private var isLoading = false
-    @State private var errorMessage: String?
+    @State private var pendingScrollPosition: Double? = nil
+    @State private var fileWatcher: FileWatcher? = nil
+    @State private var readingProgress: Double = 0
+    @State private var bookmarkedLines: Set<Int> = []
 
     // MARK: - Body
 
     var body: some View {
         ZStack {
-            if appState.selectedFile == nil {
+            if coordinator.navigation.selectedFile == nil {
                 emptyState
-            } else if isLoading {
+            } else if coordinator.document.isLoading {
                 loadingView
-            } else if let error = errorMessage {
+            } else if let error = coordinator.document.errorMessage {
                 errorView(error)
             } else {
                 markdownContent
             }
 
             // Reload pill overlay
-            if appState.fileHasChanges {
+            if coordinator.document.hasChanges {
                 VStack {
                     Spacer()
                     ReloadPill {
-                        appState.triggerReload()
+                        coordinator.reloadDocument()
                     }
                     .padding(.bottom, 20)
                 }
@@ -47,7 +50,7 @@ struct MarkdownView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.ultraThinMaterial)
-        .task(id: FileLoadTrigger(file: appState.selectedFile, reload: appState.reloadTrigger)) {
+        .task(id: FileLoadTrigger(file: coordinator.navigation.selectedFile, reload: coordinator.document.reloadTrigger)) {
             await loadFile()
         }
     }
@@ -58,8 +61,10 @@ struct MarkdownView: View {
         VStack(spacing: 12) {
             Spacer()
             Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 48, weight: .light))
+                .font(.largeTitle.weight(.light))
+                .imageScale(.large)
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
             Text("Select a file to view")
                 .font(.headline)
                 .foregroundStyle(.secondary)
@@ -87,8 +92,10 @@ struct MarkdownView: View {
         VStack(spacing: 12) {
             Spacer()
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48, weight: .light))
+                .font(.largeTitle.weight(.light))
+                .imageScale(.large)
                 .foregroundStyle(.orange)
+                .accessibilityHidden(true)
             Text("Error loading file")
                 .font(.headline)
                 .foregroundStyle(.secondary)
@@ -104,70 +111,77 @@ struct MarkdownView: View {
     // MARK: - Markdown Content
 
     private var markdownContent: some View {
-        MarkdownEditor(text: .constant(content), onError: { error in
-            appState.showError(error)
-        })
+        MarkdownEditor(
+            text: .constant(coordinator.document.content),
+            onError: { error in coordinator.showError(error) },
+            onScrollPositionChanged: { position in
+                readingProgress = position
+                coordinator.saveScrollPosition(position)
+            },
+            restoreScrollPosition: pendingScrollPosition,
+            bookmarkedLines: bookmarkedLines,
+            onToggleBookmark: { lineNumber in
+                toggleBookmark(at: lineNumber)
+            }
+        )
+        .overlay(alignment: .topTrailing) {
+            if coordinator.navigation.selectedFile != nil {
+                ReadingProgressBadge(progress: readingProgress)
+                    .padding(8)
+            }
+        }
     }
 
     // MARK: - Load File
 
+    /// Delegates file loading to DocumentState (the single source of truth).
+    /// MarkdownView handles view-level concerns: scroll restoration, bookmarks, file watching.
     private func loadFile() async {
-        guard let fileURL = appState.selectedFile else {
-            content = ""
+        guard let fileURL = coordinator.navigation.selectedFile else {
+            pendingScrollPosition = nil
             return
         }
 
-        isLoading = true
-        errorMessage = nil
+        // Look up saved scroll position before loading
+        let savedPosition = coordinator.getScrollPosition(for: fileURL)
 
-        do {
-            // Move file I/O to background thread to avoid blocking main thread
-            let text = try await Task.detached(priority: .userInitiated) {
-                // Security: Check file size before loading to prevent DoS
-                let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
-                let fileSize = attributes[.size] as? Int ?? 0
-                
-                guard fileSize <= MarkdownConfig.maxTextSize else {
-                    throw FileLoadError.fileTooLarge(size: fileSize)
-                }
-                
-                let data = try Data(contentsOf: fileURL)
-                guard let text = String(data: data, encoding: .utf8) else {
-                    throw FileLoadError.invalidEncoding
-                }
-                return text
-            }.value
+        // Delegate loading to coordinator (DocumentState owns the content)
+        await coordinator.loadDocument()
 
-            content = text
-            appState.documentContent = text
-
-            // Notify any waiters that document has loaded
-            appState.onDocumentLoaded?()
-            appState.onDocumentLoaded = nil  // Clear after calling
-        } catch let error as FileLoadError {
-            errorMessage = error.localizedDescription
-        } catch {
-            errorMessage = error.localizedDescription
+        // View-level concerns after successful load
+        if coordinator.document.errorMessage == nil {
+            pendingScrollPosition = savedPosition > 0 ? savedPosition : nil
+            refreshBookmarks()
+            startWatching(fileURL)
         }
-
-        isLoading = false
     }
-}
 
-// MARK: - File Load Errors
+    // MARK: - Bookmarks
 
-enum FileLoadError: LocalizedError {
-    case fileTooLarge(size: Int)
-    case invalidEncoding
-    
-    var errorDescription: String? {
-        switch self {
-        case .fileTooLarge(let size):
-            let mb = Double(size) / 1_048_576
-            return "File is too large (\(String(format: "%.1f", mb)) MB). Maximum supported size is 10 MB."
-        case .invalidEncoding:
-            return "Unable to decode file as UTF-8 text"
+    private func toggleBookmark(at lineNumber: Int) {
+        let existing = coordinator.getBookmarks()
+        if let bookmark = existing.first(where: { $0.lineNumber == lineNumber }) {
+            coordinator.deleteBookmark(bookmark.id)
+        } else {
+            coordinator.addBookmark(lineNumber: lineNumber)
         }
+        refreshBookmarks()
+    }
+
+    private func refreshBookmarks() {
+        let bookmarks = coordinator.getBookmarks()
+        bookmarkedLines = Set(bookmarks.map(\.lineNumber))
+    }
+
+    // MARK: - File Watching
+
+    private func startWatching(_ url: URL) {
+        if fileWatcher == nil {
+            fileWatcher = FileWatcher { [coordinator] in
+                coordinator.markDocumentChanged()
+            }
+        }
+        fileWatcher?.watch(url)
     }
 }
 
@@ -181,10 +195,11 @@ struct ReloadPill: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "arrow.clockwise")
-                .font(.system(size: 14, weight: .medium))
+                .font(.callout.weight(.medium))
+                .accessibilityHidden(true)
 
             Text("Content updated")
-                .font(.system(size: 13, weight: .medium))
+                .font(.callout.weight(.medium))
 
             Button("Reload") {
                 onReload()
@@ -197,6 +212,27 @@ struct ReloadPill: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
         .transition(.move(edge: .bottom).combined(with: .opacity))
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: true)
+        .animation(
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                ? .none
+                : .spring(response: 0.4, dampingFraction: 0.8),
+            value: true
+        )
+    }
+}
+
+// MARK: - Reading Progress Badge
+
+/// Small progress badge showing scroll percentage in top-right corner.
+struct ReadingProgressBadge: View {
+    let progress: Double
+
+    var body: some View {
+        Text("\(Int(progress * 100))%")
+            .font(.caption2.monospacedDigit().weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
     }
 }

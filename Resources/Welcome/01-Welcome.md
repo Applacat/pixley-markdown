@@ -38,7 +38,7 @@ This app's syntax highlighting is powered by custom NSRegularExpression patterns
 - Swift & SwiftUI — Apple's modern frameworks
 - AppKit NSTextView — Native text rendering
 - Swift Concurrency — Actor-based isolation
-- Foundation Models — On-device AI (optional)
+- Apple Intelligence — On-device AI chat
 
 **Privacy**  
 AI.md Reader does not collect any data. All files stay on your device. Security-scoped bookmarks follow Apple's sandboxing guidelines.
