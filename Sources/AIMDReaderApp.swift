@@ -170,6 +170,28 @@ struct AIMDReaderApp: App {
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
 
+                // Open Recent submenu
+                Menu("Open Recent") {
+                    let recents = RecentFoldersManager.shared.getAllRecents()
+                    if recents.isEmpty {
+                        Text("No Recent Items")
+                    } else {
+                        ForEach(recents) { item in
+                            Button {
+                                openRecentItem(item)
+                            } label: {
+                                Label(item.name, systemImage: item.isFolder ? "folder" : "doc.text")
+                            }
+                        }
+
+                        Divider()
+
+                        Button("Clear Menu") {
+                            RecentFoldersManager.shared.clearAll()
+                        }
+                    }
+                }
+
                 Divider()
 
                 Button("Reload") {
@@ -380,6 +402,39 @@ struct AIMDReaderApp: App {
             }
         }
         return nil
+    }
+
+    // MARK: - Open Recent Item (macOS)
+
+    private func openRecentItem(_ item: RecentItem) {
+        if item.isFolder {
+            let folders = RecentFoldersManager.shared.getRecentFolders()
+            guard let folder = folders.first(where: { $0.path == item.path }),
+                  let resolvedURL = RecentFoldersManager.shared.resolveBookmark(folder) else {
+                RecentFoldersManager.shared.removeFolderByPath(item.path)
+                return
+            }
+            RecentFoldersManager.shared.addFolder(resolvedURL)
+            coordinator.openFolder(resolvedURL)
+            coordinator.requestOpenBrowser()
+        } else {
+            guard let parentPath = item.parentPath else { return }
+            let folders = RecentFoldersManager.shared.getRecentFolders()
+            guard let parentFolder = folders.first(where: { $0.path == parentPath }),
+                  let resolvedURL = RecentFoldersManager.shared.resolveBookmark(parentFolder) else {
+                RecentFoldersManager.shared.removeRecentFile(item)
+                return
+            }
+            let fileURL = URL(fileURLWithPath: item.path)
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                RecentFoldersManager.shared.removeRecentFile(item)
+                return
+            }
+            coordinator.openFolder(resolvedURL)
+            coordinator.selectFile(fileURL)
+            coordinator.requestSidebarCollapsed()
+            coordinator.requestOpenBrowser()
+        }
     }
 
     // MARK: - Open Folder (macOS)

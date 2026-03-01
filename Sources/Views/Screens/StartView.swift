@@ -3,7 +3,8 @@ import UniformTypeIdentifiers
 
 // MARK: - Start View
 
-/// Minimal launcher - centered single-column layout with branding and folder shortcuts.
+/// Launcher window with branding, folder shortcuts, and recent items panel.
+/// Compact (shortcuts only) when no recents exist; expands side-by-side when recents are available.
 /// Shows when no folder is open. Click app icon to open Welcome tour (easter egg).
 struct StartView: View {
 
@@ -15,9 +16,13 @@ struct StartView: View {
     @State private var hasPerformedLaunch = false
     @State private var isReady = false
     @State private var showWelcomeError = false
+    @State private var recents: [RecentItem] = []
+    @State private var hasPruned = false
 
     /// Closure to perform launch logic (first launch, session restore)
     var performLaunchIfNeeded: (() -> Void)? = nil
+
+    private var hasRecents: Bool { !recents.isEmpty }
 
     var body: some View {
         Group {
@@ -28,8 +33,9 @@ struct StartView: View {
                 Color.clear
             }
         }
-        // Fixed 480x520: Welcome window sized for visual balance. macOS handles zoom at OS level.
-        .frame(width: 480, height: 520)
+        // Dynamic width: compact (480) when no recents, expanded (720) with recents panel
+        .frame(width: hasRecents ? 720 : 480, height: 520)
+        .animation(.easeInOut(duration: 0.25), value: hasRecents)
         .onAppear {
             // Run launch logic first (only once)
             if !hasPerformedLaunch {
@@ -43,7 +49,12 @@ struct StartView: View {
                 activateOrOpenBrowser()
                 dismissWindow(id: "start")
             } else {
-                // No folder context - show launcher
+                // Prune stale items once, then load recents for display
+                if !hasPruned {
+                    RecentFoldersManager.shared.pruneStaleItems()
+                    hasPruned = true
+                }
+                recents = RecentFoldersManager.shared.getAllRecents()
                 isReady = true
             }
         }
@@ -66,66 +77,21 @@ struct StartView: View {
             // Centered content
             VStack(spacing: 24) {
                 // App mascot + title (click for welcome tour)
-                Button(action: openWelcomeFolder) {
-                    VStack(spacing: 16) {
-                        Image("AIMD")
-                            .resizable()
-                            .interpolation(.high)
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 140, height: 140)
-                            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                            .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
-                            .accessibilityLabel("Pixley Markdown Reader app icon")
+                mascotHeader
 
-                        VStack(spacing: 4) {
-                            Text("Pixley Markdown Reader")
-                                .font(.title2.bold())
+                // Content area: shortcuts + optional recents panel
+                if hasRecents {
+                    HStack(alignment: .top, spacing: 0) {
+                        shortcutsColumn
 
-                            Text("Read what AI writes")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
+                        Divider()
+                            .padding(.vertical, 4)
+
+                        recentsColumn
                     }
+                } else {
+                    shortcutsColumn
                 }
-                .buttonStyle(MascotButtonStyle())
-
-                // Folder shortcuts
-                VStack(spacing: 0) {
-                    FolderShortcutButton(
-                        title: "Read Sample Files",
-                        icon: "book.circle",
-                        action: openWelcomeFolderWithPrompt
-                    )
-                    
-                    Divider()
-                        .padding(.vertical, 8)
-                    
-                    FolderShortcutButton(
-                        title: "Desktop",
-                        icon: "menubar.dock.rectangle",
-                        action: { openStandardFolder(.desktopDirectory) }
-                    )
-                    FolderShortcutButton(
-                        title: "Documents",
-                        icon: "doc.text",
-                        action: { openStandardFolder(.documentDirectory) }
-                    )
-                    FolderShortcutButton(
-                        title: "Downloads",
-                        icon: "arrow.down.circle",
-                        action: { openStandardFolder(.downloadsDirectory) }
-                    )
-
-                    Divider()
-                        .padding(.vertical, 8)
-
-                    FolderShortcutButton(
-                        title: "Choose Folder...",
-                        icon: "folder.badge.plus",
-                        action: chooseFolder
-                    )
-                }
-                .frame(width: 220)
             }
 
             Spacer()
@@ -153,6 +119,117 @@ struct StartView: View {
         }
     }
 
+    // MARK: - Mascot Header
+
+    private var mascotHeader: some View {
+        Button(action: openWelcomeFolder) {
+            VStack(spacing: 16) {
+                Image("AIMD")
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 140, height: 140)
+                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+                    .accessibilityLabel("Pixley Markdown Reader app icon")
+
+                VStack(spacing: 4) {
+                    Text("Pixley Markdown Reader")
+                        .font(.title2.bold())
+
+                    Text("Read what AI writes")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .buttonStyle(MascotButtonStyle())
+    }
+
+    // MARK: - Shortcuts Column
+
+    private var shortcutsColumn: some View {
+        VStack(spacing: 0) {
+            FolderShortcutButton(
+                title: "Read Sample Files",
+                icon: "book.circle",
+                action: openWelcomeFolderWithPrompt
+            )
+
+            Divider()
+                .padding(.vertical, 8)
+
+            FolderShortcutButton(
+                title: "Desktop",
+                icon: "menubar.dock.rectangle",
+                action: { openStandardFolder(.desktopDirectory) }
+            )
+            FolderShortcutButton(
+                title: "Documents",
+                icon: "doc.text",
+                action: { openStandardFolder(.documentDirectory) }
+            )
+            FolderShortcutButton(
+                title: "Downloads",
+                icon: "arrow.down.circle",
+                action: { openStandardFolder(.downloadsDirectory) }
+            )
+
+            Divider()
+                .padding(.vertical, 8)
+
+            FolderShortcutButton(
+                title: "Choose Folder...",
+                icon: "folder.badge.plus",
+                action: chooseFolder
+            )
+        }
+        .frame(width: 220)
+    }
+
+    // MARK: - Recents Column
+
+    private var recentsColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Recent")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(recents) { item in
+                        RecentItemButton(item: item) {
+                            openRecentItem(item)
+                        }
+                        .contextMenu {
+                            Button("Remove from Recents") {
+                                removeRecentItem(item)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Divider()
+                .padding(.vertical, 4)
+
+            Button("Clear Recents") {
+                withAnimation {
+                    RecentFoldersManager.shared.clearAll()
+                    recents = []
+                }
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 4)
+        }
+        .frame(width: 240)
+    }
+
     // MARK: - Drop Overlay
 
     private var dropOverlay: some View {
@@ -161,6 +238,59 @@ struct StartView: View {
             .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
             .padding(4)
             .allowsHitTesting(false)
+    }
+
+    // MARK: - Recent Item Actions
+
+    private func openRecentItem(_ item: RecentItem) {
+        if item.isFolder {
+            // Folder: resolve bookmark and open with sidebar visible
+            let folders = RecentFoldersManager.shared.getRecentFolders()
+            guard let folder = folders.first(where: { $0.path == item.path }),
+                  let resolvedURL = RecentFoldersManager.shared.resolveBookmark(folder) else {
+                // Bookmark can't resolve — remove and refresh
+                removeRecentItem(item)
+                return
+            }
+            RecentFoldersManager.shared.addFolder(resolvedURL)
+            coordinator.openFolder(resolvedURL)
+            activateOrOpenBrowser()
+            dismissWindow(id: "start")
+        } else {
+            // File: resolve parent folder bookmark, open folder + select file collapsed
+            guard let parentPath = item.parentPath else {
+                removeRecentItem(item)
+                return
+            }
+            let folders = RecentFoldersManager.shared.getRecentFolders()
+            guard let parentFolder = folders.first(where: { $0.path == parentPath }),
+                  let resolvedURL = RecentFoldersManager.shared.resolveBookmark(parentFolder) else {
+                // Parent folder inaccessible — remove file from recents
+                removeRecentItem(item)
+                return
+            }
+            let fileURL = URL(fileURLWithPath: item.path)
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                removeRecentItem(item)
+                return
+            }
+            coordinator.openFolder(resolvedURL)
+            coordinator.selectFile(fileURL)
+            coordinator.requestSidebarCollapsed()
+            activateOrOpenBrowser()
+            dismissWindow(id: "start")
+        }
+    }
+
+    private func removeRecentItem(_ item: RecentItem) {
+        if item.isFolder {
+            RecentFoldersManager.shared.removeFolderByPath(item.path)
+        } else {
+            RecentFoldersManager.shared.removeRecentFile(item)
+        }
+        withAnimation {
+            recents = RecentFoldersManager.shared.getAllRecents()
+        }
     }
 
     // MARK: - Folder Actions
@@ -373,6 +503,35 @@ struct FolderButtonStyle: ButtonStyle {
             return Color.primary.opacity(0.05)
         }
         return .clear
+    }
+}
+
+// MARK: - Recent Item Button
+
+struct RecentItemButton: View {
+    let item: RecentItem
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: item.isFolder ? "folder" : "doc.text")
+                    .font(.body)
+                    .foregroundStyle(item.isFolder ? .blue : .secondary)
+                    .frame(width: 24)
+
+                Text(item.name)
+                    .font(.body)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(FolderButtonStyle())
     }
 }
 

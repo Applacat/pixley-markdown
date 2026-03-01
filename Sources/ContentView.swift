@@ -30,12 +30,13 @@ struct BrowserView: View {
             }
         }
         .onDisappear {
-            // Only tear down if no other browser windows are still visible
-            // (prevents cascade when WindowGroup creates multiple instances)
-            let otherBrowserWindows = NSApp.windows.filter {
-                $0.identifier?.rawValue.contains("browser") == true && $0.isVisible
+            // Only tear down if this is the last browser window closing.
+            // During onDisappear the closing window is still in NSApp.windows
+            // and still isVisible, so count <= 1 means "only the one being closed".
+            let browserWindows = NSApp.windows.filter {
+                $0.identifier?.rawValue.contains("browser") == true
             }
-            guard otherBrowserWindows.isEmpty else { return }
+            guard browserWindows.count <= 1 else { return }
 
             // Invalidate cache for this folder
             if let folderURL = coordinator.navigation.rootFolderURL {

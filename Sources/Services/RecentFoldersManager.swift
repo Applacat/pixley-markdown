@@ -377,6 +377,29 @@ final class RecentFoldersManager {
         saveFiles(files)
     }
 
+    /// Validates all recent items and silently removes stale entries.
+    /// Folders: checks bookmark resolution. Files: checks file existence on disk.
+    /// Called once when the recents list is first displayed.
+    func pruneStaleItems() {
+        // Prune folders with invalid bookmarks
+        let folders = getRecentFolders()
+        for folder in folders {
+            if resolveBookmark(folder) == nil {
+                removeFolderByPath(folder.path)
+                log.info("Pruned stale folder: \(folder.name)")
+            }
+        }
+
+        // Prune files that no longer exist on disk
+        let files = getRecentFiles()
+        for file in files {
+            if !FileManager.default.fileExists(atPath: file.path) {
+                removeRecentFile(file)
+                log.info("Pruned stale file: \(file.name)")
+            }
+        }
+    }
+
     /// Get combined recents (folders + files) for display
     func getAllRecents() -> [RecentItem] {
         let folders = getRecentFolders().map { folder in
