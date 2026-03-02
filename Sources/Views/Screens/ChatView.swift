@@ -189,11 +189,11 @@ struct ChatView: View {
                     }
                     .padding(.vertical, 12)
                 }
-                .onChange(of: messages.count) { _, _ in
+                .onChange(of: messages.last?.id) { _, _ in
                     scrollToBottom(proxy)
                 }
-                .onChange(of: isLoading) { _, _ in
-                    scrollToBottom(proxy)
+                .onChange(of: isLoading) { _, newValue in
+                    if !newValue { scrollToBottom(proxy) }
                 }
             }
 

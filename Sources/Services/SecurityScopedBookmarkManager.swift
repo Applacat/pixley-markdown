@@ -52,11 +52,18 @@ final class SecurityScopedBookmarkManager {
                 relativeTo: nil
             )
 
-            let dir = fileURL.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try bookmarkData.write(to: fileURL, options: [.atomic, .completeFileProtection])
+            // Write off main actor to avoid blocking UI
+            Task.detached(priority: .utility) {
+                let dir = fileURL.deletingLastPathComponent()
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                do {
+                    try bookmarkData.write(to: fileURL, options: [.atomic, .completeFileProtection])
+                } catch {
+                    log.error("Failed to write bookmark for directory \(directory.rawValue): \(error.localizedDescription)")
+                }
+            }
         } catch {
-            log.error("Failed to save bookmark for directory \(directory.rawValue): \(error.localizedDescription)")
+            log.error("Failed to create bookmark for directory \(directory.rawValue): \(error.localizedDescription)")
         }
     }
 

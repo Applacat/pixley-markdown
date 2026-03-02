@@ -94,25 +94,26 @@ final class RecentFoldersManager {
     }
 
     /// Ensures the storage directory exists and writes data with protection.
+    /// File I/O is performed off the main actor to avoid blocking UI.
     private func writeToFile(_ data: Data, at url: URL) {
-        let dir = url.deletingLastPathComponent()
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        Task.detached(priority: .utility) {
+            let dir = url.deletingLastPathComponent()
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        // Set backup exclusion before write (effective if file already exists)
-        var resourceValues = URLResourceValues()
-        resourceValues.isExcludedFromBackup = true
-        var mutableURL = url
-        try? mutableURL.setResourceValues(resourceValues)
+            var resourceValues = URLResourceValues()
+            resourceValues.isExcludedFromBackup = true
+            var mutableURL = url
+            try? mutableURL.setResourceValues(resourceValues)
 
-        do {
-            try data.write(to: url, options: [.atomic, .completeFileProtection])
-        } catch {
-            log.error("Failed to write to \(url.lastPathComponent): \(error.localizedDescription)")
-            return
+            do {
+                try data.write(to: url, options: [.atomic, .completeFileProtection])
+            } catch {
+                log.error("Failed to write to \(url.lastPathComponent): \(error.localizedDescription)")
+                return
+            }
+
+            try? mutableURL.setResourceValues(resourceValues)
         }
-
-        // Re-apply backup exclusion for newly created files
-        try? mutableURL.setResourceValues(resourceValues)
     }
 
     // MARK: - Public API

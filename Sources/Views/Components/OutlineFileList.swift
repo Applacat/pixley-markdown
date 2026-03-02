@@ -1,6 +1,23 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Outline Node (NSObject wrapper for NSOutlineView)
+
+/// NSOutlineView requires NSObject-based items for stable identity tracking.
+/// Swift structs get boxed in `_SwiftValue` wrappers whose `as?` casts fail
+/// silently in delegate notifications, breaking expansion state tracking.
+/// This wrapper gives NSOutlineView real Objective-C objects to work with.
+final class OutlineNode: NSObject {
+    let folderItem: FolderItem
+    var childNodes: [OutlineNode]?
+
+    init(_ item: FolderItem) {
+        self.folderItem = item
+        self.childNodes = item.children?.map { OutlineNode($0) }
+        super.init()
+    }
+}
+
 // MARK: - NSOutlineView Wrapper
 
 /// Native macOS file browser using NSOutlineView.
@@ -9,7 +26,10 @@ struct OutlineFileList: NSViewRepresentable {
 
     let items: [FolderItem]
     @Binding var selection: URL?
+    /// NavigationState holds expansion state that survives Coordinator recreation
+    let navigationState: NavigationState
     var isFavorite: ((URL) -> Bool)? = nil
+    var isChanged: ((URL) -> Bool)? = nil
     var onToggleFavorite: ((URL) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -61,26 +81,51 @@ struct OutlineFileList: NSViewRepresentable {
 
         // Keep callback references current
         context.coordinator.isFavorite = isFavorite
+        context.coordinator.isChanged = isChanged
         context.coordinator.onToggleFavorite = onToggleFavorite
         context.coordinator.selection = _selection
 
-        // Pre-fetch favorites as Set<String> for O(1) lookup during cell configuration
-        context.coordinator.refreshFavoriteSet(items: items)
-
         // Always keep coordinator's items in sync with SwiftUI
         let oldCount = context.coordinator.items.count
-        context.coordinator.items = items
-
-        // Reload if item count changed or outline view is empty but should have content
         let itemsChanged = oldCount != items.count
+        context.coordinator.items = items
+        context.coordinator.rebuildNodes()
+
+        // Only rebuild pre-fetched sets when items actually change (avoids O(n) tree walk on every SwiftUI update)
+        if itemsChanged {
+            context.coordinator.refreshFavoriteSet(items: items)
+        }
+        context.coordinator.refreshChangedSet(items: items)
+
+        // Reload if item count changed, changed paths differ, or outline view is empty but should have content
         let outlineStale = outlineView.numberOfRows == 0 && !items.isEmpty
+        let changedPathsDiffer = context.coordinator.changedPathsSet != context.coordinator.previousChangedPathsSet
 
-        if itemsChanged || outlineStale {
-            context.coordinator.lastSyncedURL = nil  // Force re-sync after data reload
+        if itemsChanged || outlineStale || changedPathsDiffer {
+            // Rebuild favorites too if not already done (changed paths without item change)
+            if !itemsChanged {
+                context.coordinator.refreshFavoriteSet(items: items)
+            }
+            context.coordinator.previousChangedPathsSet = context.coordinator.changedPathsSet
+
+            // Guard: reloadData() fires outlineViewItemDidCollapse for every expanded item,
+            // which would wipe expandedPaths before restoreExpansionState can use it.
+            context.coordinator.isReloading = true
             outlineView.reloadData()
-
-            // Restore from persistent expandedPaths (tracked incrementally via delegate)
             context.coordinator.restoreExpansionState(outlineView: outlineView)
+            context.coordinator.isReloading = false
+
+            // Re-select the previously selected row if still visible (don't expand parents)
+            if let selectedURL = context.coordinator.selection.wrappedValue {
+                let rowCount = outlineView.numberOfRows
+                for row in 0..<rowCount {
+                    if let node = outlineView.item(atRow: row) as? OutlineNode,
+                       node.folderItem.url == selectedURL {
+                        outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                        break
+                    }
+                }
+            }
         }
 
         // Sync selection from coordinator → NSOutlineView
@@ -95,7 +140,7 @@ struct OutlineFileList: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(items: items, selection: _selection, isFavorite: isFavorite, onToggleFavorite: onToggleFavorite)
+        return Coordinator(items: items, selection: _selection, navigationState: navigationState, isFavorite: isFavorite, isChanged: isChanged, onToggleFavorite: onToggleFavorite)
     }
 
     // MARK: - Coordinator
@@ -104,31 +149,48 @@ struct OutlineFileList: NSViewRepresentable {
     class Coordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate {
 
         var items: [FolderItem]
+        /// OutlineNode wrappers — NSObject-based items for NSOutlineView
+        var nodes: [OutlineNode] = []
         var selection: Binding<URL?>
         weak var outlineView: NSOutlineView?
+        /// NavigationState holds expansion state that survives Coordinator recreation
+        let navigationState: NavigationState
         var isFavorite: ((URL) -> Bool)?
+        var isChanged: ((URL) -> Bool)?
         var onToggleFavorite: ((URL) -> Void)?
         /// Pre-fetched favorite paths for O(1) lookup during cell configuration
         var favoritePathsSet = Set<String>()
-        private var hasPerformedInitialExpansion = false
-        /// Persistent set of expanded folder paths — maintained incrementally
-        private var expandedPaths = Set<String>()
+        /// Pre-fetched changed file paths for O(1) lookup during cell configuration
+        var changedPathsSet = Set<String>()
+        /// Pre-fetched folder paths that have changed descendants (O(1) folder dot lookup)
+        var changedFolderPathsSet = Set<String>()
+        /// Previous changed paths — used to detect when dots need redrawing
+        var previousChangedPathsSet = Set<String>()
+        /// Guard flag: prevents reloadData() collapse delegate callbacks from wiping expandedPaths
+        var isReloading = false
         /// Tracks last URL we synced to, so we don't fight the user's keyboard navigation
         fileprivate var lastSyncedURL: URL?
 
-        /// Static placeholder to avoid repeated allocations in data source methods
-        /// This is used only as a safety fallback and should never actually appear in UI
-        private static let placeholderItem = FolderItem(
-            url: URL(fileURLWithPath: "/"),
-            isFolder: false,
-            markdownCount: 0
-        )
+        /// Convenience accessor for expansion state stored on NavigationState
+        private var expandedPaths: Set<String> {
+            get { navigationState.sidebarExpandedPaths }
+            set { navigationState.sidebarExpandedPaths = newValue }
+        }
 
-        init(items: [FolderItem], selection: Binding<URL?>, isFavorite: ((URL) -> Bool)? = nil, onToggleFavorite: ((URL) -> Void)? = nil) {
+        init(items: [FolderItem], selection: Binding<URL?>, navigationState: NavigationState, isFavorite: ((URL) -> Bool)? = nil, isChanged: ((URL) -> Bool)? = nil, onToggleFavorite: ((URL) -> Void)? = nil) {
             self.items = items
             self.selection = selection
+            self.navigationState = navigationState
             self.isFavorite = isFavorite
+            self.isChanged = isChanged
             self.onToggleFavorite = onToggleFavorite
+            super.init()
+            rebuildNodes()
+        }
+
+        /// Rebuilds OutlineNode tree from current items.
+        func rebuildNodes() {
+            nodes = items.map { OutlineNode($0) }
         }
 
         /// Pre-fetches all favorites into a Set for O(1) lookup during cell configuration.
@@ -151,106 +213,130 @@ struct OutlineFileList: NSViewRepresentable {
             walk(items)
             favoritePathsSet = set
         }
-        
-        // MARK: - Expansion State Management
-        
-        /// Restores expansion state from the persistent expandedPaths set.
-        func restoreExpansionState(outlineView: NSOutlineView) {
-            // Expand all on first load (welcome experience)
-            if !hasPerformedInitialExpansion {
-                expandAllInitial(outlineView: outlineView, items: items)
-                hasPerformedInitialExpansion = true
-            } else {
-                restoreFromPaths(outlineView: outlineView, items: items)
-            }
-        }
 
-        private func restoreFromPaths(outlineView: NSOutlineView, items: [FolderItem]) {
-            for item in items where item.isFolder {
-                if expandedPaths.contains(item.url.path) {
-                    outlineView.expandItem(item, expandChildren: false)
-                }
-                if let children = item.children {
-                    restoreFromPaths(outlineView: outlineView, items: children)
-                }
+        /// Pre-fetches all changed paths into Sets for O(1) lookup during cell configuration.
+        /// Also computes ancestor folder paths so folder dot checks are O(1) instead of O(n).
+        func refreshChangedSet(items: [FolderItem]) {
+            guard let isChanged else {
+                changedPathsSet.removeAll()
+                changedFolderPathsSet.removeAll()
+                return
             }
-        }
-
-        private func expandAllInitial(outlineView: NSOutlineView, items: [FolderItem]) {
-            for item in items {
-                if item.isFolder {
-                    expandedPaths.insert(item.url.path)
-                    outlineView.expandItem(item, expandChildren: false)
+            var fileSet = Set<String>()
+            func walk(_ items: [FolderItem]) {
+                for item in items {
+                    if isChanged(item.url) {
+                        fileSet.insert(item.url.path)
+                    }
                     if let children = item.children {
-                        expandAllInitial(outlineView: outlineView, items: children)
+                        walk(children)
+                    }
+                }
+            }
+            walk(items)
+            changedPathsSet = fileSet
+
+            // Pre-compute ancestor folder paths for O(1) folder dot lookup
+            var folderSet = Set<String>()
+            for path in fileSet {
+                var url = URL(fileURLWithPath: path).deletingLastPathComponent()
+                while url.path != "/" {
+                    if !folderSet.insert(url.path).inserted { break } // Already tracked ancestors
+                    url.deleteLastPathComponent()
+                }
+            }
+            changedFolderPathsSet = folderSet
+        }
+
+        // MARK: - Expansion State Management
+
+        /// Restores expansion state from the expandedPaths set after reloadData.
+        /// Folders start collapsed; only user-expanded folders are restored.
+        func restoreExpansionState(outlineView: NSOutlineView) {
+            restoreFromPaths(outlineView: outlineView, nodes: nodes)
+        }
+
+        private func restoreFromPaths(outlineView: NSOutlineView, nodes: [OutlineNode]) {
+            for node in nodes where node.folderItem.isFolder {
+                if expandedPaths.contains(node.folderItem.url.path) {
+                    outlineView.expandItem(node, expandChildren: false)
+                    if let children = node.childNodes {
+                        restoreFromPaths(outlineView: outlineView, nodes: children)
                     }
                 }
             }
         }
 
+
         // MARK: - Expansion Tracking (NSOutlineViewDelegate)
+        // These now work reliably because OutlineNode is a real NSObject subclass.
 
         func outlineViewItemDidExpand(_ notification: Notification) {
-            guard let folderItem = notification.userInfo?["NSObject"] as? FolderItem else { return }
-            expandedPaths.insert(folderItem.url.path)
+            guard !isReloading else { return }
+            guard let node = notification.userInfo?["NSObject"] as? OutlineNode else { return }
+            expandedPaths.insert(node.folderItem.url.path)
         }
 
         func outlineViewItemDidCollapse(_ notification: Notification) {
-            guard let folderItem = notification.userInfo?["NSObject"] as? FolderItem else { return }
-            expandedPaths.remove(folderItem.url.path)
+            guard !isReloading else { return }
+            guard let node = notification.userInfo?["NSObject"] as? OutlineNode else { return }
+            let path = node.folderItem.url.path
+            let prefix = path + "/"
+            expandedPaths.remove(path)
+            // Also remove all descendants — matches Finder/VS Code behavior
+            expandedPaths = expandedPaths.filter { !$0.hasPrefix(prefix) }
         }
-        
+
         // MARK: - Double Click Handler
-        
+
         @objc func handleDoubleClick(_ sender: NSOutlineView) {
             let clickedRow = sender.clickedRow
             guard clickedRow >= 0,
-                  let item = sender.item(atRow: clickedRow) as? FolderItem,
-                  item.isFolder else {
+                  let node = sender.item(atRow: clickedRow) as? OutlineNode,
+                  node.folderItem.isFolder else {
                 return
             }
-            
+
             // Toggle expansion on double-click
-            if sender.isItemExpanded(item) {
-                sender.collapseItem(item)
+            if sender.isItemExpanded(node) {
+                sender.collapseItem(node)
             } else {
-                sender.expandItem(item)
+                sender.expandItem(node)
             }
         }
 
         // MARK: - Data Source
 
         func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-            if let folderItem = item as? FolderItem {
-                return folderItem.children?.count ?? 0
+            if let node = item as? OutlineNode {
+                return node.childNodes?.count ?? 0
             }
-            return items.count
+            return nodes.count
         }
 
         func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-            if let folderItem = item as? FolderItem {
-                guard let children = folderItem.children, index < children.count else {
-                    // Safety: Return static placeholder if children is nil or index out of bounds
-                    return Self.placeholderItem
+            if let node = item as? OutlineNode {
+                guard let children = node.childNodes, index < children.count else {
+                    return OutlineNode(FolderItem(url: URL(fileURLWithPath: "/"), isFolder: false))
                 }
                 return children[index]
             }
-            guard index < items.count else {
-                // Safety: Return static placeholder if index out of bounds
-                return Self.placeholderItem
+            guard index < nodes.count else {
+                return OutlineNode(FolderItem(url: URL(fileURLWithPath: "/"), isFolder: false))
             }
-            return items[index]
+            return nodes[index]
         }
 
         func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-            guard let folderItem = item as? FolderItem else { return false }
-            return folderItem.isFolder && (folderItem.children?.isEmpty == false)
+            guard let node = item as? OutlineNode else { return false }
+            return node.folderItem.isFolder && (node.childNodes?.isEmpty == false)
         }
 
         // MARK: - Delegate
 
         func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
-            guard let folderItem = item as? FolderItem else { return nil }
+            guard let node = item as? OutlineNode else { return nil }
+            let folderItem = node.folderItem
 
             let cellIdentifier = NSUserInterfaceItemIdentifier("FileCell")
             let cell: FileCellView
@@ -270,9 +356,16 @@ struct OutlineFileList: NSViewRepresentable {
                 currentItem = parent
             }
 
-            // Configure content with indentation awareness (uses pre-fetched favorites set)
+            // Configure content with indentation awareness (uses pre-fetched favorites and changed sets)
             let favorited = folderItem.isMarkdown ? favoritePathsSet.contains(folderItem.url.path) : false
-            cell.configure(with: folderItem, indentLevel: indentLevel, outlineView: outlineView, isFavorite: favorited, onToggleFavorite: onToggleFavorite)
+            let changed: Bool
+            if folderItem.isFolder {
+                // O(1) lookup using pre-computed ancestor folder paths
+                changed = changedFolderPathsSet.contains(folderItem.url.path)
+            } else {
+                changed = changedPathsSet.contains(folderItem.url.path)
+            }
+            cell.configure(with: folderItem, indentLevel: indentLevel, outlineView: outlineView, isFavorite: favorited, isChanged: changed, onToggleFavorite: onToggleFavorite)
 
             return cell
         }
@@ -295,8 +388,8 @@ struct OutlineFileList: NSViewRepresentable {
             if let targetURL {
                 // Check if the outline view already has this item selected
                 if currentRow >= 0,
-                   let currentItem = outlineView.item(atRow: currentRow) as? FolderItem,
-                   currentItem.url == targetURL {
+                   let node = outlineView.item(atRow: currentRow) as? OutlineNode,
+                   node.folderItem.url == targetURL {
                     return // Already in sync
                 }
 
@@ -311,19 +404,17 @@ struct OutlineFileList: NSViewRepresentable {
             }
         }
 
-        /// Recursively searches the outline view for a row matching the given URL.
+        /// Recursively searches the node tree for a node matching the given URL.
         /// Expands parent folders as needed to reveal the item.
         private func findRow(for url: URL, in outlineView: NSOutlineView) -> Int? {
-            // Walk through items recursively to find and expand path to target
-            func search(items: [FolderItem], expandParents: Bool) -> FolderItem? {
-                for item in items {
-                    if item.url == url { return item }
-                    if item.isFolder, let children = item.children {
-                        if let found = search(items: children, expandParents: expandParents) {
-                            // Expand this folder so the child is visible
+            func search(nodes: [OutlineNode], expandParents: Bool) -> OutlineNode? {
+                for node in nodes {
+                    if node.folderItem.url == url { return node }
+                    if node.folderItem.isFolder, let children = node.childNodes {
+                        if let found = search(nodes: children, expandParents: expandParents) {
                             if expandParents {
-                                outlineView.expandItem(item)
-                                expandedPaths.insert(item.url.path)
+                                outlineView.expandItem(node)
+                                expandedPaths.insert(node.folderItem.url.path)
                             }
                             return found
                         }
@@ -332,12 +423,13 @@ struct OutlineFileList: NSViewRepresentable {
                 return nil
             }
 
-            guard let _ = search(items: items, expandParents: true) else { return nil }
+            guard let _ = search(nodes: nodes, expandParents: true) else { return nil }
 
             // Now that parents are expanded, find the row
             let rowCount = outlineView.numberOfRows
             for row in 0..<rowCount {
-                if let item = outlineView.item(atRow: row) as? FolderItem, item.url == url {
+                if let node = outlineView.item(atRow: row) as? OutlineNode,
+                   node.folderItem.url == url {
                     return row
                 }
             }
@@ -348,20 +440,21 @@ struct OutlineFileList: NSViewRepresentable {
             guard let outlineView = notification.object as? NSOutlineView else { return }
             let selectedRow = outlineView.selectedRow
             guard selectedRow >= 0,
-                  let item = outlineView.item(atRow: selectedRow) as? FolderItem else {
+                  let node = outlineView.item(atRow: selectedRow) as? OutlineNode else {
                 return
             }
 
+            let item = node.folderItem
             if item.isMarkdown {
                 selection.wrappedValue = item.url
             } else if item.isFolder {
                 // Toggle expand/collapse on mouse click only (not keyboard navigation)
                 if let event = NSApp.currentEvent,
                    event.type == .leftMouseUp || event.type == .leftMouseDown {
-                    if outlineView.isItemExpanded(item) {
-                        outlineView.collapseItem(item)
+                    if outlineView.isItemExpanded(node) {
+                        outlineView.collapseItem(node)
                     } else {
-                        outlineView.expandItem(item)
+                        outlineView.expandItem(node)
                     }
                 }
             }
@@ -384,16 +477,16 @@ final class KeyHandlingOutlineView: NSOutlineView {
         switch event.keyCode {
         case 36: // Return
             let row = selectedRow
-            guard row >= 0, let item = item(atRow: row) as? FolderItem else {
+            guard row >= 0, let node = item(atRow: row) as? OutlineNode else {
                 super.keyDown(with: event)
                 return
             }
-            if item.isFolder {
+            if node.folderItem.isFolder {
                 // Toggle folder expansion
-                if isItemExpanded(item) {
-                    collapseItem(item)
+                if isItemExpanded(node) {
+                    collapseItem(node)
                 } else {
-                    expandItem(item)
+                    expandItem(node)
                 }
             }
             // For files, the selection change already triggers opening via the delegate
@@ -410,9 +503,10 @@ final class KeyHandlingOutlineView: NSOutlineView {
 
 // MARK: - File Cell View
 
-/// Custom cell view with icon, name, favorite star, and markdown count badge for folders.
+/// Custom cell view with icon, name, favorite star, change dot, and markdown count badge for folders.
 final class FileCellView: NSTableCellView {
 
+    private let changeDot = NSView()
     private let iconView = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let starButton = NSButton()
@@ -420,6 +514,8 @@ final class FileCellView: NSTableCellView {
     private var countMinWidthConstraint: NSLayoutConstraint!
     private var countTrailingConstraint: NSLayoutConstraint!
     private var starWidthConstraint: NSLayoutConstraint!
+    private var changeDotWidthConstraint: NSLayoutConstraint!
+    private var iconLeadingConstraint: NSLayoutConstraint!
     private var itemURL: URL?
     private var isFavorited = false
     private var onToggleFavorite: ((URL) -> Void)?
@@ -435,6 +531,14 @@ final class FileCellView: NSTableCellView {
     }
 
     private func setupViews() {
+        // Blue dot indicator for new/changed files
+        changeDot.translatesAutoresizingMaskIntoConstraints = false
+        changeDot.wantsLayer = true
+        changeDot.layer?.backgroundColor = NSColor.systemBlue.cgColor
+        changeDot.layer?.cornerRadius = 3.5 // Half of 7pt for circle
+        changeDot.isHidden = true
+        addSubview(changeDot)
+
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.imageScaling = .scaleProportionallyDown
         addSubview(iconView)
@@ -476,9 +580,16 @@ final class FileCellView: NSTableCellView {
         // Create the width constraint but don't activate it yet
         countMinWidthConstraint = countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 30)
         countTrailingConstraint = countLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4)
+        changeDotWidthConstraint = changeDot.widthAnchor.constraint(equalToConstant: 0)
+        iconLeadingConstraint = iconView.leadingAnchor.constraint(equalTo: changeDot.trailingAnchor, constant: 2)
 
         NSLayoutConstraint.activate([
-            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            changeDot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            changeDot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            changeDotWidthConstraint,
+            changeDot.heightAnchor.constraint(equalTo: changeDot.widthAnchor),
+
+            iconLeadingConstraint,
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 16),
             iconView.heightAnchor.constraint(equalToConstant: 16),
@@ -506,17 +617,28 @@ final class FileCellView: NSTableCellView {
         countLabel.setContentHuggingPriority(.required, for: .horizontal)
     }
 
-    func configure(with item: FolderItem, indentLevel: Int, outlineView: NSOutlineView, isFavorite: Bool = false, onToggleFavorite: ((URL) -> Void)? = nil) {
+    func configure(with item: FolderItem, indentLevel: Int, outlineView: NSOutlineView, isFavorite: Bool = false, isChanged: Bool = false, onToggleFavorite: ((URL) -> Void)? = nil) {
         self.itemURL = item.url
         self.onToggleFavorite = onToggleFavorite
 
         nameLabel.stringValue = item.name
         nameLabel.textColor = (item.isMarkdown || item.isFolder) ? .labelColor : .secondaryLabelColor
 
-        // Accessibility: announce file type and favorite status to VoiceOver
+        // Blue dot for new/changed files
+        if isChanged {
+            changeDot.isHidden = false
+            changeDotWidthConstraint.constant = 7
+            changeDot.layer?.backgroundColor = NSColor.systemBlue.cgColor
+        } else {
+            changeDot.isHidden = true
+            changeDotWidthConstraint.constant = 0
+        }
+
+        // Accessibility: announce file type, favorite status, and change status to VoiceOver
         let typePrefix = item.isFolder ? "Folder" : "File"
         let favoriteStatus = isFavorite ? ", favorited" : ""
-        setAccessibilityLabel("\(typePrefix): \(item.name)\(favoriteStatus)")
+        let changedStatus = isChanged ? ", modified" : ""
+        setAccessibilityLabel("\(typePrefix): \(item.name)\(favoriteStatus)\(changedStatus)")
 
         iconView.image = icon(for: item)
         iconView.contentTintColor = item.isFolder ? .systemBlue : (item.isMarkdown ? .labelColor : .secondaryLabelColor)

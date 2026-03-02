@@ -100,10 +100,11 @@ struct QuickSwitcher: View {
         .onAppear {
             selectedIndex = 0
             results = Self.scoreFiles(allFiles, query: query)
-            // Delay focus to ensure view is in window hierarchy
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                isSearchFocused = true
-            }
+        }
+        .task {
+            // Small delay so view is in the window hierarchy before requesting focus
+            try? await Task.sleep(for: .milliseconds(50))
+            isSearchFocused = true
         }
         .onChange(of: query) { _, newQuery in
             selectedIndex = 0

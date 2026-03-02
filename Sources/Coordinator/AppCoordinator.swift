@@ -38,6 +38,12 @@ public final class AppCoordinator {
     /// File metadata repository for persistence (optional - set after container init)
     public var metadata: FileMetadataRepository?
 
+    /// Watches the open folder for file system changes (new/modified/deleted files)
+    private var folderWatcher: FolderWatcher?
+
+    /// Coalesces rapid FSEvent-triggered reloads into a single tree reload
+    private var folderReloadTask: Task<Void, Never>?
+
     /// Debounced scroll save task — coalesces ~60 saves/sec into ~2/sec
     private var scrollSaveTask: Task<Void, Never>?
     private var pendingScrollPosition: (url: URL, position: Double)?
@@ -57,11 +63,13 @@ public final class AppCoordinator {
     public func openFolder(_ url: URL) {
         navigation.openFolder(url)
         document.clearContent()
+        startFolderWatcher(for: url)
     }
 
     /// Closes the current folder and returns to start screen
     public func closeFolder() {
         flushScrollPosition()
+        stopFolderWatcher()
         navigation.closeFolder()
         document.clearContent()
     }
@@ -70,6 +78,7 @@ public final class AppCoordinator {
     public func selectFile(_ url: URL) {
         flushScrollPosition()
         navigation.selectFile(url)
+        navigation.clearChanged(for: url)
         document.clearChanges()
     }
 
@@ -260,6 +269,137 @@ public final class AppCoordinator {
     public func deleteBookmark(_ id: UUID) {
         metadata?.deleteBookmark(id)
     }
+
+    // MARK: - Folder Watcher
+
+    /// Suspend folder watcher when app resigns active (saves energy).
+    public func suspendFolderWatcher() {
+        folderWatcher?.suspend()
+    }
+
+    /// Resume folder watcher when app becomes active.
+    /// Also triggers a quiet tree diff to catch any changes that occurred while suspended.
+    public func resumeFolderWatcher() {
+        folderWatcher?.resume()
+
+        // Safety net: diff tree to catch events missed during suspend
+        guard let rootURL = navigation.rootFolderURL else { return }
+        folderReloadTask?.cancel()
+        folderReloadTask = Task { [weak self] in
+            guard let self else { return }
+
+            // Invalidate root cache so loadTreeWithDiff does a fresh scan
+            FolderService.shared.invalidateCache(for: rootURL)
+            let newTree = await FolderService.shared.loadTreeWithDiff(at: rootURL)
+            guard !Task.isCancelled, self.navigation.rootFolderURL != nil else { return }
+
+            let newDisplay = FolderTreeFilter.filterMarkdownOnly(newTree)
+
+            // Only update if tree actually changed (avoids reloadData flicker)
+            let oldPaths = Self.collectFilePaths(from: self.navigation.displayItems)
+            let newPaths = Self.collectFilePaths(from: newDisplay)
+            guard oldPaths != newPaths else { return }
+
+            let addedPaths = newPaths.subtracting(oldPaths)
+            if let selected = self.navigation.selectedFile {
+                // Don't dot the currently open file
+                self.navigation.markPathsChanged(addedPaths.subtracting([selected.path]))
+            } else {
+                self.navigation.markPathsChanged(addedPaths)
+            }
+            self.navigation.displayItems = newDisplay
+        }
+    }
+
+    private func startFolderWatcher(for url: URL) {
+        stopFolderWatcher()
+        let watcher = FolderWatcher { [weak self] changedDirs in
+            self?.handleFolderChanges(changedDirs)
+        }
+        watcher.watch(url)
+        folderWatcher = watcher
+    }
+
+    private func stopFolderWatcher() {
+        folderReloadTask?.cancel()
+        folderReloadTask = nil
+        folderWatcher?.stop()
+        folderWatcher = nil
+        navigation.changedPaths.removeAll()
+    }
+
+    /// Responds to FSEvents: invalidates cache, reloads tree, marks changed paths.
+    /// Coalesces rapid events — cancels any in-flight reload before starting a new one.
+    private func handleFolderChanges(_ changedDirs: Set<String>) {
+        guard let rootURL = navigation.rootFolderURL else { return }
+
+        // Invalidate cache for each changed directory
+        for dir in changedDirs {
+            FolderService.shared.invalidateCache(for: URL(fileURLWithPath: dir))
+        }
+
+        // Cancel any in-flight reload to coalesce rapid FSEvent bursts
+        folderReloadTask?.cancel()
+        folderReloadTask = Task { [weak self] in
+            guard let self else { return }
+            let oldItems = self.navigation.displayItems
+            let newTree = await FolderService.shared.loadTreeWithDiff(at: rootURL)
+
+            // Guard: folder may have been closed during async reload
+            guard !Task.isCancelled, self.navigation.rootFolderURL != nil else { return }
+
+            let newDisplay = FolderTreeFilter.filterMarkdownOnly(newTree)
+
+            // Identify new or modified files by diffing old vs new
+            let oldPaths = Self.collectFilePaths(from: oldItems)
+            let newPaths = Self.collectFilePaths(from: newDisplay)
+
+            // New files = paths in new that weren't in old
+            let addedPaths = newPaths.subtracting(oldPaths)
+            // Modified files = files in changed directories (exclude currently open file)
+            var modifiedPaths = Set<String>()
+            for dir in changedDirs {
+                Self.collectFilePathsUnder(dir, from: newDisplay, into: &modifiedPaths)
+            }
+
+            // Don't mark the currently open file (user is already seeing it)
+            if let selected = self.navigation.selectedFile {
+                modifiedPaths.remove(selected.path)
+            }
+
+            self.navigation.markPathsChanged(addedPaths.union(modifiedPaths))
+            self.navigation.displayItems = newDisplay
+        }
+    }
+
+    /// Collects all file (non-folder) paths from a tree.
+    private static func collectFilePaths(from items: [FolderItem]) -> Set<String> {
+        var paths = Set<String>()
+        func walk(_ items: [FolderItem]) {
+            for item in items {
+                if !item.isFolder {
+                    paths.insert(item.url.path)
+                }
+                if let children = item.children {
+                    walk(children)
+                }
+            }
+        }
+        walk(items)
+        return paths
+    }
+
+    /// Collects file paths that are descendants of a given directory path.
+    private static func collectFilePathsUnder(_ dirPath: String, from items: [FolderItem], into result: inout Set<String>) {
+        for item in items {
+            if !item.isFolder && item.url.deletingLastPathComponent().path == dirPath {
+                result.insert(item.url.path)
+            }
+            if let children = item.children {
+                collectFilePathsUnder(dirPath, from: children, into: &result)
+            }
+        }
+    }
 }
 
 // MARK: - Navigation State
@@ -284,6 +424,15 @@ public final class NavigationState {
     /// Pre-filtered display items (shared with Quick Switcher)
     internal var displayItems: [FolderItem] = []
 
+    /// Paths of files that are new or modified since last viewed (for blue dot indicator)
+    internal var changedPaths: Set<String> = []
+
+    /// Sidebar expansion state — persists across NSViewRepresentable Coordinator recreation.
+    /// SwiftUI can destroy and recreate the OutlineFileList Coordinator at any time
+    /// (e.g., NavigationSplitView column management, view identity changes).
+    /// Storing expansion state here ensures it survives those recreations.
+    internal var sidebarExpandedPaths = Set<String>()
+
     // MARK: - Actions
 
     func openFolder(_ url: URL) {
@@ -296,16 +445,42 @@ public final class NavigationState {
         rootFolderURL = url
         selectedFile = nil
         sidebarFilterQuery = ""
+        sidebarExpandedPaths.removeAll()
     }
 
     func closeFolder() {
         rootFolderURL?.stopAccessingSecurityScopedResource()
         rootFolderURL = nil
         selectedFile = nil
+        changedPaths.removeAll()
+        sidebarExpandedPaths.removeAll()
     }
 
     func selectFile(_ url: URL) {
         selectedFile = url
+    }
+
+    // MARK: - Change Tracking
+
+    /// Adds paths to the changed set (new or modified files).
+    func markPathsChanged(_ paths: Set<String>) {
+        changedPaths.formUnion(paths)
+    }
+
+    /// Removes a file's path from the changed set (user opened/viewed it).
+    func clearChanged(for url: URL) {
+        changedPaths.remove(url.path)
+    }
+
+    /// Checks if a file path is in the changed set.
+    func isChanged(_ url: URL) -> Bool {
+        changedPaths.contains(url.path)
+    }
+
+    /// Checks if any descendant of a folder has changes (for folder dot indicators).
+    func hasChangedDescendant(_ folderURL: URL) -> Bool {
+        let prefix = folderURL.path + "/"
+        return changedPaths.contains { $0.hasPrefix(prefix) }
     }
 }
 

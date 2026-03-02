@@ -108,6 +108,12 @@ struct BrowserView: View {
         .onChange(of: coordinator.navigation.displayItems) { _, newItems in
             allMarkdownFiles = FolderTreeFilter.flattenMarkdownFiles(newItems)
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            coordinator.suspendFolderWatcher()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            coordinator.resumeFolderWatcher()
+        }
     }
 
     // MARK: - No Folder View
@@ -271,7 +277,9 @@ struct OutlineFileListWrapper: View {
                             }
                         }
                     ),
+                    navigationState: coordinator.navigation,
                     isFavorite: { url in coordinator.isFavorite(url) },
+                    isChanged: { url in coordinator.navigation.isChanged(url) },
                     onToggleFavorite: { url in
                         coordinator.toggleFavorite(for: url)
                     }

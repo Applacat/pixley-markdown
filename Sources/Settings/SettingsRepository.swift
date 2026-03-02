@@ -259,6 +259,18 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
         defaults.set(behavior.underlineLinks, forKey: "underlineLinks")
     }
 
+    /// Debounced persist task — coalesces rapid settings changes (e.g., font-size stepper)
+    private var settingsPersistTask: Task<Void, Never>?
+
+    private func schedulePersist(_ work: @escaping @MainActor () -> Void) {
+        settingsPersistTask?.cancel()
+        settingsPersistTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled, self != nil else { return }
+            work()
+        }
+    }
+
     /// Observes property changes on settings containers and persists them.
     /// Uses withObservationTracking to re-arm after each change.
     private func startObserving() {
@@ -272,8 +284,9 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
             _ = appearance.colorScheme
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
-                self?.persistAppearance()
-                self?.observeAppearance()
+                guard let self else { return }
+                self.schedulePersist { self.persistAppearance() }
+                self.observeAppearance()
             }
         }
     }
@@ -287,8 +300,9 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
             _ = rendering.showLineNumbers
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
-                self?.persistRendering()
-                self?.observeRendering()
+                guard let self else { return }
+                self.schedulePersist { self.persistRendering() }
+                self.observeRendering()
             }
         }
     }
@@ -299,8 +313,9 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
             _ = behavior.underlineLinks
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
-                self?.persistBehavior()
-                self?.observeBehavior()
+                guard let self else { return }
+                self.schedulePersist { self.persistBehavior() }
+                self.observeBehavior()
             }
         }
     }

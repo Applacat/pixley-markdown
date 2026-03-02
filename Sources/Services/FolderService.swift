@@ -66,12 +66,12 @@ final class FolderService {
         }
     }
 
-    /// Schedules a debounced cache write (2-second delay).
+    /// Schedules a debounced cache write (5-second delay).
     /// Multiple rapid invalidations coalesce into a single disk write.
     private func scheduleCacheSave() {
         cacheSaveTask?.cancel()
         cacheSaveTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled else { return }
             self?.saveCacheToDisk()
         }
