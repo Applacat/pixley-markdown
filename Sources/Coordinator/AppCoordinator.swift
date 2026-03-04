@@ -38,6 +38,9 @@ public final class AppCoordinator {
     /// File metadata repository for persistence (optional - set after container init)
     public var metadata: FileMetadataRepository?
 
+    /// Chat summary repository for per-document conversation persistence
+    public var chatSummaryRepository: ChatSummaryRepository?
+
     /// Watches the open folder for file system changes (new/modified/deleted files)
     private var folderWatcher: FolderWatcher?
 

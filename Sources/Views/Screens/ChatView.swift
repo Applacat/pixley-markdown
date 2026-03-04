@@ -21,7 +21,6 @@ struct ChatView: View {
     @State private var isWaitingForDocument = false
     @State private var askTask: Task<Void, Never>?
     @State private var initialQuestionTask: Task<Void, Never>?
-    @State private var showResetBanner = false
 
     // Service for business logic — @State ensures single instance per view identity
     @State private var chatService = ChatService()
@@ -49,11 +48,24 @@ struct ChatView: View {
                 initialQuestionTask = Task { await handleInitialQuestion() }
             }
         }
-        .onChange(of: coordinator.navigation.selectedFile) { _, _ in
-            // File changed — don't clear chat, but note the context shift
+        .onChange(of: coordinator.navigation.selectedFile) { oldValue, newValue in
+            // Document switched — reset conversation for new document
+            if oldValue != newValue, let newFile = newValue {
+                messages.removeAll()
+                chatService.switchDocument(
+                    documentContent: coordinator.document.content,
+                    documentPath: newFile.path
+                )
+            }
         }
         .onDisappear {
             cancelAllTasks()
+        }
+        .task {
+            // Configure summary repository once SwiftData is ready
+            if let repo = coordinator.chatSummaryRepository {
+                chatService.configure(summaryRepository: repo)
+            }
         }
     }
 
@@ -70,7 +82,7 @@ struct ChatView: View {
 
                 // Turn counter
                 if chatService.turnCount > 0 {
-                    Text("Turn \(chatService.turnCount)/\(ChatConfiguration.maxTurnsBeforeReset)")
+                    Text("Turn \(chatService.turnCount)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
@@ -97,7 +109,6 @@ struct ChatView: View {
     private func clearChat() {
         cancelAllTasks()
         messages.removeAll()
-        showResetBanner = false
         chatService.resetSession()
     }
 
@@ -159,12 +170,6 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        // Auto-reset banner
-                        if showResetBanner {
-                            resetBanner
-                                .id("resetBanner")
-                        }
-
                         if messages.isEmpty {
                             emptyChat
                         } else {
@@ -185,6 +190,22 @@ struct ChatView: View {
                             }
                             .padding(.horizontal, 12)
                             .id("loading")
+                        }
+
+                        // "Organizing thoughts..." indicator during condensation
+                        if chatService.isCondensing {
+                            HStack(spacing: 6) {
+                                Image(systemName: "sparkles")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("Organizing thoughts...")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .transition(.opacity)
+                            .id("condensing")
                         }
                     }
                     .padding(.vertical, 12)
@@ -219,23 +240,6 @@ struct ChatView: View {
                 proxy.scrollTo(target, anchor: .bottom)
             }
         }
-    }
-
-    // MARK: - Reset Banner
-
-    private var resetBanner: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "arrow.counterclockwise")
-                .font(.caption)
-            Text("Context limit reached. Starting fresh conversation.")
-                .font(.caption)
-        }
-        .foregroundStyle(.orange)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
-        .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal, 12)
     }
 
     // MARK: - Empty Chat
@@ -361,19 +365,19 @@ struct ChatView: View {
             isLoading = false
         }
 
+        let documentPath = coordinator.navigation.selectedFile?.path ?? ""
+
         let result = await chatService.ask(
             question: question,
-            documentContent: coordinator.document.content
+            documentContent: coordinator.document.content,
+            documentPath: documentPath,
+            messages: messages
         )
 
         guard !Task.isCancelled else { return }
 
         switch result {
         case .success(let content):
-            messages.append(ChatMessage(role: .assistant, content: content))
-
-        case .successWithReset(let content):
-            showResetBanner = true
             messages.append(ChatMessage(role: .assistant, content: content))
 
         case .error(let errorContent):

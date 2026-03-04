@@ -50,21 +50,24 @@ Views observe state via Environment, mutate through coordinator methods.
 **Models:**
 - `FolderItem.swift` - File/folder with `children: [FolderItem]?` for hierarchy
 - `ChatMessage.swift` - AI chat message model
-- `ChatConfiguration.swift` - FM constants (document cap, turn limit, timeout)
+- `ChatConfiguration.swift` - FM constants (document cap, timeout)
 - `AppError.swift` - Explicit error types
 
 **Services:**
 - `FolderService.swift` - Loads full folder tree recursively via `loadTree()`, disk cache
 - `RecentFoldersManager.swift` - Recent folders + files tracking with security-scoped bookmarks
 - `SecurityScopedBookmarkManager.swift` - Bookmark creation, resolution, stale refresh
-- `ChatService.swift` - AI chat using Foundation Models with session management, timeout, auto-reset
+- `ChatService.swift` - AI chat using Foundation Models with session management, timeout, per-turn condensation
+- `TranscriptCondenser.swift` - AI + heuristic transcript summarization with retry-with-backoff
+- `ChatTools.swift` - FM tools for cross-document recall (listDocuments, getDocumentHistory)
 - `ChatInputValidator.swift` - Input validation before sending to FM
 - `FileWatcher.swift` - DispatchSource file monitoring with reload pill
 - `WelcomeManager.swift` - First-launch welcome state
 - `FolderTreeFilter.swift` - Search/filter within folder tree
 
 **Persistence:**
-- `FileMetadata.swift` / `Bookmark.swift` - SwiftData `@Model` classes
+- `FileMetadata.swift` / `Bookmark.swift` / `ChatSummary.swift` - SwiftData `@Model` classes
+- `ChatSummaryRepository.swift` - Protocol + SwiftData implementation for per-document chat summaries
 - `FileMetadataRepository.swift` - Protocol abstraction for metadata persistence
 - `SwiftDataMetadataRepository.swift` - SwiftData implementation with schema versioning
 
@@ -95,7 +98,10 @@ AI chat uses Apple's on-device Foundation Models framework:
 - `respond(to:)` for plain text Q&A (no streaming without @Generable)
 - Catches all `GenerationError` types: `exceededContextWindowSize`, `guardrailViolation`, `unsupportedLanguageOrLocale`
 - 30-second timeout wrapper prevents hangs
-- Auto-resets session after 3 Q&A turns to stay within 4096-token context window
+- Per-turn transcript condensation (AI summarizer + heuristic fallback) replaces 3-turn hard reset
+- Summaries persisted in SwiftData per document (LRU cap 50), survive app restarts
+- FM tools (`listDocuments`, `getDocumentHistory`) enable cross-document recall
+- Document switching preserves/loads summaries automatically
 - Fresh session per "Forget" reset
 - Availability check via `SystemLanguageModel.default.availability`
 

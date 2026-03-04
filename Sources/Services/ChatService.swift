@@ -12,13 +12,17 @@ import os.log
 /// transcript internally. Document context goes in `instructions` once,
 /// and questions are sent via `respond(to:)`.
 ///
-/// Crash prevention strategy:
+/// Context management strategy:
+/// 1. Per-turn transcript condensation (replaces 3-turn hard reset)
+/// 2. AI summarizer with heuristic fallback + retry-with-backoff
+/// 3. Summaries persisted via SwiftData (one per document, LRU cap 50)
+/// 4. Document truncation — cap at ~2500 chars to leave headroom
+/// 5. Conversation resets on document switch
+///
+/// Crash prevention:
 /// 1. Catch ALL GenerationError types (context exceeded, guardrail, language)
-/// 2. Timeout — races respond() against a sleep; if sleep wins, the respond task
-///    is cancelled and the session is reset
+/// 2. Timeout — races respond() against a sleep; if sleep wins, cancelled + reset
 /// 3. Fresh session per conversation — never reuse across "Forget" resets
-/// 4. 3-turn auto-reset — after 3 Q&A turns, create fresh session
-/// 5. Document truncation — cap at ~2500 chars to leave headroom
 @available(macOS 26, *)
 @MainActor
 final class ChatService {
@@ -32,70 +36,134 @@ final class ChatService {
     /// Number of completed Q&A round-trips in this session
     private(set) var turnCount = 0
 
-    /// Whether the last response triggered an auto-reset
-    private(set) var didAutoReset = false
+    /// Whether condensation is currently running (for UI indicator)
+    private(set) var isCondensing = false
 
     /// The document content used to initialize the current session
     private var currentDocumentContent: String = ""
 
+    /// The current document path (for persistence key)
+    private var currentDocumentPath: String = ""
+
+    /// Live condensed summary for the current session
+    private var currentSummary: String?
+
+    /// Transcript condenser (AI + heuristic strategies)
+    private let condenser = TranscriptCondenser()
+
+    /// Summary persistence repository (injected)
+    private var summaryRepository: ChatSummaryRepository?
+
+    // MARK: - Configuration
+
+    /// Injects the summary repository for persistence.
+    /// Call once after SwiftData container is ready.
+    func configure(summaryRepository: ChatSummaryRepository) {
+        self.summaryRepository = summaryRepository
+    }
+
     // MARK: - Session Management
 
-    /// Creates a fresh session with document context baked into instructions.
-    func startSession(documentContent: String) {
+    /// Creates a fresh session with document context and condensed summary.
+    func startSession(documentContent: String, documentPath: String = "") {
         let truncated = String(documentContent.prefix(ChatConfiguration.maxDocumentChars))
         currentDocumentContent = truncated
+        if !documentPath.isEmpty { currentDocumentPath = documentPath }
 
-        session = LanguageModelSession(instructions: """
-            You are a helpful assistant analyzing a markdown document.
-            Answer questions about the document concisely and accurately.
-            If the answer is not in the document, say so.
+        // Load persisted summary if available for this document
+        if !currentDocumentPath.isEmpty, currentSummary == nil {
+            currentSummary = summaryRepository?.getSummary(for: currentDocumentPath)?.summary
+        }
 
-            Document content:
-            ---
-            \(truncated)
-            ---
-            """)
+        let instructions = buildInstructions(
+            documentContent: truncated,
+            summary: currentSummary
+        )
+
+        session = LanguageModelSession(instructions: instructions)
         turnCount = 0
-        didAutoReset = false
-        Self.log.info("Session started with \(truncated.count) chars of document content")
+        Self.log.info("Session started with \(truncated.count) chars, summary: \(self.currentSummary?.count ?? 0) chars")
     }
 
     /// Resets the session completely (user pressed "Forget").
+    /// Clears both live session AND persisted summary for current document.
     func resetSession() {
         if turnCount > 0 {
             Self.log.info("Session reset after \(self.turnCount) turns")
         }
+
+        // Cancel any in-flight condensation
+        condensationTask?.cancel()
+        condensationTask = nil
+
+        // Delete persisted summary for current document
+        if !currentDocumentPath.isEmpty {
+            summaryRepository?.deleteSummary(for: currentDocumentPath)
+        }
+
         session = nil
         turnCount = 0
-        didAutoReset = false
+        isCondensing = false
+        currentSummary = nil
         currentDocumentContent = ""
+        currentDocumentPath = ""
+        condenser.reset()
+    }
+
+    /// Resets conversation for a new document.
+    /// Persists current summary, then clears all live state.
+    func switchDocument(documentContent: String, documentPath: String) {
+        // Persist summary for the document we're leaving
+        if !currentDocumentPath.isEmpty, let summary = currentSummary {
+            summaryRepository?.saveSummary(
+                documentPath: currentDocumentPath,
+                summary: summary
+            )
+        }
+
+        // Cancel any in-flight condensation
+        condensationTask?.cancel()
+        condensationTask = nil
+
+        // Full reset for new document
+        session = nil
+        turnCount = 0
+        isCondensing = false
+        currentSummary = nil
+        condenser.reset()
+
+        // Store new document info (session created lazily on first ask)
+        let truncated = String(documentContent.prefix(ChatConfiguration.maxDocumentChars))
+        currentDocumentContent = truncated
+        currentDocumentPath = documentPath
+
+        // Pre-load persisted summary for the new document
+        if !documentPath.isEmpty {
+            currentSummary = summaryRepository?.getSummary(for: documentPath)?.summary
+        }
+
+        Self.log.info("Switched to document, existing summary: \(self.currentSummary != nil)")
     }
 
     // MARK: - Ask Question
 
     /// Sends a question to Foundation Models and returns the full response.
     ///
-    /// Plain text `respond(to:)` does not support token streaming —
-    /// the caller should show a "Thinking..." indicator while awaiting.
+    /// After a successful response, fires per-turn condensation as a background task.
+    /// The caller should observe `isCondensing` to show "Organizing thoughts..." indicator.
     ///
     /// Includes a built-in timeout: if `respond(to:)` doesn't return within
     /// `ChatConfiguration.responseTimeout`, the call is cancelled, the session
     /// is reset, and an error result is returned.
-    ///
-    /// Returns a `ChatResult` indicating success, auto-reset, or error.
-    func ask(question: String, documentContent: String) async -> ChatResult {
-        didAutoReset = false
-
+    func ask(
+        question: String,
+        documentContent: String,
+        documentPath: String = "",
+        messages: [ChatMessage]
+    ) async -> ChatResult {
         // Ensure session exists (auto-create if needed)
         if session == nil {
-            startSession(documentContent: documentContent)
-        }
-
-        // Check if we need auto-reset before this turn
-        if turnCount >= ChatConfiguration.maxTurnsBeforeReset {
-            Self.log.info("Auto-reset: turn limit reached (\(self.turnCount) turns)")
-            startSession(documentContent: documentContent)
-            didAutoReset = true
+            startSession(documentContent: documentContent, documentPath: documentPath)
         }
 
         guard let session else {
@@ -104,13 +172,10 @@ final class ChatService {
 
         Self.log.info("Asking question: turn=\(self.turnCount + 1), question=\(question.prefix(80), privacy: .private)")
 
-        // Capture session reference to local before crossing Task boundary.
-        // Defensive against future Sendable enforcement on LanguageModelSession.
+        // Capture session reference before crossing Task boundary
         let capturedSession = session
 
-        // Race respond() vs timeout.
-        // The respond task extracts .content (String) so only Sendable types cross
-        // the task boundary — Response<String> stays inside the task.
+        // Race respond() vs timeout
         let respondTask = Task<String, Error> {
             let response = try await capturedSession.respond(to: question)
             return response.content
@@ -128,19 +193,20 @@ final class ChatService {
             turnCount += 1
             Self.log.info("Response received: \(content.count) chars, turn=\(self.turnCount)")
 
-            if didAutoReset {
-                return .successWithReset(content)
-            }
+            // Fire condensation as a background task — does NOT block the response
+            let allMessages = messages + [ChatMessage(role: .assistant, content: content)]
+            condensationTask?.cancel()
+            condensationTask = Task { await runCondensation(messages: allMessages) }
+
             return .success(content)
         } catch let error as LanguageModelSession.GenerationError {
             watchdog.cancel()
             return handleGenerationError(error, documentContent: documentContent)
         } catch is CancellationError {
             watchdog.cancel()
-            // If the respondTask was cancelled, the watchdog fired (timeout)
             if respondTask.isCancelled {
                 Self.log.error("Response timed out after \(ChatConfiguration.responseTimeout)")
-                startSession(documentContent: documentContent)
+                startSession(documentContent: documentContent, documentPath: currentDocumentPath)
                 return .error("The AI took too long to respond. The conversation has been reset — please try again.")
             }
             return .cancelled
@@ -149,6 +215,59 @@ final class ChatService {
             Self.log.error("Unexpected error: \(error.localizedDescription)")
             return .error("Error: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Condensation
+
+    /// Background condensation task — cancelled on new ask or reset
+    private var condensationTask: Task<Void, Never>?
+
+    /// Runs per-turn condensation after a successful response.
+    /// Updates isCondensing for UI, persists summary, and refreshes session.
+    private func runCondensation(messages: [ChatMessage]) async {
+        isCondensing = true
+        defer { isCondensing = false }
+
+        let condensed = await condenser.condense(
+            messages: messages,
+            existingSummary: currentSummary
+        )
+
+        guard !Task.isCancelled, let condensed else { return }
+
+        currentSummary = condensed
+
+        // Persist to SwiftData
+        if !currentDocumentPath.isEmpty {
+            summaryRepository?.saveSummary(
+                documentPath: currentDocumentPath,
+                summary: condensed
+            )
+        }
+
+        // Create fresh session with updated summary
+        let instructions = buildInstructions(
+            documentContent: currentDocumentContent,
+            summary: condensed
+        )
+
+        session = LanguageModelSession(instructions: instructions)
+        Self.log.info("Session refreshed with condensed summary (\(condensed.count) chars)")
+    }
+
+    // MARK: - Instructions Builder
+
+    private func buildInstructions(documentContent: String, summary: String?) -> String {
+        var parts: [String] = [
+            "You help users understand markdown documents. Be direct and specific. Don't repeat what the user already knows.",
+            "Document:\n---\n\(documentContent)\n---"
+        ]
+
+        if let summary, !summary.isEmpty {
+            parts.append("Earlier conversation:\n\(summary)")
+        }
+
+        return parts.joined(separator: "\n\n")
     }
 
     // MARK: - Error Handling
@@ -160,7 +279,7 @@ final class ChatService {
         switch error {
         case .exceededContextWindowSize:
             Self.log.warning("Context window exceeded at turn \(self.turnCount)")
-            startSession(documentContent: documentContent)
+            startSession(documentContent: documentContent, documentPath: currentDocumentPath)
             return .error("Context limit reached. The conversation has been reset — please ask your question again.")
 
         case .guardrailViolation:
@@ -173,7 +292,7 @@ final class ChatService {
 
         default:
             Self.log.error("Unknown GenerationError: \(String(describing: error))")
-            startSession(documentContent: documentContent)
+            startSession(documentContent: documentContent, documentPath: currentDocumentPath)
             return .error("An unexpected AI error occurred. The conversation has been reset.")
         }
     }
@@ -186,8 +305,6 @@ final class ChatService {
 enum ChatResult {
     /// Successful response
     case success(String)
-    /// Successful response, but session was auto-reset first
-    case successWithReset(String)
     /// Error message to display to user
     case error(String)
     /// Request was cancelled

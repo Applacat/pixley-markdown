@@ -25,10 +25,6 @@ private enum TestableChatConfiguration {
     /// Leaves headroom for conversation within the 4096-token context window.
     static let maxDocumentChars = 2500
 
-    /// Auto-reset session after this many Q&A round-trips.
-    /// Prevents context window exhaustion on long conversations.
-    static let maxTurnsBeforeReset = 3
-
     /// Timeout for each Foundation Models respond() call (in seconds).
     /// Prevents app freeze if the model hangs.
     static let responseTimeoutSeconds: Double = 30
@@ -52,26 +48,13 @@ final class ChatConfigurationTests: XCTestCase {
             "Document char budget should leave room in the 4096-token context window")
     }
 
-    func testMaxTurnsBeforeReset_isReasonable() {
-        // Should be at least 1 (allow at least one exchange)
-        // and not so large that context overflows
-        XCTAssertGreaterThanOrEqual(TestableChatConfiguration.maxTurnsBeforeReset, 1)
-        XCTAssertLessThanOrEqual(TestableChatConfiguration.maxTurnsBeforeReset, 20)
-    }
-
     func testResponseTimeout_isReasonable() {
         // Should be long enough for model to respond, but not so long the user thinks it froze
         XCTAssertGreaterThanOrEqual(TestableChatConfiguration.responseTimeoutSeconds, 5)
         XCTAssertLessThanOrEqual(TestableChatConfiguration.responseTimeoutSeconds, 120)
     }
 
-    func testMaxMessageHistory_isGreaterThanMaxTurns() {
-        // Message history should accommodate more messages than the turn limit
-        // (each turn = 2 messages: user + assistant)
-        let messagesPerTurn = 2
-        XCTAssertGreaterThan(
-            TestableChatConfiguration.maxMessageHistory,
-            TestableChatConfiguration.maxTurnsBeforeReset * messagesPerTurn
-        )
+    func testMaxMessageHistory_isPositive() {
+        XCTAssertGreaterThan(TestableChatConfiguration.maxMessageHistory, 0)
     }
 }

@@ -12,7 +12,7 @@
 
 - **System / Light / Dark appearance** — Three-way color scheme picker in Settings. Follows system preference or overrides to always-light or always-dark. Themes auto-sync their light/dark variant to match.
 
-- **On-device AI chat** — Ask questions about the current document using Apple Foundation Models (completely on-device, no cloud, no API keys). The AI reads a truncated version of the document and answers questions in a chat panel that slides in as an inspector. Turn counter, auto-reset after 3 turns to stay within context limits, "Forget" to start fresh.
+- **On-device AI chat** — Ask questions about the current document using Apple Foundation Models (completely on-device, no cloud, no API keys). The AI reads a truncated version of the document and answers questions in a chat panel that slides in as an inspector. Per-turn transcript condensation keeps conversations going indefinitely within the 4096-token context window, with cross-document recall via FM tools. "Forget" to start fresh.
 
 - **Drag-and-drop** — Drop a folder or `.md` file anywhere on the start screen to open it immediately.
 

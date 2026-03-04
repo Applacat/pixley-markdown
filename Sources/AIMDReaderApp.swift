@@ -304,13 +304,14 @@ struct AIMDReaderApp: App {
 
     // MARK: - Repository Configuration
 
-    /// Configures the metadata repository on the coordinator
+    /// Configures persistence repositories on the coordinator
     /// Called once when app launches
     @MainActor
     private func configureMetadataRepository() {
         guard coordinator.metadata == nil else { return }
         let context = modelContainer.mainContext
         coordinator.metadata = SwiftDataMetadataRepository(modelContext: context)
+        coordinator.chatSummaryRepository = SwiftDataChatSummaryRepository(modelContext: context)
     }
 
     // MARK: - Launch Logic

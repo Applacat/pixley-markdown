@@ -20,10 +20,6 @@ enum ChatConfiguration {
     /// Leaves headroom for conversation within the 4096-token context window.
     static let maxDocumentChars = 2500
 
-    /// Auto-reset session after this many Q&A round-trips.
-    /// Prevents context window exhaustion on long conversations.
-    static let maxTurnsBeforeReset = 3
-
     /// Timeout for each Foundation Models respond() call.
     /// Prevents app freeze if the model hangs.
     static let responseTimeout: Duration = .seconds(30)

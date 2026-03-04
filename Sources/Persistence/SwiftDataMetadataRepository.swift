@@ -155,7 +155,6 @@ public final class SwiftDataMetadataRepository: FileMetadataRepository {
 // MARK: - Schema Versioning
 
 /// Initial schema version (v1.0.0).
-/// All future schema changes must add a new VersionedSchema and migration stage.
 public enum SchemaV1: VersionedSchema {
     public static let versionIdentifier = Schema.Version(1, 0, 0)
 
@@ -164,19 +163,31 @@ public enum SchemaV1: VersionedSchema {
     }
 }
 
+/// Schema version 2 (v2.0.0) — adds ChatSummary for per-document conversation persistence.
+public enum SchemaV2: VersionedSchema {
+    public static let versionIdentifier = Schema.Version(2, 0, 0)
+
+    public static var models: [any PersistentModel.Type] {
+        [FileMetadata.self, Bookmark.self, ChatSummary.self]
+    }
+}
+
 /// Migration plan for file metadata persistence.
 /// Add new VersionedSchema types and migration stages as the schema evolves.
 public enum MetadataMigrationPlan: SchemaMigrationPlan {
     public static var schemas: [any VersionedSchema.Type] {
-        [SchemaV1.self]
+        [SchemaV1.self, SchemaV2.self]
     }
 
     public static var stages: [MigrationStage] {
-        // No migrations yet - this is the initial schema.
-        // Future migrations go here, e.g.:
-        // .lightweight(fromVersion: SchemaV1.self, toVersion: SchemaV2.self)
-        []
+        [migrateV1toV2]
     }
+
+    /// V1 → V2: adds ChatSummary table (lightweight — no data transformation needed)
+    static let migrateV1toV2 = MigrationStage.lightweight(
+        fromVersion: SchemaV1.self,
+        toVersion: SchemaV2.self
+    )
 }
 
 // MARK: - Model Container Configuration
@@ -194,7 +205,7 @@ public enum MetadataContainerConfiguration {
             isStoredInMemoryOnly: inMemory
         )
         return try ModelContainer(
-            for: Schema(versionedSchema: SchemaV1.self),
+            for: Schema(versionedSchema: SchemaV2.self),
             migrationPlan: MetadataMigrationPlan.self,
             configurations: [configuration]
         )
