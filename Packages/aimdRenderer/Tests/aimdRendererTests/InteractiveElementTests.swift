@@ -427,6 +427,80 @@ final class InteractiveElementDetectorTests: XCTestCase {
                          "Elements should be sorted by position")
         }
     }
+
+    // MARK: - Starter Document Smoke Test
+
+    func testStarterDocumentDetectsAll9Patterns() {
+        // Mirrors the Interactive Starter Document content
+        let text = """
+        # Interactive Markdown Starter
+
+        ## Setup Checklist
+        - [ ] Read this document
+        - [ ] Try toggling a checkbox
+
+        ## Your Info
+        - **Name:** [[your name]]
+        - **Start Date:** [[choose a date]]
+
+        ## Choose Your Focus
+        > - [ ] Design
+        > - [ ] Engineering
+
+        ## Review Gate
+        > - [ ] APPROVED
+        > - [ ] PASS
+        > - [ ] FAIL
+
+        ## Suggested Edits
+        This uses {++a modern ++}architecture with {--legacy --}components.
+        The timeline is {~~6 months~>3 months~~} for completion.
+        {==Key decision==}{>>Consider alternatives<<}
+
+        ## Project Status
+        <!-- status: draft | review | approved | shipped -->
+        **Status:** draft
+
+        ## AI Confidence
+        > [confidence: high] Use SwiftUI for the interface.
+        > [confidence: low] WebSocket might be needed.
+
+        ## Feedback
+        <!-- feedback -->
+        """
+        let elements = InteractiveElementDetector.detect(in: text)
+
+        let checkboxes = elements.filter { if case .checkbox = $0 { return true }; return false }
+        let fillIns = elements.filter { if case .fillIn = $0 { return true }; return false }
+        let choices = elements.filter { if case .choice = $0 { return true }; return false }
+        let reviews = elements.filter { if case .review = $0 { return true }; return false }
+        let suggestions = elements.filter { if case .suggestion = $0 { return true }; return false }
+        let statuses = elements.filter { if case .status = $0 { return true }; return false }
+        let confidences = elements.filter { if case .confidence = $0 { return true }; return false }
+        let feedbacks = elements.filter { if case .feedback = $0 { return true }; return false }
+
+        // All 8 actionable patterns detected (conditional/collapsible are pattern 9 but deferred)
+        XCTAssertEqual(checkboxes.count, 2, "checkboxes")
+        XCTAssertEqual(fillIns.count, 2, "fillIns")
+        XCTAssertEqual(choices.count, 1, "choices")
+        XCTAssertEqual(reviews.count, 1, "reviews")
+        XCTAssertGreaterThanOrEqual(suggestions.count, 3, "suggestions (add + del + sub + highlight)")
+        XCTAssertEqual(statuses.count, 1, "statuses")
+        XCTAssertEqual(confidences.count, 2, "confidences")
+        XCTAssertEqual(feedbacks.count, 1, "feedbacks")
+
+        // Verify structure has correct sections
+        let structure = MarkdownStructureParser.parse(text: text)
+        XCTAssertGreaterThanOrEqual(structure.sections.count, 1, "top-level sections")
+
+        // Verify progress on Setup Checklist section
+        if let setup = structure.sections.first?.children.first {
+            let progress = setup.progress
+            XCTAssertNotNil(progress, "setup checklist should have progress")
+            XCTAssertEqual(progress?.total, 2, "setup checklist has 2 checkboxes")
+            XCTAssertEqual(progress?.completed, 0, "none checked yet")
+        }
+    }
 }
 
 // MARK: - Document Structure Parser Tests
