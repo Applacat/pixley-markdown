@@ -257,6 +257,32 @@ final class InteractiveElementDetectorTests: XCTestCase {
         XCTAssertEqual(suggestions.count, 2)
     }
 
+    func testSuggestionsOnSameLineAsCheckbox() {
+        let text = "- [ ] Update API to use {++REST++} instead of {--SOAP--}"
+        let elements = InteractiveElementDetector.detect(in: text)
+        let checkboxes = elements.filter { if case .checkbox = $0 { return true }; return false }
+        let suggestions = elements.filter { if case .suggestion = $0 { return true }; return false }
+        XCTAssertEqual(checkboxes.count, 1)
+        XCTAssertEqual(suggestions.count, 2)
+    }
+
+    func testHighlightWithoutComment() {
+        let text = "{==important text==}"
+        let elements = InteractiveElementDetector.detect(in: text)
+        // Highlight without comment should NOT match (pattern requires {>>comment<<})
+        let suggestions = elements.filter { if case .suggestion = $0 { return true }; return false }
+        XCTAssertEqual(suggestions.count, 0)
+    }
+
+    func testSuggestionPreservesWhitespace() {
+        let text = "The {++very important ++}thing to do."
+        let elements = InteractiveElementDetector.detect(in: text)
+        guard case .suggestion(let s) = elements.first else {
+            XCTFail("Expected suggestion"); return
+        }
+        XCTAssertEqual(s.newText, "very important ")
+    }
+
     // MARK: - Status Detection
 
     func testDetectsStatus() {
@@ -529,6 +555,44 @@ final class MarkdownStructureParserTests: XCTestCase {
         XCTAssertNotNil(progress)
         XCTAssertEqual(progress?.completed, 2)
         XCTAssertEqual(progress?.total, 3)
+    }
+
+    func testProgressIncludesReviews() {
+        let text = """
+        # QA Section
+        - [x] Pre-check
+
+        > **QA: Login**
+        > [x] PASS — 2026-03-07
+        > [ ] FAIL
+
+        > **QA: Signup**
+        > [ ] PASS
+        > [ ] FAIL
+        """
+        let structure = MarkdownStructureParser.parse(text: text)
+        let progress = structure.sections[0].progress
+        XCTAssertNotNil(progress)
+        // 1 checkbox checked + 1 review completed = 2 completed out of 3 trackable (1 cb + 2 reviews)
+        XCTAssertEqual(progress?.completed, 2)
+        XCTAssertEqual(progress?.total, 3)
+    }
+
+    func testProgressIncludesChoices() {
+        let text = """
+        # Setup
+        - [x] Install
+
+        > **Database?**
+        > [x] PostgreSQL
+        > [ ] MySQL
+        """
+        let structure = MarkdownStructureParser.parse(text: text)
+        let progress = structure.sections[0].progress
+        XCTAssertNotNil(progress)
+        // 1 checkbox checked + 1 choice selected = 2 completed out of 2
+        XCTAssertEqual(progress?.completed, 2)
+        XCTAssertEqual(progress?.total, 2)
     }
 
     func testProgressNilWhenNoTrackableElements() {
