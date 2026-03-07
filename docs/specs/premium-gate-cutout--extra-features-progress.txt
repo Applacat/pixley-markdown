@@ -1,0 +1,29 @@
+Pixley 3.0 Spec Progress
+=========================
+
+SPEC 1: Premium Gate + Self-Describing Protocol
+  Phase 1: StoreService + .storekit Config ........... [PENDING]
+  Phase 2: Interaction Gate + NSPopover ............... [PENDING]
+  Phase 3: Purchase UI (Settings, Menu, Animation) ... [PENDING]
+  Phase 4: Self-Describing Protocol + SectionResolver  [PENDING]
+  Phase 5: AI Tool Gate .............................. [PENDING]
+
+SPEC 2: Classic Rendering Mode (Native Controls)
+  Phase 1: AttachmentViewProvider Infrastructure ..... [PENDING]
+  Phase 2: Checkbox + Radio Controls ................. [PENDING]
+  Phase 3: Dropdown + TextField + CriticMarkup ....... [PENDING]
+  Phase 4: Mode Toggle + Polish ...................... [PENDING]
+
+SPEC 3: Pixley Modal + AI Field Interaction
+  Phase 1: ProposedChanges Model + Basic Modal UI .... [PENDING]
+  Phase 2: Editable Rows + Add Row ................... [PENDING]
+  Phase 3: Apply Changes + Tool Integration .......... [PENDING]
+  Phase 4: Cancel/Rephrase + Polish .................. [PENDING]
+
+SPEC 4: .pixley Bundle Format
+  Phase 1: Bundle Structure + Creation ............... [PENDING]
+  Phase 2: Open + Browse + Watch ..................... [PENDING]
+  Phase 3: Chat Logs + AI Context .................... [PENDING]
+  Phase 4: Asset Carousel + User Manual .............. [PENDING]
+
+Recommended Order: Spec 1 -> Spec 2 -> Spec 3 -> Spec 4
