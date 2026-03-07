@@ -36,6 +36,8 @@ struct MarkdownView: View {
     @State private var activeReviewOptionIndex: Int? = nil
     @State private var activeStatus: StatusElement? = nil
     @State private var activeConfidence: ConfidenceElement? = nil
+    @State private var activeSuggestion: SuggestionElement? = nil
+    @State private var showingSuggestionSheet = false
 
     // MARK: - Body
 
@@ -198,6 +200,16 @@ struct MarkdownView: View {
                 )
             }
         }
+        .sheet(isPresented: $showingSuggestionSheet) {
+            if let suggestion = activeSuggestion {
+                SuggestionSheet(
+                    suggestion: suggestion,
+                    onAccept: { submitSuggestion(accept: true) },
+                    onReject: { submitSuggestion(accept: false) },
+                    onCancel: { showingSuggestionSheet = false }
+                )
+            }
+        }
         .sheet(isPresented: $showingChallengeSheet) {
             FeedbackSheet(
                 text: $popoverText,
@@ -313,13 +325,8 @@ struct MarkdownView: View {
                     showingFeedbackPopover = true
 
                 case .suggestion(let s):
-                    // CriticMarkup: show accept/reject inline
-                    // For now, accept on click (reject via context menu in future)
-                    try await interactionHandler.acceptSuggestion(
-                        s, in: fileURL, fileWatcher: fileWatcher
-                    ) { newContent in
-                        coordinator.updateDocumentContent(newContent)
-                    }
+                    activeSuggestion = s
+                    showingSuggestionSheet = true
 
                 case .status(let st):
                     let nextStates = st.nextStates
@@ -463,6 +470,36 @@ struct MarkdownView: View {
             }
             showingStatusMenu = false
             activeStatus = nil
+        }
+    }
+
+    private func submitSuggestion(accept: Bool) {
+        guard let suggestion = activeSuggestion,
+              let fileURL = coordinator.navigation.selectedFile else {
+            showingSuggestionSheet = false
+            return
+        }
+
+        Task {
+            do {
+                if accept {
+                    try await interactionHandler.acceptSuggestion(
+                        suggestion, in: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+                } else {
+                    try await interactionHandler.rejectSuggestion(
+                        suggestion, in: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+                }
+            } catch {
+                coordinator.showError(.error(message: error.localizedDescription))
+            }
+            showingSuggestionSheet = false
+            activeSuggestion = nil
         }
     }
 

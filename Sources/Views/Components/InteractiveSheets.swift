@@ -161,6 +161,77 @@ struct ReviewNotesSheet: View {
     }
 }
 
+// MARK: - Suggestion Sheet
+
+/// A sheet for accepting or rejecting a CriticMarkup suggestion.
+struct SuggestionSheet: View {
+    let suggestion: SuggestionElement
+    let onAccept: () -> Void
+    let onReject: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Suggested Edit")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                if let oldText = suggestion.oldText, !oldText.isEmpty {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "minus.circle.fill")
+                            .foregroundStyle(.red)
+                        Text(oldText)
+                            .font(.callout)
+                            .strikethrough()
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let newText = suggestion.newText, !newText.isEmpty {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundStyle(.green)
+                        Text(newText)
+                            .font(.callout)
+                    }
+                }
+                if let comment = suggestion.comment {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "text.bubble")
+                            .foregroundStyle(.yellow)
+                        Text(comment)
+                            .font(.callout)
+                            .italic()
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+
+            HStack {
+                Button("Cancel", role: .cancel) {
+                    onCancel()
+                }
+                .keyboardShortcut(.escape)
+
+                Spacer()
+
+                Button("Reject", role: .destructive) {
+                    onReject()
+                }
+
+                Button("Accept") {
+                    onAccept()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 380)
+    }
+}
+
 // MARK: - Status Picker Sheet
 
 /// A sheet for selecting the next status state from available transitions.
