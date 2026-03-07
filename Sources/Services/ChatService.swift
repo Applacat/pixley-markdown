@@ -55,12 +55,22 @@ final class ChatService {
     /// Summary persistence repository (injected)
     private var summaryRepository: ChatSummaryRepository?
 
+    /// FM tool for editing interactive elements via voice commands
+    private let editTool = EditInteractiveElementsTool()
+
     // MARK: - Configuration
 
     /// Injects the summary repository for persistence.
     /// Call once after SwiftData container is ready.
     func configure(summaryRepository: ChatSummaryRepository) {
         self.summaryRepository = summaryRepository
+    }
+
+    /// Sets up the edit tool with file URL and edit handler.
+    /// Call when the document changes or on first load.
+    func configureEditTool(fileURL: URL?, onEdit: (@Sendable @MainActor (InteractiveEdit, URL) async throws -> String)?) {
+        editTool.fileURL = fileURL
+        editTool.onEdit = onEdit
     }
 
     // MARK: - Session Management
@@ -70,6 +80,9 @@ final class ChatService {
         let truncated = String(documentContent.prefix(ChatConfiguration.maxDocumentChars))
         currentDocumentContent = truncated
         if !documentPath.isEmpty { currentDocumentPath = documentPath }
+
+        // Update edit tool with current document content
+        editTool.documentContent = documentContent
 
         // Load persisted summary if available for this document
         if !currentDocumentPath.isEmpty, currentSummary == nil {
@@ -81,9 +94,15 @@ final class ChatService {
             summary: currentSummary
         )
 
-        session = LanguageModelSession(instructions: instructions)
+        // Create session with edit tool for interactive documents
+        let hasInteractiveElements = !InteractiveElementDetector.detect(in: documentContent).isEmpty
+        if hasInteractiveElements {
+            session = LanguageModelSession(tools: [editTool], instructions: instructions)
+        } else {
+            session = LanguageModelSession(instructions: instructions)
+        }
         turnCount = 0
-        Self.log.info("Session started with \(truncated.count) chars, summary: \(self.currentSummary?.count ?? 0) chars")
+        Self.log.info("Session started with \(truncated.count) chars, tools: \(hasInteractiveElements), summary: \(self.currentSummary?.count ?? 0) chars")
     }
 
     /// Resets the session completely (user pressed "Forget").
@@ -252,7 +271,12 @@ final class ChatService {
             summary: condensed
         )
 
-        session = LanguageModelSession(instructions: instructions)
+        let hasInteractiveElements = !InteractiveElementDetector.detect(in: editTool.documentContent).isEmpty
+        if hasInteractiveElements {
+            session = LanguageModelSession(tools: [editTool], instructions: instructions)
+        } else {
+            session = LanguageModelSession(instructions: instructions)
+        }
         Self.log.info("Session refreshed with condensed summary (\(condensed.count) chars)")
     }
 

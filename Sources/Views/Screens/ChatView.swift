@@ -3,6 +3,7 @@ import SwiftUI
 import FoundationModels
 #endif
 import AppKit
+import aimdRenderer
 
 // MARK: - Chat View
 
@@ -56,6 +57,7 @@ struct ChatView: View {
                     documentContent: coordinator.document.content,
                     documentPath: newFile.path
                 )
+                configureEditTool()
             }
         }
         .onDisappear {
@@ -66,6 +68,8 @@ struct ChatView: View {
             if let repo = coordinator.chatSummaryRepository {
                 chatService.configure(summaryRepository: repo)
             }
+            // Configure edit tool for voice commands
+            configureEditTool()
         }
     }
 
@@ -351,6 +355,33 @@ struct ChatView: View {
             askTask = Task {
                 await askAI(question)
             }
+        }
+    }
+
+    /// Configures the edit tool with the current file URL and an edit handler
+    /// that writes back through the InteractionHandler path.
+    private func configureEditTool() {
+        chatService.configureEditTool(
+            fileURL: coordinator.navigation.selectedFile
+        ) { [weak coordinator] edit, url in
+            guard let coordinator else { return "Error: coordinator unavailable" }
+            // Read fresh from disk, apply edit, write back
+            let data = try Data(contentsOf: url)
+            guard var content = String(data: data, encoding: .utf8) else {
+                return "Error: invalid encoding"
+            }
+            switch edit {
+            case .replace(let range, let newText):
+                content.replaceSubrange(range, with: newText)
+            case .replaceMultiple(let replacements):
+                let sorted = replacements.sorted { $0.range.lowerBound > $1.range.lowerBound }
+                for (range, newText) in sorted {
+                    content.replaceSubrange(range, with: newText)
+                }
+            }
+            try content.write(to: url, atomically: true, encoding: .utf8)
+            coordinator.updateDocumentContent(content)
+            return content
         }
     }
 

@@ -24,7 +24,7 @@ Phase 3: Advanced Patterns [COMPLETE]
 
 Phase 4: AI Integration [COMPLETE]
   US-15: FM Context Optimization [COMPLETE]
-  US-16: Voice Commands via AI Chat [DEFERRED]
+  US-16: Voice Commands via AI Chat [COMPLETE]
   US-17: Setup Files + Starter Document [COMPLETE]
 
 Phase 5: Multiplatform + Ecosystem [PENDING]

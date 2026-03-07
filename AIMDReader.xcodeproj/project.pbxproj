@@ -54,6 +54,7 @@
 		BFD9484897D734404ED58CA7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7B6BCC5252188EB88279BA7C /* Assets.xcassets */; };
 		C0F9DA259FD606DD4F891090 /* ChatService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DB54E4A3239D66FA5943C91 /* ChatService.swift */; };
 		C3B2AF15A1897838583348F2 /* MarkdownHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31DD46F97E687CCA317452EB /* MarkdownHighlighter.swift */; };
+		C5E6803401414C443702C6AC /* ChatTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1795882CD06A6A490A665B3 /* ChatTools.swift */; };
 		C6C584481495ADECC4470660 /* TranscriptCondenser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B39B05B1D4284C46E7800BDC /* TranscriptCondenser.swift */; };
 		C7501B7A36A384E946544C9D /* aimdRenderer in Frameworks */ = {isa = PBXBuildFile; productRef = 9428077C8F61970B772022B9 /* aimdRenderer */; };
 		C7CF651077E69C6ABF23868B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92EABFB8D259D145F0686804 /* ContentView.swift */; };
@@ -135,6 +136,7 @@
 		C78C33F2E9C456D069393467 /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		CAA82CF2CF6624869CCA5805 /* LineNumberRulerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineNumberRulerView.swift; sourceTree = "<group>"; };
 		CC14D25CA094240EE829B6F5 /* InteractiveSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractiveSheets.swift; sourceTree = "<group>"; };
+		D1795882CD06A6A490A665B3 /* ChatTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTools.swift; sourceTree = "<group>"; };
 		D3785C170BCFA7F12A916ABC /* SettingsRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRepositoryTests.swift; sourceTree = "<group>"; };
 		D5EDAF12A053E7D98F82C853 /* RecentFoldersManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentFoldersManager.swift; sourceTree = "<group>"; };
 		DE3156F3B44B796A50CE6E86 /* FileMetadataRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileMetadataRepository.swift; sourceTree = "<group>"; };
@@ -251,6 +253,7 @@
 			children = (
 				5A9D31B799BB143271DD4FAD /* ChatInputValidator.swift */,
 				8DB54E4A3239D66FA5943C91 /* ChatService.swift */,
+				D1795882CD06A6A490A665B3 /* ChatTools.swift */,
 				3FF93B49ABA3FCB6C03C7C38 /* FileWatcher.swift */,
 				B46C2079D5FC942799A84EAC /* FolderService.swift */,
 				B1F8EA971E150D300A334B1A /* FolderTreeFilter.swift */,
@@ -497,6 +500,7 @@
 				C0F9DA259FD606DD4F891090 /* ChatService.swift in Sources */,
 				A571FD88201A22F487088385 /* ChatSummary.swift in Sources */,
 				32C74908426DC2A7C4DFB553 /* ChatSummaryRepository.swift in Sources */,
+				C5E6803401414C443702C6AC /* ChatTools.swift in Sources */,
 				DA51DA0EE6E4AA31FA78462D /* ChatView.swift in Sources */,
 				C7CF651077E69C6ABF23868B /* ContentView.swift in Sources */,
 				30D8E7A724ECFDE90A355184 /* CoordinatorRegistry.swift in Sources */,
