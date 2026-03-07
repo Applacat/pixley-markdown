@@ -26,9 +26,14 @@ struct MarkdownView: View {
     @State private var interactionHandler = InteractionHandler()
     @State private var showingFillInPopover = false
     @State private var showingFeedbackPopover = false
+    @State private var showingReviewNotesSheet = false
+    @State private var showingStatusMenu = false
     @State private var popoverText = ""
     @State private var activeFillIn: FillInElement? = nil
     @State private var activeFeedback: FeedbackElement? = nil
+    @State private var activeReview: ReviewElement? = nil
+    @State private var activeReviewOptionIndex: Int? = nil
+    @State private var activeStatus: StatusElement? = nil
 
     // MARK: - Body
 
@@ -163,6 +168,34 @@ struct MarkdownView: View {
                 }
             )
         }
+        .sheet(isPresented: $showingReviewNotesSheet) {
+            ReviewNotesSheet(
+                status: activeReview.flatMap { rv in
+                    activeReviewOptionIndex.map { rv.options[$0].status }
+                } ?? .fail,
+                text: $popoverText,
+                onSubmit: {
+                    submitReviewNotes()
+                },
+                onCancel: {
+                    showingReviewNotesSheet = false
+                }
+            )
+        }
+        .sheet(isPresented: $showingStatusMenu) {
+            if let status = activeStatus {
+                StatusPickerSheet(
+                    currentState: status.currentState,
+                    nextStates: status.nextStates,
+                    onSelect: { newState in
+                        submitStatusAdvance(to: newState)
+                    },
+                    onCancel: {
+                        showingStatusMenu = false
+                    }
+                )
+            }
+        }
     }
 
     // MARK: - Load File
@@ -231,9 +264,23 @@ struct MarkdownView: View {
                         coordinator.updateDocumentContent(newContent)
                     }
 
-                case .review:
-                    // Reviews use the same choice-like handling — wired in Phase 3
-                    break
+                case .review(let rv):
+                    let targetIndex = optionIndex ?? 0
+                    let targetOption = rv.options[targetIndex]
+                    if targetOption.status.promptsForNotes {
+                        // Show notes sheet for FAIL, PASS WITH NOTES, BLOCKED
+                        activeReview = rv
+                        activeReviewOptionIndex = targetIndex
+                        popoverText = ""
+                        showingReviewNotesSheet = true
+                    } else {
+                        // Direct selection: APPROVED, PASS, N/A
+                        try await interactionHandler.selectReview(
+                            optionIndex: targetIndex, in: rv, url: fileURL, fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                        }
+                    }
 
                 case .fillIn(let fi):
                     switch fi.type {
@@ -252,8 +299,50 @@ struct MarkdownView: View {
                     popoverText = fb.existingText ?? ""
                     showingFeedbackPopover = true
 
-                case .suggestion, .status, .confidence, .conditional, .collapsible:
-                    // Phase 3 patterns — not yet wired
+                case .suggestion(let s):
+                    // CriticMarkup: show accept/reject inline
+                    // For now, accept on click (reject via context menu in future)
+                    try await interactionHandler.acceptSuggestion(
+                        s, in: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+
+                case .status(let st):
+                    let nextStates = st.nextStates
+                    if nextStates.count == 1 {
+                        // Single next state: advance directly
+                        try await interactionHandler.advanceStatus(
+                            st, to: nextStates[0], in: fileURL, fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                        }
+                    } else if nextStates.count > 1 {
+                        // Multiple next states: show picker
+                        activeStatus = st
+                        showingStatusMenu = true
+                    }
+                    // No next states = terminal, ignore click
+
+                case .confidence(let conf):
+                    if conf.level == .high {
+                        // Confirm high confidence
+                        try await interactionHandler.confirmConfidence(
+                            conf, in: fileURL, fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                        }
+                    } else if conf.level == .low {
+                        // Challenge low confidence: open feedback
+                        activeFeedback = nil
+                        popoverText = ""
+                        // Create a synthetic feedback element? No — just open a sheet that appends a comment
+                        showingFeedbackPopover = true
+                    }
+                    // medium/confirmed: no action on click
+
+                case .conditional, .collapsible:
+                    // Handled at the rendering level, not click-through
                     break
                 }
             } catch {
@@ -307,6 +396,61 @@ struct MarkdownView: View {
             showingFeedbackPopover = false
             activeFeedback = nil
             popoverText = ""
+        }
+    }
+
+    // MARK: - Review Notes Submit
+
+    private func submitReviewNotes() {
+        guard let review = activeReview,
+              let optionIndex = activeReviewOptionIndex,
+              let fileURL = coordinator.navigation.selectedFile else {
+            showingReviewNotesSheet = false
+            return
+        }
+
+        Task {
+            do {
+                try await interactionHandler.selectReview(
+                    optionIndex: optionIndex,
+                    notes: popoverText.isEmpty ? nil : popoverText,
+                    in: review,
+                    url: fileURL,
+                    fileWatcher: fileWatcher
+                ) { newContent in
+                    coordinator.updateDocumentContent(newContent)
+                }
+            } catch {
+                coordinator.showError(.error(message: error.localizedDescription))
+            }
+            showingReviewNotesSheet = false
+            activeReview = nil
+            activeReviewOptionIndex = nil
+            popoverText = ""
+        }
+    }
+
+    // MARK: - Status Advance Submit
+
+    private func submitStatusAdvance(to newState: String) {
+        guard let status = activeStatus,
+              let fileURL = coordinator.navigation.selectedFile else {
+            showingStatusMenu = false
+            return
+        }
+
+        Task {
+            do {
+                try await interactionHandler.advanceStatus(
+                    status, to: newState, in: fileURL, fileWatcher: fileWatcher
+                ) { newContent in
+                    coordinator.updateDocumentContent(newContent)
+                }
+            } catch {
+                coordinator.showError(.error(message: error.localizedDescription))
+            }
+            showingStatusMenu = false
+            activeStatus = nil
         }
     }
 

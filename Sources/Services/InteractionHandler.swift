@@ -192,4 +192,156 @@ final class InteractionHandler {
             onContentUpdated: onContentUpdated
         )
     }
+
+    // MARK: - Phase 3: Advanced Patterns
+
+    /// Selects a review option (radio behavior) with date stamp and optional notes.
+    ///
+    /// The selected option gets `[x] STATUS — YYYY-MM-DD` (plus `: notes` if provided).
+    /// Other options are deselected and their date/notes are cleared.
+    func selectReview(
+        optionIndex: Int,
+        notes: String? = nil,
+        in review: ReviewElement,
+        url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        let dateString = Self.todayString()
+        var replacements: [(range: Range<String.Index>, newText: String)] = []
+
+        for (i, option) in review.options.enumerated() {
+            if i == optionIndex {
+                // Build the selected line: `[x] STATUS — YYYY-MM-DD` or `[x] STATUS — YYYY-MM-DD: notes`
+                var suffix = " \(option.status.rawValue) — \(dateString)"
+                if let notes, !notes.isEmpty {
+                    suffix += ": \(notes)"
+                }
+                let newLine = "[x]\(suffix)"
+                // Replace from check bracket through end of option
+                replacements.append((range: option.range, newText: newLine))
+            } else if option.isSelected {
+                // Deselect: strip date and notes, keep just `[ ] STATUS`
+                let newLine = "[ ] \(option.status.rawValue)"
+                replacements.append((range: option.range, newText: newLine))
+            }
+        }
+
+        guard !replacements.isEmpty else { return }
+
+        try await apply(
+            edit: .replaceMultiple(replacements),
+            to: url,
+            fileWatcher: fileWatcher,
+            onContentUpdated: onContentUpdated
+        )
+    }
+
+    /// Accepts a CriticMarkup suggestion — applies the change to the file.
+    func acceptSuggestion(
+        _ suggestion: SuggestionElement,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        let replacement: String
+        switch suggestion.type {
+        case .addition:
+            // {++text++} → text
+            replacement = suggestion.newText ?? ""
+        case .deletion:
+            // {--text--} → (removed)
+            replacement = ""
+        case .substitution:
+            // {~~old~>new~~} → new
+            replacement = suggestion.newText ?? ""
+        case .highlight:
+            // {==text==}{>>comment<<} → text
+            replacement = suggestion.oldText ?? ""
+        }
+
+        try await apply(
+            edit: .replace(range: suggestion.range, newText: replacement),
+            to: url,
+            fileWatcher: fileWatcher,
+            onContentUpdated: onContentUpdated
+        )
+    }
+
+    /// Rejects a CriticMarkup suggestion — removes the markup, keeps original.
+    func rejectSuggestion(
+        _ suggestion: SuggestionElement,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        let replacement: String
+        switch suggestion.type {
+        case .addition:
+            // {++text++} → (removed)
+            replacement = ""
+        case .deletion:
+            // {--text--} → text (keep original)
+            replacement = suggestion.oldText ?? ""
+        case .substitution:
+            // {~~old~>new~~} → old (keep original)
+            replacement = suggestion.oldText ?? ""
+        case .highlight:
+            // {==text==}{>>comment<<} → text (keep highlighted text)
+            replacement = suggestion.oldText ?? ""
+        }
+
+        try await apply(
+            edit: .replace(range: suggestion.range, newText: replacement),
+            to: url,
+            fileWatcher: fileWatcher,
+            onContentUpdated: onContentUpdated
+        )
+    }
+
+    /// Advances a status to the next state. Appends date for terminal states.
+    func advanceStatus(
+        _ status: StatusElement,
+        to newState: String,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        let isTerminal = (status.states.last == newState)
+        var label = "**Status:** \(newState)"
+        if isTerminal {
+            label += " — \(Self.todayString())"
+        }
+
+        try await apply(
+            edit: .replace(range: status.labelRange, newText: label),
+            to: url,
+            fileWatcher: fileWatcher,
+            onContentUpdated: onContentUpdated
+        )
+    }
+
+    /// Confirms a confidence indicator (sets to confirmed, preserves text).
+    func confirmConfidence(
+        _ element: ConfidenceElement,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        let newMarker = "> [confidence: confirmed] \(element.text)"
+        try await apply(
+            edit: .replace(range: element.range, newText: newMarker),
+            to: url,
+            fileWatcher: fileWatcher,
+            onContentUpdated: onContentUpdated
+        )
+    }
+
+    // MARK: - Helpers
+
+    private static func todayString() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
 }

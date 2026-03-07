@@ -353,15 +353,17 @@ struct MarkdownEditor: NSViewRepresentable {
             // would require unsafe transfers. Highlighting is fast enough on-main-actor.
             let attributed = debouncedHighlighter.highlighter.highlight(text)
 
-            // Detect and annotate interactive elements
+            // Detect and annotate interactive elements + progress bars
             let elements = InteractiveElementDetector.detect(in: text)
+            let mutable = NSMutableAttributedString(attributedString: attributed)
             if !elements.isEmpty {
-                let mutable = NSMutableAttributedString(attributedString: attributed)
                 debouncedHighlighter.highlighter.annotateInteractiveElements(mutable, elements: elements, text: text)
-                textView.textStorage?.setAttributedString(mutable)
-            } else {
-                textView.textStorage?.setAttributedString(attributed)
+
+                // Add progress bars to section headings
+                let structure = MarkdownStructureParser.parse(text: text)
+                debouncedHighlighter.highlighter.annotateProgressBars(mutable, structure: structure, text: text)
             }
+            textView.textStorage?.setAttributedString(mutable)
 
             textView.selectedRanges = selectedRanges
             // Reset cursor rects so interactive elements get pointing hand

@@ -282,4 +282,139 @@ final class InteractiveWriteBackTests: XCTestCase {
             content.replaceSubrange(range, with: newText)
         }
     }
+
+    // MARK: - Phase 3: CriticMarkup Accept/Reject
+
+    func testAcceptAddition() {
+        var content = "This is {++very ++}important.\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        guard case .suggestion(let s) = elements.first else {
+            XCTFail("Expected suggestion"); return
+        }
+        XCTAssertEqual(s.type, .addition)
+
+        // Accept: {++text++} → text
+        content.replaceSubrange(s.range, with: s.newText ?? "")
+        XCTAssertEqual(content, "This is very important.\n")
+    }
+
+    func testRejectAddition() {
+        var content = "This is {++very ++}important.\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        guard case .suggestion(let s) = elements.first else {
+            XCTFail("Expected suggestion"); return
+        }
+
+        // Reject: {++text++} → removed
+        content.replaceSubrange(s.range, with: "")
+        XCTAssertEqual(content, "This is important.\n")
+    }
+
+    func testAcceptDeletion() {
+        var content = "Remove {--this word --}here.\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        guard case .suggestion(let s) = elements.first else {
+            XCTFail("Expected suggestion"); return
+        }
+        XCTAssertEqual(s.type, .deletion)
+
+        // Accept deletion: {--text--} → removed
+        content.replaceSubrange(s.range, with: "")
+        XCTAssertEqual(content, "Remove here.\n")
+    }
+
+    func testRejectDeletion() {
+        var content = "Remove {--this word --}here.\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        guard case .suggestion(let s) = elements.first else {
+            XCTFail("Expected suggestion"); return
+        }
+
+        // Reject deletion: {--text--} → keep text
+        content.replaceSubrange(s.range, with: s.oldText ?? "")
+        XCTAssertEqual(content, "Remove this word here.\n")
+    }
+
+    func testAcceptSubstitution() {
+        var content = "Use {~~old~>new~~} value.\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        guard case .suggestion(let s) = elements.first else {
+            XCTFail("Expected substitution"); return
+        }
+        XCTAssertEqual(s.type, .substitution)
+
+        // Accept: {~~old~>new~~} → new
+        content.replaceSubrange(s.range, with: s.newText ?? "")
+        XCTAssertEqual(content, "Use new value.\n")
+    }
+
+    func testRejectSubstitution() {
+        var content = "Use {~~old~>new~~} value.\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        guard case .suggestion(let s) = elements.first else {
+            XCTFail("Expected substitution"); return
+        }
+
+        // Reject: {~~old~>new~~} → old
+        content.replaceSubrange(s.range, with: s.oldText ?? "")
+        XCTAssertEqual(content, "Use old value.\n")
+    }
+
+    // MARK: - Phase 3: Status Advance
+
+    func testStatusAdvanceSingle() {
+        var content = "<!-- status: draft | review | approved -->\n**Status:** draft\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        guard case .status(let st) = elements.first else {
+            XCTFail("Expected status"); return
+        }
+        XCTAssertEqual(st.currentState, "draft")
+        XCTAssertEqual(st.nextStates, ["review", "approved"])
+
+        // Advance to review
+        content.replaceSubrange(st.labelRange, with: "**Status:** review")
+
+        // Re-detect
+        let after = InteractiveElementDetector.detect(in: content)
+        guard case .status(let st2) = after.first else {
+            XCTFail("Expected status after advance"); return
+        }
+        XCTAssertEqual(st2.currentState, "review")
+        XCTAssertEqual(st2.nextStates, ["approved"])
+    }
+
+    func testStatusTerminalAppendDate() {
+        var content = "<!-- status: draft | approved -->\n**Status:** draft\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        guard case .status(let st) = elements.first else {
+            XCTFail("Expected status"); return
+        }
+
+        // Advance to terminal state with date
+        let isTerminal = (st.states.last == "approved")
+        XCTAssertTrue(isTerminal)
+        content.replaceSubrange(st.labelRange, with: "**Status:** approved — 2026-03-07")
+
+        XCTAssertTrue(content.contains("**Status:** approved — 2026-03-07"))
+    }
+
+    // MARK: - Phase 3: Confidence
+
+    func testConfirmHighConfidence() {
+        var content = "> [confidence: high] This is reliable.\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        guard case .confidence(let conf) = elements.first else {
+            XCTFail("Expected confidence"); return
+        }
+        XCTAssertEqual(conf.level, .high)
+
+        // Confirm: replace with confirmed (preserve the text portion)
+        content.replaceSubrange(conf.range, with: "> [confidence: confirmed] This is reliable.")
+
+        let after = InteractiveElementDetector.detect(in: content)
+        guard case .confidence(let conf2) = after.first else {
+            XCTFail("Expected confidence after confirm"); return
+        }
+        XCTAssertEqual(conf2.level, .confirmed)
+    }
 }

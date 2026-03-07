@@ -262,8 +262,18 @@ final class MarkdownHighlighter {
                     attributed.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: nsRange)
                 }
 
-            case .status:
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+            case .status(let st):
+                // Style the label range as a clickable badge
+                let labelNS = NSRange(st.labelRange, in: text)
+                if labelNS.location + labelNS.length <= attributed.length {
+                    attributed.addAttribute(.interactiveElement, value: wrapper, range: labelNS)
+                    attributed.addAttribute(.backgroundColor, value: NSColor.systemIndigo.withAlphaComponent(0.15), range: labelNS)
+                }
+                // Dim the status comment (definition line)
+                let commentNS = NSRange(st.commentRange, in: text)
+                if commentNS.location + commentNS.length <= attributed.length {
+                    attributed.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: commentNS)
+                }
 
             case .confidence(let c):
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
@@ -279,6 +289,52 @@ final class MarkdownHighlighter {
             case .conditional, .collapsible:
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
             }
+        }
+    }
+
+    /// Annotates section headings with progress bars based on interactive element completion.
+    /// Progress bars are rendered-only — not written back to the source markdown.
+    func annotateProgressBars(_ attributed: NSMutableAttributedString, structure: DocumentStructure, text: String) {
+        for section in structure.sections {
+            annotateSectionProgress(section, attributed: attributed, text: text)
+        }
+    }
+
+    private func annotateSectionProgress(_ section: Section, attributed: NSMutableAttributedString, text: String) {
+        if let progress = section.progress {
+            // Find the end of the heading line to insert progress text
+            let headingNS = NSRange(section.range, in: text)
+            guard headingNS.location + headingNS.length <= attributed.length else { return }
+
+            // Find the first newline in the section range to locate end of heading
+            let headingText = text[section.range]
+            if let newlineIndex = headingText.firstIndex(of: "\n") {
+                let insertPosition = NSRange(newlineIndex..<newlineIndex, in: text).location
+
+                let filled = Int(progress.completed)
+                let total = Int(progress.total)
+                let pct = total > 0 ? Int(Double(filled) / Double(total) * 100) : 0
+
+                // Build progress bar: ████░░ 60% (3/5)
+                let barLength = 6
+                let filledCount = total > 0 ? Int(round(Double(filled) / Double(total) * Double(barLength))) : 0
+                let emptyCount = barLength - filledCount
+                let bar = String(repeating: "█", count: filledCount) + String(repeating: "░", count: emptyCount)
+                let progressText = "  \(bar) \(pct)% (\(filled)/\(total))"
+
+                let progressAttr = NSMutableAttributedString(string: progressText)
+                let progressRange = NSRange(location: 0, length: progressAttr.length)
+                let progressColor: NSColor = pct == 100 ? .systemGreen : .secondaryLabelColor
+                progressAttr.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: baseFont.pointSize * 0.75, weight: .regular), range: progressRange)
+                progressAttr.addAttribute(.foregroundColor, value: progressColor, range: progressRange)
+
+                attributed.insert(progressAttr, at: insertPosition)
+            }
+        }
+
+        // Recurse into children (process in reverse order since insertions shift positions)
+        for child in section.children.reversed() {
+            annotateSectionProgress(child, attributed: attributed, text: text)
         }
     }
 
