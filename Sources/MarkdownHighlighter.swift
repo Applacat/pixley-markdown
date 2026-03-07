@@ -295,36 +295,44 @@ final class MarkdownHighlighter {
                 switch s.type {
                 case .addition:
                     attributed.addAttribute(.foregroundColor, value: NSColor.systemGreen, range: nsRange)
+                    attributed.addAttribute(.backgroundColor, value: NSColor.systemGreen.withAlphaComponent(0.1), range: nsRange)
                     attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
-                    attributed.addAttribute(.underlineColor, value: NSColor.systemGreen, range: nsRange)
+                    attributed.addAttribute(.underlineColor, value: NSColor.systemGreen.withAlphaComponent(0.4), range: nsRange)
                     tooltip = "Suggested addition — click to review"
                 case .deletion:
                     attributed.addAttribute(.foregroundColor, value: NSColor.systemRed, range: nsRange)
+                    attributed.addAttribute(.backgroundColor, value: NSColor.systemRed.withAlphaComponent(0.08), range: nsRange)
                     attributed.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
                     attributed.addAttribute(.strikethroughColor, value: NSColor.systemRed, range: nsRange)
                     tooltip = "Suggested deletion — click to review"
                 case .substitution:
                     attributed.addAttribute(.foregroundColor, value: NSColor.systemOrange, range: nsRange)
+                    attributed.addAttribute(.backgroundColor, value: NSColor.systemOrange.withAlphaComponent(0.08), range: nsRange)
                     tooltip = "Suggested change — click to review"
                 case .highlight:
-                    attributed.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: nsRange)
+                    attributed.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.25), range: nsRange)
                     tooltip = "Highlighted — click to review"
                 }
                 attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
+                // Dim the delimiters ({++, ++}, {--, --}, {~~, ~>, ~~}, {==, ==}, {>>, <<})
+                Self.dimCriticMarkupDelimiters(in: attributed, range: nsRange, text: text)
 
             case .status(let st):
-                // Style the label range as a clickable badge
+                // Style the label range as a colored badge reflecting progress
                 let labelNS = NSRange(st.labelRange, in: text)
                 if labelNS.location + labelNS.length <= attributed.length {
                     attributed.addAttribute(.interactiveElement, value: wrapper, range: labelNS)
-                    attributed.addAttribute(.backgroundColor, value: NSColor.systemIndigo.withAlphaComponent(0.15), range: labelNS)
-                    let tooltip = st.nextStates.isEmpty ? "Status complete" : "Click to advance status"
+                    let isTerminal = st.nextStates.isEmpty
+                    let badgeColor: NSColor = isTerminal ? .systemGreen : .systemIndigo
+                    attributed.addAttribute(.backgroundColor, value: badgeColor.withAlphaComponent(0.15), range: labelNS)
+                    attributed.addAttribute(.foregroundColor, value: badgeColor, range: labelNS)
+                    let tooltip = isTerminal ? "Status complete" : "Click to advance status"
                     attributed.addAttribute(.toolTip, value: tooltip, range: labelNS)
                 }
                 // Dim the status comment (definition line)
                 let commentNS = NSRange(st.commentRange, in: text)
                 if commentNS.location + commentNS.length <= attributed.length {
-                    attributed.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: commentNS)
+                    attributed.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: commentNS)
                 }
 
             case .confidence(let c):
@@ -397,6 +405,26 @@ final class MarkdownHighlighter {
         // Recurse into children (process in reverse order since insertions shift positions)
         for child in section.children.reversed() {
             annotateSectionProgress(child, attributed: attributed, text: text)
+        }
+    }
+
+    /// Dims CriticMarkup delimiters to make the content stand out over the syntax.
+    private static func dimCriticMarkupDelimiters(in attributed: NSMutableAttributedString, range: NSRange, text: String) {
+        let delimiterColor = NSColor.tertiaryLabelColor
+
+        // Patterns: {++...++}  {--...--}  {~~...~>...~~}  {==...==}{>>...<<}
+        let delimiterPatterns = [
+            #"\{\+\+"#, #"\+\+\}"#,
+            #"\{--"#, #"--\}"#,
+            #"\{~~"#, #"~>"#, #"~~\}"#,
+            #"\{=="#, #"==\}"#, #"\{>>"#, #"<<\}"#,
+        ]
+
+        for pattern in delimiterPatterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            for match in regex.matches(in: text, range: range) {
+                attributed.addAttribute(.foregroundColor, value: delimiterColor, range: match.range)
+            }
         }
     }
 
