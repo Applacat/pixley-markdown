@@ -3,6 +3,7 @@ import Foundation
 import FoundationModels
 #endif
 import os.log
+import aimdRenderer
 
 // MARK: - Chat Service
 
@@ -259,15 +260,86 @@ final class ChatService {
 
     private func buildInstructions(documentContent: String, summary: String?) -> String {
         var parts: [String] = [
-            "You help users understand markdown documents. Be direct and specific. Don't repeat what the user already knows.",
-            "Document:\n---\n\(documentContent)\n---"
+            "You help users understand and interact with markdown documents. Be direct and specific. Don't repeat what the user already knows."
         ]
+
+        // Build structured context if document has interactive elements
+        let structure = MarkdownStructureParser.parse(text: documentContent)
+        if !structure.elements.isEmpty {
+            // Use structured summary (compact, element-aware)
+            let structuredContext = buildStructuredContext(structure: structure, content: documentContent)
+            parts.append("Document (interactive):\n---\n\(structuredContext)\n---")
+        } else {
+            // Plain document — use truncated raw text
+            parts.append("Document:\n---\n\(documentContent)\n---")
+        }
 
         if let summary, !summary.isEmpty {
             parts.append("Earlier conversation:\n\(summary)")
         }
 
         return parts.joined(separator: "\n\n")
+    }
+
+    /// Builds a structured context string for FM instructions.
+    /// Uses outline + element state, falling back to deeper outlines within budget.
+    private func buildStructuredContext(structure: DocumentStructure, content: String) -> String {
+        let budget = ChatConfiguration.maxDocumentChars
+
+        // Try full summary first (most informative)
+        let fullSummary = structure.summary()
+        let elementIndex = buildElementIndex(structure: structure)
+
+        let full = "Outline with elements:\n\(fullSummary)\n\nElement state:\n\(elementIndex)"
+        if full.count <= budget {
+            return full
+        }
+
+        // If too large, use outline depth 2 + element index
+        let outline2 = structure.outline(maxDepth: 2)
+        let medium = "Outline:\n\(outline2)\n\nElement state:\n\(elementIndex)"
+        if medium.count <= budget {
+            return medium
+        }
+
+        // Tight budget: outline depth 1 + truncated element index
+        let outline1 = structure.outline(maxDepth: 1)
+        let truncatedIndex = String(elementIndex.prefix(budget / 2))
+        return "Outline:\n\(outline1)\n\nElements:\n\(truncatedIndex)"
+    }
+
+    /// Builds a compact element state index showing current values.
+    private func buildElementIndex(structure: DocumentStructure) -> String {
+        var lines: [String] = []
+        for (i, element) in structure.elements.enumerated() {
+            let line: String
+            switch element {
+            case .checkbox(let cb):
+                line = "\(i): checkbox [\(cb.isChecked ? "x" : " ")] \(cb.label)"
+            case .choice(let ch):
+                let selected = ch.selectedIndex.map { "option \($0)" } ?? "none"
+                line = "\(i): choice (selected: \(selected))"
+            case .review(let rv):
+                let status = rv.selectedStatus?.rawValue ?? "pending"
+                line = "\(i): review (\(status))"
+            case .fillIn(let fi):
+                let value = fi.value ?? fi.hint
+                line = "\(i): fill-in [\(value)]"
+            case .feedback(let fb):
+                let text = fb.existingText ?? "empty"
+                line = "\(i): feedback (\(text))"
+            case .status(let st):
+                line = "\(i): status (\(st.currentState))"
+            case .confidence(let c):
+                line = "\(i): confidence (\(c.level.rawValue))"
+            case .suggestion(let s):
+                line = "\(i): suggestion (\(s.type))"
+            default:
+                continue
+            }
+            lines.append(line)
+        }
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Error Handling

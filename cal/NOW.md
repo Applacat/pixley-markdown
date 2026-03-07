@@ -1,27 +1,42 @@
 # NOW — Current Focus
 
 **Idea:** Pixley Interactive Markdown Protocol (v3.0)
-**Phase:** Phase 3 complete → commit gate → Phase 4
-**Pipeline:** Spec [DONE] -> Foundation [DONE] -> Core Patterns [DONE] -> Advanced Patterns [DONE] -> **AI Integration** -> Multiplatform
+**Phase:** Phase 4 complete → commit gate
+**Pipeline:** Spec [DONE] -> Foundation [DONE] -> Core Patterns [DONE] -> Advanced Patterns [DONE] -> AI Integration [DONE] -> Multiplatform [PENDING]
 
-## Phase 3 Complete
+## Phase 4 Complete
 
-All advanced interactive patterns wired:
-- Reviews: click for date stamp, notes sheet for FAIL/BLOCKED/PASS WITH NOTES
-- CriticMarkup: accept on click (additions, deletions, substitutions, highlights)
-- Status state machines: single-step auto-advance, multi-step picker sheet
-- Confidence: confirm high → confirmed, challenge low → feedback sheet
-- Progress bars: auto-calculated per section heading (rendered-only)
-- Status labels: styled as clickable badge with indigo background
-- 19 write-back tests (including 9 new Phase 3 tests), all passing
-- Build succeeds clean
+- US-15: FM context uses DocumentStructure.summary() + element state index instead of raw truncation
+- US-17: Interactive Starter Document with all 9 patterns + AI prompt template
+- Build succeeds, 78 tests (1 pre-existing failure)
 
-**Deferred:** US-12 (Conditional/Collapsible — needs NSTextView layout work), US-14 (Gutter Refactor — significant extension)
+**Deferred:** US-16 (Voice Commands — requires FM @Tool definitions, needs focused iteration)
 
-## Phase 4 Scope
+## Implementation Summary (v3.0 so far)
 
-| Story | Description | Status |
-|-------|-------------|--------|
-| US-15 | FM Context Optimization — DocumentStructure.summary() for AI context | PENDING |
-| US-16 | Voice Commands via AI Chat — natural language interaction | PENDING |
-| US-17 | Setup Files + Starter Document | PENDING |
+### Foundation (Phase 1)
+- InteractiveElementDetector: 10 pattern types, single-pass detection
+- MarkdownStructureParser: heading tree + element assignment
+- InteractionHandler: atomic read-modify-write with FileWatcher suppression
+
+### Core Patterns (Phase 2)
+- Click detection via NSAttributedString custom attribute
+- Visual affordances for all elements
+- FillInSheet, FeedbackSheet, NSOpenPanel integration
+
+### Advanced Patterns (Phase 3)
+- Reviews with date stamps and notes
+- CriticMarkup accept/reject
+- Status state machines with transition enforcement
+- Confidence confirm/challenge
+- Progress bars on section headings
+
+### AI Integration (Phase 4)
+- Structured FM context (outline + element index)
+- Starter Document with all 9 patterns
+
+### Deferred Items
+- US-12: Conditional/Collapsible (NSTextView layout complexity)
+- US-14: Gutter Refactor (significant extension)
+- US-16: Voice Commands (FM @Tool definitions)
+- US-18/19: Multiplatform + Ecosystem
