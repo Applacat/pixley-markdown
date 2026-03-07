@@ -70,7 +70,20 @@ public final class BehaviorSettings {
     /// Whether to underline links
     public var underlineLinks: Bool = true
 
+    /// Interactive element rendering mode
+    public var interactiveMode: InteractiveMode = .enhanced
+
     public init() {}
+}
+
+/// Interactive element rendering mode
+public enum InteractiveMode: String, CaseIterable, Identifiable, Sendable {
+    /// Enhanced text rendering with hover states, tooltips, and visual pills
+    case enhanced = "Enhanced"
+    /// Plain text rendering (minimal styling, for power users)
+    case plain = "Plain"
+
+    public var id: String { rawValue }
 }
 
 // MARK: - Setting Types
@@ -220,6 +233,8 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
         } else {
             behavior.underlineLinks = defaults.bool(forKey: "underlineLinks")
         }
+        let modeRaw = defaults.string(forKey: "interactiveMode") ?? InteractiveMode.enhanced.rawValue
+        behavior.interactiveMode = InteractiveMode(rawValue: modeRaw) ?? .enhanced
 
         self.appearance = appearance
         self.rendering = rendering
@@ -257,6 +272,7 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
     private func persistBehavior() {
         defaults.set(behavior.linkBehavior.rawValue, forKey: "linkBehavior")
         defaults.set(behavior.underlineLinks, forKey: "underlineLinks")
+        defaults.set(behavior.interactiveMode.rawValue, forKey: "interactiveMode")
     }
 
     /// Debounced persist task — coalesces rapid settings changes (e.g., font-size stepper)
@@ -311,6 +327,7 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
         withObservationTracking {
             _ = behavior.linkBehavior
             _ = behavior.underlineLinks
+            _ = behavior.interactiveMode
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }

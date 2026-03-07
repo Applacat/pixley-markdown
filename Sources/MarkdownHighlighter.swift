@@ -184,7 +184,17 @@ final class MarkdownHighlighter {
     /// Annotates an already-highlighted attributed string with interactive element styling.
     /// Adds custom attributes, visual affordances, and tooltips for clickable elements.
     /// Click targets span full element ranges (not just bracket characters) for discoverability.
-    func annotateInteractiveElements(_ attributed: NSMutableAttributedString, elements: [InteractiveElement], text: String) {
+    ///
+    /// - Parameters:
+    ///   - enhanced: When true, applies full visual affordances (pills, backgrounds, tooltips).
+    ///               When false, only adds click targets and cursor attributes (plain mode).
+    func annotateInteractiveElements(_ attributed: NSMutableAttributedString, elements: [InteractiveElement], text: String, enhanced: Bool = true) {
+        // Plain mode: just add click targets and tooltips, no visual styling
+        if !enhanced {
+            annotatePlainClickTargets(attributed, elements: elements, text: text)
+            return
+        }
+
         for element in elements {
             let swiftRange = element.range
             guard let nsRange = Optional(NSRange(swiftRange, in: text)) else { continue }
@@ -282,12 +292,18 @@ final class MarkdownHighlighter {
                 attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
 
             case .feedback(let fb):
-                // Feedback widget styling — make it visible
+                // Feedback: purple accent with clear "leave feedback" visual
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                attributed.addAttribute(.foregroundColor, value: NSColor.systemPurple, range: nsRange)
-                attributed.addAttribute(.backgroundColor, value: NSColor.systemPurple.withAlphaComponent(0.1), range: nsRange)
-                let tooltip = fb.existingText != nil ? "Click to edit feedback" : "Click to leave feedback"
-                attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
+                attributed.addAttribute(.backgroundColor, value: NSColor.systemPurple.withAlphaComponent(0.08), range: nsRange)
+                if fb.existingText != nil {
+                    // Has feedback — show in purple with normal weight
+                    attributed.addAttribute(.foregroundColor, value: NSColor.systemPurple, range: nsRange)
+                    attributed.addAttribute(.toolTip, value: "Click to edit feedback", range: nsRange)
+                } else {
+                    // Empty — dim the HTML syntax, it's just a placeholder
+                    attributed.addAttribute(.foregroundColor, value: NSColor.systemPurple.withAlphaComponent(0.6), range: nsRange)
+                    attributed.addAttribute(.toolTip, value: "Click to leave feedback", range: nsRange)
+                }
 
             case .suggestion(let s):
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
@@ -405,6 +421,83 @@ final class MarkdownHighlighter {
         // Recurse into children (process in reverse order since insertions shift positions)
         for child in section.children.reversed() {
             annotateSectionProgress(child, attributed: attributed, text: text)
+        }
+    }
+
+    /// Plain mode: adds only click targets and tooltips without visual enhancements.
+    private func annotatePlainClickTargets(_ attributed: NSMutableAttributedString, elements: [InteractiveElement], text: String) {
+        for element in elements {
+            let swiftRange = element.range
+            guard let nsRange = Optional(NSRange(swiftRange, in: text)) else { continue }
+            guard nsRange.location + nsRange.length <= attributed.length else { continue }
+
+            let wrapper = InteractiveElementWrapper(element)
+
+            switch element {
+            case .checkbox(let cb):
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                attributed.addAttribute(.toolTip, value: cb.isChecked ? "Click to uncheck" : "Click to mark as complete", range: nsRange)
+
+            case .choice(let ch):
+                for (i, option) in ch.options.enumerated() {
+                    let optionNS = NSRange(option.range, in: text)
+                    guard optionNS.location + optionNS.length <= attributed.length else { continue }
+                    attributed.addAttribute(.interactiveElement, value: InteractiveElementWrapper(element, optionIndex: i), range: optionNS)
+                    attributed.addAttribute(.toolTip, value: "Click to select this option", range: optionNS)
+                }
+
+            case .review(let rv):
+                for (i, option) in rv.options.enumerated() {
+                    let optionNS = NSRange(option.range, in: text)
+                    guard optionNS.location + optionNS.length <= attributed.length else { continue }
+                    attributed.addAttribute(.interactiveElement, value: InteractiveElementWrapper(element, optionIndex: i), range: optionNS)
+                    attributed.addAttribute(.toolTip, value: "Click to set review: \(option.status.rawValue)", range: optionNS)
+                }
+
+            case .fillIn(let fi):
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                let tip: String = switch fi.type {
+                case .text: "Click to fill in: \(fi.hint)"
+                case .file: "Click to choose a file"
+                case .folder: "Click to choose a folder"
+                case .date: "Click to pick a date"
+                }
+                attributed.addAttribute(.toolTip, value: tip, range: nsRange)
+
+            case .feedback(let fb):
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                attributed.addAttribute(.toolTip, value: fb.existingText != nil ? "Click to edit feedback" : "Click to leave feedback", range: nsRange)
+
+            case .suggestion(let s):
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                let tip: String = switch s.type {
+                case .addition: "Suggested addition — click to review"
+                case .deletion: "Suggested deletion — click to review"
+                case .substitution: "Suggested change — click to review"
+                case .highlight: "Highlighted — click to review"
+                }
+                attributed.addAttribute(.toolTip, value: tip, range: nsRange)
+
+            case .status(let st):
+                let labelNS = NSRange(st.labelRange, in: text)
+                if labelNS.location + labelNS.length <= attributed.length {
+                    attributed.addAttribute(.interactiveElement, value: wrapper, range: labelNS)
+                    attributed.addAttribute(.toolTip, value: st.nextStates.isEmpty ? "Status complete" : "Click to advance status", range: labelNS)
+                }
+
+            case .confidence(let c):
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                let tip: String = switch c.level {
+                case .high: "AI is confident — click to confirm"
+                case .medium: "AI confidence: medium"
+                case .low: "AI is uncertain — click to challenge"
+                case .confirmed: "Confirmed"
+                }
+                attributed.addAttribute(.toolTip, value: tip, range: nsRange)
+
+            case .conditional, .collapsible:
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+            }
         }
     }
 

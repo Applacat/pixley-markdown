@@ -86,6 +86,10 @@ struct BrowserView: View {
         .modifier(AIChatModifier(coordinator: coordinator))
         .navigationTitle(coordinator.navigation.selectedFile?.deletingPathExtension().lastPathComponent ?? "Pixley Markdown")
         .toolbar {
+            // Interactive mode toggle
+            ToolbarItem(placement: .automatic) {
+                InteractiveModeToggle()
+            }
             // Font size stepper (trailing edge, own pill)
             ToolbarItem(placement: .primaryAction) {
                 FontSizeControls()
@@ -408,6 +412,24 @@ struct NavigateUpButton: View {
                 coordinator.openFolder(url)
             }
         }
+    }
+}
+
+/// MARK: - Interactive Mode Toggle
+
+/// Toolbar toggle for interactive element rendering mode (Enhanced / Plain).
+struct InteractiveModeToggle: View {
+    @Environment(\.settings) private var settings
+
+    var body: some View {
+        let isEnhanced = settings.behavior.interactiveMode == .enhanced
+        Button {
+            settings.behavior.interactiveMode = isEnhanced ? .plain : .enhanced
+        } label: {
+            Image(systemName: isEnhanced ? "hand.tap.fill" : "hand.tap")
+        }
+        .help(isEnhanced ? "Interactive elements: Enhanced (click to switch to Plain)" : "Interactive elements: Plain (click to switch to Enhanced)")
+        .accessibilityLabel("Toggle interactive element styling")
     }
 }
 

@@ -192,6 +192,12 @@ struct BehaviorSettingsTab: View {
             }
 
             Toggle("Underline Links", isOn: $behavior.underlineLinks)
+
+            Picker("Interactive Elements", selection: $behavior.interactiveMode) {
+                ForEach(InteractiveMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
         }
         .formStyle(.grouped)
     }

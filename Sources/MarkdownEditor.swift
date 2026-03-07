@@ -185,6 +185,9 @@ struct MarkdownEditor: NSViewRepresentable {
     /// Callback when an interactive element is clicked (element, optionIndex, point)
     var onInteractiveElementClicked: ((InteractiveElement, Int?, NSPoint) -> Void)? = nil
 
+    /// Interactive element rendering mode
+    var interactiveMode: InteractiveMode = .enhanced
+
     func makeNSView(context: Context) -> NSScrollView {
         // Manual TextKit stack so we can use our custom NSTextView subclass
         // (MarkdownNSTextView handles Esc to dismiss the find bar in SwiftUI)
@@ -295,6 +298,7 @@ struct MarkdownEditor: NSViewRepresentable {
         let currentFontFamily = settings.rendering.fontFamily
         let currentHeadingScale = settings.rendering.headingScale
         let currentColorScheme = settings.appearance.colorScheme
+        let currentInteractiveMode = settings.behavior.interactiveMode
 
         // Check if any rendering settings changed
         let fontChanged = context.coordinator.fontSize != currentFontSize
@@ -302,9 +306,11 @@ struct MarkdownEditor: NSViewRepresentable {
         let fontFamilyChanged = context.coordinator.fontFamily != currentFontFamily
         let headingScaleChanged = context.coordinator.headingScale != currentHeadingScale
         let appearanceChanged = context.coordinator.colorScheme != currentColorScheme
+        let interactiveModeChanged = context.coordinator.interactiveMode != currentInteractiveMode
 
-        if fontChanged || themeChanged || fontFamilyChanged || headingScaleChanged || appearanceChanged {
+        if fontChanged || themeChanged || fontFamilyChanged || headingScaleChanged || appearanceChanged || interactiveModeChanged {
             // Update settings and recreate highlighter
+            context.coordinator.interactiveMode = currentInteractiveMode
             context.coordinator.updateSettings(fontSize: currentFontSize, theme: currentTheme, fontFamily: currentFontFamily, headingScale: currentHeadingScale, colorScheme: currentColorScheme)
 
             // Update text view colors
@@ -382,6 +388,7 @@ struct MarkdownEditor: NSViewRepresentable {
         var fontFamily: String?
         var headingScale: HeadingScaleSetting
         var colorScheme: ColorScheme?
+        var interactiveMode: InteractiveMode = .enhanced
         var onError: ((AppError) -> Void)?
 
         deinit {
@@ -433,11 +440,14 @@ struct MarkdownEditor: NSViewRepresentable {
             let elements = InteractiveElementDetector.detect(in: text)
             let mutable = NSMutableAttributedString(attributedString: attributed)
             if !elements.isEmpty {
-                debouncedHighlighter.highlighter.annotateInteractiveElements(mutable, elements: elements, text: text)
+                let isEnhanced = interactiveMode == .enhanced
+                debouncedHighlighter.highlighter.annotateInteractiveElements(mutable, elements: elements, text: text, enhanced: isEnhanced)
 
-                // Add progress bars to section headings
-                let structure = MarkdownStructureParser.parse(text: text)
-                debouncedHighlighter.highlighter.annotateProgressBars(mutable, structure: structure, text: text)
+                // Add progress bars to section headings (only in enhanced mode)
+                if isEnhanced {
+                    let structure = MarkdownStructureParser.parse(text: text)
+                    debouncedHighlighter.highlighter.annotateProgressBars(mutable, structure: structure, text: text)
+                }
             }
             textView.textStorage?.setAttributedString(mutable)
 
