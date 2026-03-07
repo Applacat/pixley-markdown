@@ -59,9 +59,13 @@ public struct DocumentModel: Sendable {
     /// Finds the line number containing the given string index
     public func lineNumber(containing index: String.Index) -> Int? {
         for line in lines {
-            if line.range.contains(index) || line.range.upperBound == index {
+            if line.range.contains(index) {
                 return line.number
             }
+        }
+        // Handle index at very end of content
+        if index == content.endIndex, let last = lines.last {
+            return last.number
         }
         return nil
     }
