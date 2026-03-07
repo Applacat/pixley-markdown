@@ -16,15 +16,70 @@ enum MarkdownConfig {
     static let maxHighlightSize = 1_048_576
 }
 
+// MARK: - Interactive Element Attribute Key
+
+extension NSAttributedString.Key {
+    /// Custom attribute storing the InteractiveElement at a given range
+    static let interactiveElement = NSAttributedString.Key("com.pixley.interactiveElement")
+}
+
 // MARK: - Custom NSTextView
 
-/// NSTextView subclass that ensures the find bar can be dismissed with Esc
-/// when hosted inside SwiftUI (SwiftUI can intercept key events before AppKit).
+/// NSTextView subclass with interactive markdown element click handling.
+/// Detects clicks on checkboxes, choices, fill-ins, and feedback markers.
 final class MarkdownNSTextView: NSTextView {
+
+    /// Callback for handling interactive element clicks. Includes optional option index for choice/review.
+    var onInteractiveElementClicked: ((InteractiveElement, Int?, NSPoint) -> Void)?
+
     override func cancelOperation(_ sender: Any?) {
         let hideItem = NSMenuItem()
         hideItem.tag = NSTextFinder.Action.hideFindInterface.rawValue
         performFindPanelAction(hideItem)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let charIndex = characterIndexForInsertion(at: point)
+
+        guard charIndex >= 0, charIndex < textStorage?.length ?? 0 else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        // Check if the click hit an interactive element
+        if let wrapper = textStorage?.attribute(.interactiveElement, at: charIndex, effectiveRange: nil) as? InteractiveElementWrapper {
+            onInteractiveElementClicked?(wrapper.element, wrapper.optionIndex, point)
+            return
+        }
+
+        super.mouseDown(with: event)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard let textStorage, let layoutManager, let textContainer else { return }
+
+        // Add pointing hand cursor over interactive elements
+        textStorage.enumerateAttribute(.interactiveElement, in: NSRange(location: 0, length: textStorage.length)) { value, range, _ in
+            guard value != nil else { return }
+            let glyphRange = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            layoutManager.enumerateEnclosingRects(forGlyphRange: glyphRange, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: textContainer) { rect, _ in
+                self.addCursorRect(rect, cursor: .pointingHand)
+            }
+        }
+    }
+}
+
+/// Wrapper to store InteractiveElement as an NSAttributedString attribute value (must be a class).
+final class InteractiveElementWrapper: NSObject {
+    let element: InteractiveElement
+    /// For choice/review elements, which option index this click area represents
+    let optionIndex: Int?
+
+    init(_ element: InteractiveElement, optionIndex: Int? = nil) {
+        self.element = element
+        self.optionIndex = optionIndex
     }
 }
 
@@ -50,6 +105,9 @@ struct MarkdownEditor: NSViewRepresentable {
 
     /// Called when user clicks gutter to toggle a bookmark at a line
     var onToggleBookmark: ((Int) -> Void)? = nil
+
+    /// Callback when an interactive element is clicked (element, optionIndex, point)
+    var onInteractiveElementClicked: ((InteractiveElement, Int?, NSPoint) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
         // Manual TextKit stack so we can use our custom NSTextView subclass
@@ -141,6 +199,12 @@ struct MarkdownEditor: NSViewRepresentable {
             object: clipView
         )
 
+        // Interactive element click handler
+        let coordinator = context.coordinator
+        textView.onInteractiveElementClicked = { element, optionIndex, point in
+            coordinator.parent.onInteractiveElementClicked?(element, optionIndex, point)
+        }
+
         // Initial content
         context.coordinator.applyHighlighting(to: textView, text: text)
 
@@ -197,8 +261,14 @@ struct MarkdownEditor: NSViewRepresentable {
             }
         }
 
-        // Update scroll callback reference
+        // Update callback references
         context.coordinator.onScrollPositionChanged = onScrollPositionChanged
+        if let tv = textView as? MarkdownNSTextView {
+            let coordinator = context.coordinator
+            tv.onInteractiveElementClicked = { element, optionIndex, point in
+                coordinator.parent.onInteractiveElementClicked?(element, optionIndex, point)
+            }
+        }
 
         // Toggle line numbers + update bookmarks
         scrollView.rulersVisible = settings.rendering.showLineNumbers
@@ -282,8 +352,20 @@ struct MarkdownEditor: NSViewRepresentable {
             // NSAttributedString isn't Sendable on macOS, so offloading to Task.detached
             // would require unsafe transfers. Highlighting is fast enough on-main-actor.
             let attributed = debouncedHighlighter.highlighter.highlight(text)
-            textView.textStorage?.setAttributedString(attributed)
+
+            // Detect and annotate interactive elements
+            let elements = InteractiveElementDetector.detect(in: text)
+            if !elements.isEmpty {
+                let mutable = NSMutableAttributedString(attributedString: attributed)
+                debouncedHighlighter.highlighter.annotateInteractiveElements(mutable, elements: elements, text: text)
+                textView.textStorage?.setAttributedString(mutable)
+            } else {
+                textView.textStorage?.setAttributedString(attributed)
+            }
+
             textView.selectedRanges = selectedRanges
+            // Reset cursor rects so interactive elements get pointing hand
+            textView.window?.invalidateCursorRects(for: textView)
             isUpdating = false
         }
 

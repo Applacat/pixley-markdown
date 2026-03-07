@@ -123,6 +123,11 @@ public final class AppCoordinator {
         document.triggerReload()
     }
 
+    /// Updates document content after an interactive write-back (no reload needed)
+    public func updateDocumentContent(_ newContent: String) {
+        document.updateContent(newContent)
+    }
+
     /// Marks the document as having external changes
     public func markDocumentChanged() {
         document.markChanged()
@@ -606,6 +611,13 @@ public final class DocumentState {
 
     func triggerReload() {
         reloadTrigger += 1
+        hasChanges = false
+    }
+
+    /// Updates content in-memory after a successful interactive write-back.
+    /// Does NOT trigger reload — the content is already current.
+    func updateContent(_ newContent: String) {
+        content = newContent
         hasChanges = false
     }
 }

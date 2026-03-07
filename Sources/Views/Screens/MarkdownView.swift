@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import aimdRenderer
 
 // MARK: - File Load Trigger
 
@@ -22,6 +23,12 @@ struct MarkdownView: View {
     @State private var fileWatcher: FileWatcher? = nil
     @State private var readingProgress: Double = 0
     @State private var bookmarkedLines: Set<Int> = []
+    @State private var interactionHandler = InteractionHandler()
+    @State private var showingFillInPopover = false
+    @State private var showingFeedbackPopover = false
+    @State private var popoverText = ""
+    @State private var activeFillIn: FillInElement? = nil
+    @State private var activeFeedback: FeedbackElement? = nil
 
     // MARK: - Body
 
@@ -122,6 +129,9 @@ struct MarkdownView: View {
             bookmarkedLines: bookmarkedLines,
             onToggleBookmark: { lineNumber in
                 toggleBookmark(at: lineNumber)
+            },
+            onInteractiveElementClicked: { element, optionIndex, point in
+                handleInteractiveClick(element, optionIndex: optionIndex)
             }
         )
         .overlay(alignment: .topTrailing) {
@@ -129,6 +139,29 @@ struct MarkdownView: View {
                 ReadingProgressBadge(progress: readingProgress)
                     .padding(8)
             }
+        }
+        .sheet(isPresented: $showingFillInPopover) {
+            FillInSheet(
+                hint: activeFillIn?.hint ?? "",
+                text: $popoverText,
+                onSubmit: {
+                    submitFillIn()
+                },
+                onCancel: {
+                    showingFillInPopover = false
+                }
+            )
+        }
+        .sheet(isPresented: $showingFeedbackPopover) {
+            FeedbackSheet(
+                text: $popoverText,
+                onSubmit: {
+                    submitFeedback()
+                },
+                onCancel: {
+                    showingFeedbackPopover = false
+                }
+            )
         }
     }
 
@@ -173,6 +206,158 @@ struct MarkdownView: View {
     private func refreshBookmarks() {
         let bookmarks = coordinator.getBookmarks()
         bookmarkedLines = Set(bookmarks.map(\.lineNumber))
+    }
+
+    // MARK: - Interactive Element Handling
+
+    private func handleInteractiveClick(_ element: InteractiveElement, optionIndex: Int? = nil) {
+        guard let fileURL = coordinator.navigation.selectedFile else { return }
+
+        Task {
+            do {
+                switch element {
+                case .checkbox(let cb):
+                    try await interactionHandler.toggleCheckbox(
+                        cb, in: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+
+                case .choice(let ch):
+                    let targetIndex = optionIndex ?? 0
+                    try await interactionHandler.selectChoice(
+                        optionIndex: targetIndex, in: ch, url: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+
+                case .review:
+                    // Reviews use the same choice-like handling — wired in Phase 3
+                    break
+
+                case .fillIn(let fi):
+                    switch fi.type {
+                    case .file:
+                        openFilePicker(for: fi)
+                    case .folder:
+                        openFolderPicker(for: fi)
+                    case .text, .date:
+                        activeFillIn = fi
+                        popoverText = fi.value ?? ""
+                        showingFillInPopover = true
+                    }
+
+                case .feedback(let fb):
+                    activeFeedback = fb
+                    popoverText = fb.existingText ?? ""
+                    showingFeedbackPopover = true
+
+                case .suggestion, .status, .confidence, .conditional, .collapsible:
+                    // Phase 3 patterns — not yet wired
+                    break
+                }
+            } catch {
+                coordinator.showError(.error(message: error.localizedDescription))
+            }
+        }
+    }
+
+    private func submitFillIn() {
+        guard let fillIn = activeFillIn,
+              let fileURL = coordinator.navigation.selectedFile,
+              !popoverText.isEmpty else {
+            showingFillInPopover = false
+            return
+        }
+
+        Task {
+            do {
+                try await interactionHandler.fillIn(
+                    fillIn, value: popoverText, in: fileURL, fileWatcher: fileWatcher
+                ) { newContent in
+                    coordinator.updateDocumentContent(newContent)
+                }
+            } catch {
+                coordinator.showError(.error(message: error.localizedDescription))
+            }
+            showingFillInPopover = false
+            activeFillIn = nil
+            popoverText = ""
+        }
+    }
+
+    private func submitFeedback() {
+        guard let feedback = activeFeedback,
+              let fileURL = coordinator.navigation.selectedFile,
+              !popoverText.isEmpty else {
+            showingFeedbackPopover = false
+            return
+        }
+
+        Task {
+            do {
+                try await interactionHandler.setFeedback(
+                    feedback, text: popoverText, in: fileURL, fileWatcher: fileWatcher
+                ) { newContent in
+                    coordinator.updateDocumentContent(newContent)
+                }
+            } catch {
+                coordinator.showError(.error(message: error.localizedDescription))
+            }
+            showingFeedbackPopover = false
+            activeFeedback = nil
+            popoverText = ""
+        }
+    }
+
+    // MARK: - File/Folder Pickers
+
+    private func openFilePicker(for fillIn: FillInElement) {
+        guard let fileURL = coordinator.navigation.selectedFile else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = fillIn.hint
+
+        panel.begin { response in
+            guard response == .OK, let selectedURL = panel.url else { return }
+            Task { @MainActor in
+                do {
+                    try await interactionHandler.fillIn(
+                        fillIn, value: selectedURL.path, in: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+                } catch {
+                    coordinator.showError(.error(message: error.localizedDescription))
+                }
+            }
+        }
+    }
+
+    private func openFolderPicker(for fillIn: FillInElement) {
+        guard let fileURL = coordinator.navigation.selectedFile else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = fillIn.hint
+
+        panel.begin { response in
+            guard response == .OK, let selectedURL = panel.url else { return }
+            Task { @MainActor in
+                do {
+                    try await interactionHandler.fillIn(
+                        fillIn, value: selectedURL.path, in: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+                } catch {
+                    coordinator.showError(.error(message: error.localizedDescription))
+                }
+            }
+        }
     }
 
     // MARK: - File Watching

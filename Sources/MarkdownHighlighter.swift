@@ -181,6 +181,107 @@ final class MarkdownHighlighter {
         return attributed
     }
 
+    /// Annotates an already-highlighted attributed string with interactive element styling.
+    /// Adds custom attributes and visual affordances for clickable elements.
+    func annotateInteractiveElements(_ attributed: NSMutableAttributedString, elements: [InteractiveElement], text: String) {
+        for element in elements {
+            let swiftRange = element.range
+            guard let nsRange = Optional(NSRange(swiftRange, in: text)) else { continue }
+            guard nsRange.location + nsRange.length <= attributed.length else { continue }
+
+            let wrapper = InteractiveElementWrapper(element)
+
+            switch element {
+            case .checkbox(let cb):
+                // Style the checkbox bracket area as interactive
+                if let checkNS = Optional(NSRange(cb.checkRange, in: text)) {
+                    // Expand to include the brackets: one char before and after the check char
+                    let bracketStart = max(0, checkNS.location - 1)
+                    let bracketEnd = min(attributed.length, checkNS.location + checkNS.length + 1)
+                    let bracketRange = NSRange(location: bracketStart, length: bracketEnd - bracketStart)
+                    attributed.addAttribute(.interactiveElement, value: wrapper, range: bracketRange)
+                    let checkColor: NSColor = cb.isChecked ? .systemGreen : .systemGray
+                    attributed.addAttribute(.foregroundColor, value: checkColor, range: bracketRange)
+                }
+
+            case .choice(let ch):
+                // Style each option's checkbox area with its index
+                for (i, option) in ch.options.enumerated() {
+                    if let checkNS = Optional(NSRange(option.checkRange, in: text)) {
+                        let bracketStart = max(0, checkNS.location - 1)
+                        let bracketEnd = min(attributed.length, checkNS.location + checkNS.length + 1)
+                        let bracketRange = NSRange(location: bracketStart, length: bracketEnd - bracketStart)
+                        let optionWrapper = InteractiveElementWrapper(element, optionIndex: i)
+                        attributed.addAttribute(.interactiveElement, value: optionWrapper, range: bracketRange)
+                        let checkColor: NSColor = option.isSelected ? .systemBlue : .systemGray
+                        attributed.addAttribute(.foregroundColor, value: checkColor, range: bracketRange)
+                    }
+                }
+
+            case .review(let rv):
+                // Style each review option with its index
+                for (i, option) in rv.options.enumerated() {
+                    if let checkNS = Optional(NSRange(option.checkRange, in: text)) {
+                        let bracketStart = max(0, checkNS.location - 1)
+                        let bracketEnd = min(attributed.length, checkNS.location + checkNS.length + 1)
+                        let bracketRange = NSRange(location: bracketStart, length: bracketEnd - bracketStart)
+                        let optionWrapper = InteractiveElementWrapper(element, optionIndex: i)
+                        attributed.addAttribute(.interactiveElement, value: optionWrapper, range: bracketRange)
+                        let checkColor: NSColor = option.isSelected ? .systemOrange : .systemGray
+                        attributed.addAttribute(.foregroundColor, value: checkColor, range: bracketRange)
+                    }
+                }
+
+            case .fillIn:
+                // Dotted underline + hint color
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                attributed.addAttribute(.foregroundColor, value: NSColor.systemTeal, range: nsRange)
+                attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.patternDash.rawValue | NSUnderlineStyle.single.rawValue, range: nsRange)
+                attributed.addAttribute(.underlineColor, value: NSColor.systemTeal.withAlphaComponent(0.6), range: nsRange)
+
+            case .feedback:
+                // Feedback widget styling — make it visible
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                attributed.addAttribute(.foregroundColor, value: NSColor.systemPurple, range: nsRange)
+                attributed.addAttribute(.backgroundColor, value: NSColor.systemPurple.withAlphaComponent(0.1), range: nsRange)
+
+            case .suggestion(let s):
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                switch s.type {
+                case .addition:
+                    attributed.addAttribute(.foregroundColor, value: NSColor.systemGreen, range: nsRange)
+                    attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
+                    attributed.addAttribute(.underlineColor, value: NSColor.systemGreen, range: nsRange)
+                case .deletion:
+                    attributed.addAttribute(.foregroundColor, value: NSColor.systemRed, range: nsRange)
+                    attributed.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
+                    attributed.addAttribute(.strikethroughColor, value: NSColor.systemRed, range: nsRange)
+                case .substitution:
+                    attributed.addAttribute(.foregroundColor, value: NSColor.systemOrange, range: nsRange)
+                case .highlight:
+                    attributed.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: nsRange)
+                }
+
+            case .status:
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+
+            case .confidence(let c):
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                let color: NSColor
+                switch c.level {
+                case .high: color = .systemGreen
+                case .medium: color = .systemYellow
+                case .low: color = .systemRed
+                case .confirmed: color = .systemBlue
+                }
+                attributed.addAttribute(.backgroundColor, value: color.withAlphaComponent(0.15), range: nsRange)
+
+            case .conditional, .collapsible:
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+            }
+        }
+    }
+
     private func applyRule(_ rule: HighlightRule, to str: NSMutableAttributedString, match: NSTextCheckingResult) {
         switch rule {
         case .heading:
