@@ -49,7 +49,7 @@ targets:
       - package: aimdRenderer
     settings:
       base:
-        PRODUCT_NAME: Pixley Markdown Reader
+        PRODUCT_NAME: Pixley Markdown
         PRODUCT_BUNDLE_IDENTIFIER: com.aimd.reader
         INFOPLIST_FILE: Resources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -58,8 +58,8 @@ targets:
     info:
       path: Resources/Info.plist
       properties:
-        CFBundleName: Pixley Markdown Reader
-        CFBundleDisplayName: Pixley Reader
+        CFBundleName: Pixley Markdown
+        CFBundleDisplayName: Pixley Markdown
         CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleShortVersionString: $(MARKETING_VERSION)
@@ -94,7 +94,7 @@ targets:
       path: Resources/AIMDReader.entitlements
       properties:
         com.apple.security.app-sandbox: true
-        com.apple.security.files.user-selected.read-only: true
+        com.apple.security.files.user-selected.read-write: true
 
 schemes:
   AIMDReader:

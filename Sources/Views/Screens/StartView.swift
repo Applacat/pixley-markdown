@@ -132,10 +132,10 @@ struct StartView: View {
                     .frame(width: 140, height: 140)
                     .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                     .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
-                    .accessibilityLabel("Pixley Markdown Reader app icon")
+                    .accessibilityLabel("Pixley Markdown app icon")
 
                 VStack(spacing: 4) {
-                    Text("Pixley Markdown Reader")
+                    Text("Pixley Markdown")
                         .font(.title2.bold())
 
                     Text("Read what AI writes")
@@ -152,7 +152,7 @@ struct StartView: View {
     private var shortcutsColumn: some View {
         VStack(spacing: 0) {
             FolderShortcutButton(
-                title: "Read Sample Files",
+                title: "Read Setup Files",
                 icon: "book.circle",
                 action: openWelcomeFolderWithPrompt
             )

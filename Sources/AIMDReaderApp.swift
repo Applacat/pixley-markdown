@@ -102,7 +102,7 @@ struct AIMDReaderApp: App {
 
     var body: some Scene {
         // Start window - minimal launcher
-        Window("Pixley Markdown Reader", id: "start") {
+        Window("Pixley Markdown", id: "start") {
             StartView()
                 .environment(\.settings, settings)
                 .modelContainer(modelContainer)
@@ -116,7 +116,7 @@ struct AIMDReaderApp: App {
         #endif
 
         // Browser window — per-window coordinator via BrowserWindowRoot
-        WindowGroup("Pixley Markdown Reader", id: "browser", for: BrowserOpenRequest.self) { $request in
+        WindowGroup("Pixley Markdown", id: "browser", for: BrowserOpenRequest.self) { $request in
             BrowserWindowRoot(request: request)
                 .environment(\.settings, settings)
                 .modelContainer(modelContainer)
@@ -228,7 +228,7 @@ struct AIMDReaderApp: App {
 
             // Help menu
             CommandGroup(replacing: .help) {
-                Button("Pixley Markdown Reader Help") {
+                Button("Pixley Markdown Help") {
                     openWelcomeToPage("01-Welcome.md")
                 }
                 .keyboardShortcut("/", modifiers: [.command])
@@ -258,7 +258,7 @@ struct AIMDReaderApp: App {
 
             // About menu
             CommandGroup(replacing: .appInfo) {
-                Button("About Pixley Markdown Reader") {
+                Button("About Pixley Markdown") {
                     showAboutPanel()
                 }
             }

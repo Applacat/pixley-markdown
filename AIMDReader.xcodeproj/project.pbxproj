@@ -61,6 +61,7 @@
 		D47A0A586796F9B86D732BFB /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C887EFAD828E7AB6A19725A /* ChatMessage.swift */; };
 		D53618E50E3DEFDB3179A69F /* FolderServiceCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09FA8652D62524559DFB8FEF /* FolderServiceCacheTests.swift */; };
 		D6F31CC121307CEE2BAF369F /* AsyncDocumentCoordinationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93645B0EF0050C7E13410507 /* AsyncDocumentCoordinationTests.swift */; };
+		D8A80879E81D4208F043DD72 /* InteractionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E4AD4FFB98B7E0EBB9BE043 /* InteractionHandler.swift */; };
 		DA51DA0EE6E4AA31FA78462D /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6BBEFD5E89FD87384767913 /* ChatView.swift */; };
 		DC66F69416DB06DAB5CFE2B2 /* RecentFoldersManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5EDAF12A053E7D98F82C853 /* RecentFoldersManager.swift */; };
 		DF2644809B674011702FD2C7 /* ErrorBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5582C99D27644F5CB3FC69C /* ErrorBanner.swift */; };
@@ -101,6 +102,7 @@
 		52C05C0F5E8774AFACA0B845 /* BrowserWindowRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowRoot.swift; sourceTree = "<group>"; };
 		59C1F8A33998A1805CF52C21 /* FileWatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileWatcherTests.swift; sourceTree = "<group>"; };
 		5A9D31B799BB143271DD4FAD /* ChatInputValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputValidator.swift; sourceTree = "<group>"; };
+		5E4AD4FFB98B7E0EBB9BE043 /* InteractionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractionHandler.swift; sourceTree = "<group>"; };
 		60EC4647BF22AAA41D51AC64 /* FileMetadataRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileMetadataRepositoryTests.swift; sourceTree = "<group>"; };
 		65D020033697908C47AF12C6 /* ChatSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSummary.swift; sourceTree = "<group>"; };
 		6C887EFAD828E7AB6A19725A /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
@@ -250,6 +252,7 @@
 				B46C2079D5FC942799A84EAC /* FolderService.swift */,
 				B1F8EA971E150D300A334B1A /* FolderTreeFilter.swift */,
 				7838CF7D4E3E4E3537D06749 /* FolderWatcher.swift */,
+				5E4AD4FFB98B7E0EBB9BE043 /* InteractionHandler.swift */,
 				D5EDAF12A053E7D98F82C853 /* RecentFoldersManager.swift */,
 				BB81EE3FB70820E95B314A5B /* SecurityScopedBookmarkManager.swift */,
 				B39B05B1D4284C46E7800BDC /* TranscriptCondenser.swift */,
@@ -502,6 +505,7 @@
 				9706C359F15E7A8E0DFBE3E6 /* FolderService.swift in Sources */,
 				3D2AD8297895A7DE8FE9F242 /* FolderTreeFilter.swift in Sources */,
 				E5E300FEB131BE8C39834293 /* FolderWatcher.swift in Sources */,
+				D8A80879E81D4208F043DD72 /* InteractionHandler.swift in Sources */,
 				8C0B20D7D4D27728EDDC2860 /* LineNumberRulerView.swift in Sources */,
 				F1735D44AA4881A7EBD8B737 /* MarkdownEditor.swift in Sources */,
 				C3B2AF15A1897838583348F2 /* MarkdownHighlighter.swift in Sources */,
@@ -618,7 +622,7 @@
 					"@executable_path/../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.aimd.reader;
-				PRODUCT_NAME = "Pixley Markdown Reader";
+				PRODUCT_NAME = "Pixley Markdown";
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -724,7 +728,7 @@
 					"@executable_path/../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.aimd.reader;
-				PRODUCT_NAME = "Pixley Markdown Reader";
+				PRODUCT_NAME = "Pixley Markdown";
 				SDKROOT = macosx;
 			};
 			name = Debug;

@@ -10,6 +10,10 @@ final class FileWatcher {
     private var lastModificationDate: Date?
     private let onChange: @MainActor () -> Void
 
+    /// When true, the next file change event is suppressed (used by InteractionHandler
+    /// to avoid showing the reload pill for self-initiated writes).
+    var suppressNextChange: Bool = false
+
     init(onChange: @escaping @MainActor () -> Void) {
         self.onChange = onChange
     }
@@ -64,6 +68,11 @@ final class FileWatcher {
         let currentDate = Self.modificationDate(for: path)
         guard currentDate != lastModificationDate else { return }
         lastModificationDate = currentDate
+
+        if suppressNextChange {
+            suppressNextChange = false
+            return
+        }
         onChange()
     }
 

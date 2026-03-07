@@ -84,7 +84,7 @@ struct BrowserView: View {
         }
         #if os(macOS)
         .modifier(AIChatModifier(coordinator: coordinator))
-        .navigationTitle(coordinator.navigation.selectedFile?.deletingPathExtension().lastPathComponent ?? "Pixley Markdown Reader")
+        .navigationTitle(coordinator.navigation.selectedFile?.deletingPathExtension().lastPathComponent ?? "Pixley Markdown")
         .toolbar {
             // Font size stepper (trailing edge, own pill)
             ToolbarItem(placement: .primaryAction) {

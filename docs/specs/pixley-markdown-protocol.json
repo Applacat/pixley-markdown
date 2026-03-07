@@ -1,0 +1,111 @@
+{
+  "feature": "Pixley Interactive Markdown Protocol",
+  "version": "3.0",
+  "date": "2026-03-07",
+  "status": "ready_for_implementation",
+  "product_name": "Pixley Markdown",
+  "phases": [
+    {
+      "id": 1,
+      "name": "Foundation",
+      "stories": ["US-1", "US-2", "US-3"],
+      "status": "pending",
+      "deliverables": [
+        "MarkdownStructureParser",
+        "InteractionHandler",
+        "Sandbox entitlement (read-write)",
+        "App rename to Pixley Markdown",
+        "Setup Files rename"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Core Patterns",
+      "stories": ["US-4", "US-5", "US-6", "US-7"],
+      "status": "pending",
+      "deliverables": [
+        "Checkbox toggle",
+        "Choice radio",
+        "Fill-in-the-blank",
+        "Feedback"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Advanced Patterns",
+      "stories": ["US-8", "US-9", "US-10", "US-11", "US-12", "US-13", "US-14"],
+      "status": "pending",
+      "deliverables": [
+        "Reviews (approvals + QA)",
+        "CriticMarkup",
+        "Status state machines",
+        "Confidence indicators",
+        "Conditional/collapsible sections",
+        "Progress bars",
+        "Gutter refactor"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "AI Integration",
+      "stories": ["US-15", "US-16", "US-17"],
+      "status": "pending",
+      "deliverables": [
+        "FM context optimization",
+        "Voice commands (editInteractiveElements)",
+        "Starter Files + prompt template"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Multiplatform + Ecosystem",
+      "stories": ["US-18", "US-19"],
+      "status": "pending",
+      "deliverables": [
+        "iOS 26 / iPadOS 26 / visionOS targets",
+        "Public repo applacat/pixley",
+        "Claude Code skill"
+      ]
+    }
+  ],
+  "user_stories": [
+    {"id": "US-1", "title": "Document Structure Parser", "phase": 1},
+    {"id": "US-2", "title": "Interaction Handler (Write-Back Engine)", "phase": 1},
+    {"id": "US-3", "title": "Sandbox Entitlement + App Rename", "phase": 1},
+    {"id": "US-4", "title": "Checkbox Toggle", "phase": 2},
+    {"id": "US-5", "title": "Choice (Radio in Blockquote)", "phase": 2},
+    {"id": "US-6", "title": "Fill-in-the-Blank", "phase": 2},
+    {"id": "US-7", "title": "Feedback", "phase": 2},
+    {"id": "US-8", "title": "Reviews (Approvals + QA)", "phase": 3},
+    {"id": "US-9", "title": "CriticMarkup", "phase": 3},
+    {"id": "US-10", "title": "Status State Machines", "phase": 3},
+    {"id": "US-11", "title": "Confidence Indicators", "phase": 3},
+    {"id": "US-12", "title": "Conditional / Collapsible Sections", "phase": 3},
+    {"id": "US-13", "title": "Progress Bars", "phase": 3},
+    {"id": "US-14", "title": "Gutter Refactor", "phase": 3},
+    {"id": "US-15", "title": "FM Context Optimization", "phase": 4},
+    {"id": "US-16", "title": "Voice Commands via AI Chat", "phase": 4},
+    {"id": "US-17", "title": "Setup Files + Starter Document", "phase": 4},
+    {"id": "US-18", "title": "Multiplatform Targets", "phase": 5},
+    {"id": "US-19", "title": "Public Ecosystem Repo", "phase": 5}
+  ],
+  "ux_principles": {
+    "metaphor": "Digital redlining",
+    "click_gesture": "Single click toggles",
+    "text_input": "Popover with auto-focused text field",
+    "critic_markup_ui": "Inline colored text + floating toolbar on hover",
+    "visual_affordances": "Always visible",
+    "write_timing": "Instant per toggle (no debounce)"
+  },
+  "platforms": {
+    "macOS": "15+",
+    "iOS": "26",
+    "iPadOS": "26",
+    "visionOS": "latest"
+  },
+  "verification": {
+    "build": "xcodegen generate && xcodebuild -scheme AIMDReader -destination 'platform=macOS' build",
+    "test": "xcodebuild -scheme AIMDReaderTests -destination 'platform=macOS' test",
+    "integration": "Open Starter Document, interact with all 9 patterns"
+  }
+}
