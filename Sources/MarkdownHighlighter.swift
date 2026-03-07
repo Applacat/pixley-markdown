@@ -182,7 +182,8 @@ final class MarkdownHighlighter {
     }
 
     /// Annotates an already-highlighted attributed string with interactive element styling.
-    /// Adds custom attributes and visual affordances for clickable elements.
+    /// Adds custom attributes, visual affordances, and tooltips for clickable elements.
+    /// Click targets span full element ranges (not just bracket characters) for discoverability.
     func annotateInteractiveElements(_ attributed: NSMutableAttributedString, elements: [InteractiveElement], text: String) {
         for element in elements {
             let swiftRange = element.range
@@ -193,74 +194,101 @@ final class MarkdownHighlighter {
 
             switch element {
             case .checkbox(let cb):
-                // Style the checkbox bracket area as interactive
+                // Click target: the FULL line (not just the brackets)
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                let tooltip = cb.isChecked ? "Click to uncheck" : "Click to mark as complete"
+                attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
+                // Color the bracket area
                 if let checkNS = Optional(NSRange(cb.checkRange, in: text)) {
-                    // Expand to include the brackets: one char before and after the check char
                     let bracketStart = max(0, checkNS.location - 1)
                     let bracketEnd = min(attributed.length, checkNS.location + checkNS.length + 1)
                     let bracketRange = NSRange(location: bracketStart, length: bracketEnd - bracketStart)
-                    attributed.addAttribute(.interactiveElement, value: wrapper, range: bracketRange)
                     let checkColor: NSColor = cb.isChecked ? .systemGreen : .systemGray
                     attributed.addAttribute(.foregroundColor, value: checkColor, range: bracketRange)
                 }
 
             case .choice(let ch):
-                // Style each option's checkbox area with its index
+                // Click target: each option's FULL range (not just brackets)
                 for (i, option) in ch.options.enumerated() {
+                    let optionNS = NSRange(option.range, in: text)
+                    guard optionNS.location + optionNS.length <= attributed.length else { continue }
+                    let optionWrapper = InteractiveElementWrapper(element, optionIndex: i)
+                    attributed.addAttribute(.interactiveElement, value: optionWrapper, range: optionNS)
+                    attributed.addAttribute(.toolTip, value: "Click to select this option", range: optionNS)
+                    // Color the bracket area
                     if let checkNS = Optional(NSRange(option.checkRange, in: text)) {
                         let bracketStart = max(0, checkNS.location - 1)
                         let bracketEnd = min(attributed.length, checkNS.location + checkNS.length + 1)
                         let bracketRange = NSRange(location: bracketStart, length: bracketEnd - bracketStart)
-                        let optionWrapper = InteractiveElementWrapper(element, optionIndex: i)
-                        attributed.addAttribute(.interactiveElement, value: optionWrapper, range: bracketRange)
                         let checkColor: NSColor = option.isSelected ? .systemBlue : .systemGray
                         attributed.addAttribute(.foregroundColor, value: checkColor, range: bracketRange)
                     }
                 }
 
             case .review(let rv):
-                // Style each review option with its index
+                // Click target: each review option's FULL range (not just brackets)
                 for (i, option) in rv.options.enumerated() {
+                    let optionNS = NSRange(option.range, in: text)
+                    guard optionNS.location + optionNS.length <= attributed.length else { continue }
+                    let optionWrapper = InteractiveElementWrapper(element, optionIndex: i)
+                    attributed.addAttribute(.interactiveElement, value: optionWrapper, range: optionNS)
+                    let tooltip = "Click to set review: \(option.status.rawValue)"
+                    attributed.addAttribute(.toolTip, value: tooltip, range: optionNS)
+                    // Color the bracket area
                     if let checkNS = Optional(NSRange(option.checkRange, in: text)) {
                         let bracketStart = max(0, checkNS.location - 1)
                         let bracketEnd = min(attributed.length, checkNS.location + checkNS.length + 1)
                         let bracketRange = NSRange(location: bracketStart, length: bracketEnd - bracketStart)
-                        let optionWrapper = InteractiveElementWrapper(element, optionIndex: i)
-                        attributed.addAttribute(.interactiveElement, value: optionWrapper, range: bracketRange)
                         let checkColor: NSColor = option.isSelected ? .systemOrange : .systemGray
                         attributed.addAttribute(.foregroundColor, value: checkColor, range: bracketRange)
                     }
                 }
 
-            case .fillIn:
+            case .fillIn(let fi):
                 // Dotted underline + hint color
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
                 attributed.addAttribute(.foregroundColor, value: NSColor.systemTeal, range: nsRange)
                 attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.patternDash.rawValue | NSUnderlineStyle.single.rawValue, range: nsRange)
                 attributed.addAttribute(.underlineColor, value: NSColor.systemTeal.withAlphaComponent(0.6), range: nsRange)
+                let tooltip: String
+                switch fi.type {
+                case .text: tooltip = "Click to fill in: \(fi.hint)"
+                case .file: tooltip = "Click to choose a file"
+                case .folder: tooltip = "Click to choose a folder"
+                case .date: tooltip = "Click to pick a date"
+                }
+                attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
 
-            case .feedback:
+            case .feedback(let fb):
                 // Feedback widget styling — make it visible
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
                 attributed.addAttribute(.foregroundColor, value: NSColor.systemPurple, range: nsRange)
                 attributed.addAttribute(.backgroundColor, value: NSColor.systemPurple.withAlphaComponent(0.1), range: nsRange)
+                let tooltip = fb.existingText != nil ? "Click to edit feedback" : "Click to leave feedback"
+                attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
 
             case .suggestion(let s):
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                let tooltip: String
                 switch s.type {
                 case .addition:
                     attributed.addAttribute(.foregroundColor, value: NSColor.systemGreen, range: nsRange)
                     attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
                     attributed.addAttribute(.underlineColor, value: NSColor.systemGreen, range: nsRange)
+                    tooltip = "Suggested addition — click to review"
                 case .deletion:
                     attributed.addAttribute(.foregroundColor, value: NSColor.systemRed, range: nsRange)
                     attributed.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
                     attributed.addAttribute(.strikethroughColor, value: NSColor.systemRed, range: nsRange)
+                    tooltip = "Suggested deletion — click to review"
                 case .substitution:
                     attributed.addAttribute(.foregroundColor, value: NSColor.systemOrange, range: nsRange)
+                    tooltip = "Suggested change — click to review"
                 case .highlight:
                     attributed.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: nsRange)
+                    tooltip = "Highlighted — click to review"
                 }
+                attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
 
             case .status(let st):
                 // Style the label range as a clickable badge
@@ -268,6 +296,8 @@ final class MarkdownHighlighter {
                 if labelNS.location + labelNS.length <= attributed.length {
                     attributed.addAttribute(.interactiveElement, value: wrapper, range: labelNS)
                     attributed.addAttribute(.backgroundColor, value: NSColor.systemIndigo.withAlphaComponent(0.15), range: labelNS)
+                    let tooltip = st.nextStates.isEmpty ? "Status complete" : "Click to advance status"
+                    attributed.addAttribute(.toolTip, value: tooltip, range: labelNS)
                 }
                 // Dim the status comment (definition line)
                 let commentNS = NSRange(st.commentRange, in: text)
@@ -278,13 +308,23 @@ final class MarkdownHighlighter {
             case .confidence(let c):
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
                 let color: NSColor
+                let tooltip: String
                 switch c.level {
-                case .high: color = .systemGreen
-                case .medium: color = .systemYellow
-                case .low: color = .systemRed
-                case .confirmed: color = .systemBlue
+                case .high:
+                    color = .systemGreen
+                    tooltip = "AI is confident — click to confirm"
+                case .medium:
+                    color = .systemYellow
+                    tooltip = "AI confidence: medium"
+                case .low:
+                    color = .systemRed
+                    tooltip = "AI is uncertain — click to challenge"
+                case .confirmed:
+                    color = .systemBlue
+                    tooltip = "Confirmed"
                 }
                 attributed.addAttribute(.backgroundColor, value: color.withAlphaComponent(0.15), range: nsRange)
+                attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
 
             case .conditional, .collapsible:
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)

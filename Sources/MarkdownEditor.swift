@@ -27,16 +27,90 @@ extension NSAttributedString.Key {
 
 /// NSTextView subclass with interactive markdown element click handling.
 /// Detects clicks on checkboxes, choices, fill-ins, and feedback markers.
+/// Provides hover highlighting and tooltips for discoverability.
 final class MarkdownNSTextView: NSTextView {
 
     /// Callback for handling interactive element clicks. Includes optional option index for choice/review.
     var onInteractiveElementClicked: ((InteractiveElement, Int?, NSPoint) -> Void)?
+
+    /// Tracks the currently hovered interactive element range for hover highlight
+    private var hoveredRange: NSRange?
+
+    /// The tracking area for mouse movement events
+    private var hoverTrackingArea: NSTrackingArea?
 
     override func cancelOperation(_ sender: Any?) {
         let hideItem = NSMenuItem()
         hideItem.tag = NSTextFinder.Action.hideFindInterface.rawValue
         performFindPanelAction(hideItem)
     }
+
+    // MARK: - Mouse Tracking Setup
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+
+        if let existing = hoverTrackingArea {
+            removeTrackingArea(existing)
+        }
+
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    // MARK: - Hover Highlight
+
+    override func mouseMoved(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let charIndex = characterIndexForInsertion(at: point)
+
+        guard charIndex >= 0, charIndex < textStorage?.length ?? 0,
+              let layoutManager else {
+            clearHoverHighlight()
+            super.mouseMoved(with: event)
+            return
+        }
+
+        // Check if mouse is over an interactive element
+        var effectiveRange = NSRange()
+        if let _ = textStorage?.attribute(.interactiveElement, at: charIndex, effectiveRange: &effectiveRange) as? InteractiveElementWrapper {
+            // Only update if the hovered range changed
+            if hoveredRange != effectiveRange {
+                clearHoverHighlight()
+                hoveredRange = effectiveRange
+                // Temporary background highlight — overrides any permanent background during hover,
+                // restores automatically when removed. The accent color signals "clickable."
+                layoutManager.addTemporaryAttribute(
+                    .backgroundColor,
+                    value: NSColor.controlAccentColor.withAlphaComponent(0.12),
+                    forCharacterRange: effectiveRange
+                )
+            }
+        } else {
+            clearHoverHighlight()
+        }
+
+        super.mouseMoved(with: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        clearHoverHighlight()
+        super.mouseExited(with: event)
+    }
+
+    private func clearHoverHighlight() {
+        guard let hoveredRange, let layoutManager else { return }
+        layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: hoveredRange)
+        self.hoveredRange = nil
+    }
+
+    // MARK: - Click Handling
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
@@ -55,6 +129,8 @@ final class MarkdownNSTextView: NSTextView {
 
         super.mouseDown(with: event)
     }
+
+    // MARK: - Cursor Rects
 
     override func resetCursorRects() {
         super.resetCursorRects()
