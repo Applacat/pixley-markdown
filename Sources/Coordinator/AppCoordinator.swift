@@ -644,3 +644,17 @@ extension EnvironmentValues {
         set { self[AppCoordinatorKey.self] = newValue }
     }
 }
+
+// MARK: - Focused Value Key
+
+/// Publishes the active (key) window's coordinator for menu commands.
+private struct FocusedCoordinatorKey: FocusedValueKey {
+    typealias Value = AppCoordinator
+}
+
+extension FocusedValues {
+    var activeCoordinator: AppCoordinator? {
+        get { self[FocusedCoordinatorKey.self] }
+        set { self[FocusedCoordinatorKey.self] = newValue }
+    }
+}

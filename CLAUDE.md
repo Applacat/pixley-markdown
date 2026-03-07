@@ -23,15 +23,23 @@ Read markdown files elegantly. Browse folder hierarchies, view with syntax highl
 
 ### Architecture
 
-**AppCoordinator** owns all state, decomposed into focused containers:
+**Per-window AppCoordinator** — each browser window creates its own coordinator, decomposed into focused containers:
 - `NavigationState` — folder/file selection, security-scoped bookmark lifecycle
 - `UIState` — panel visibility, appearance
 - `DocumentState` — document content, loading
 
 Views observe state via Environment, mutate through coordinator methods.
+Menu commands use `@FocusedValue(\.activeCoordinator)` to target the key window.
+
+**Window architecture:**
+- `Window(id: "start")` — Launcher with folder shortcuts + recents
+- `WindowGroup(id: "browser", for: BrowserOpenRequest.self)` — Per-window browser
+- `BrowserWindowRoot` wraps `BrowserView`, creates per-window coordinator, hydrates from request
+- `WindowRouter` bridges AppDelegate to SwiftUI window creation
+- `CoordinatorRegistry` tracks all live coordinators for bulk operations (termination flush)
 
 **Layout:** NavigationSplitView with:
-1. **OutlineFileList** (sidebar) - NSOutlineView-backed hierarchical tree
+1. **OutlineFileList** (sidebar) - NSOutlineView-backed hierarchical tree with navigate-up button
 2. **MarkdownView** (detail) - Syntax-highlighted markdown viewer with file watching
 3. **ChatView** (inspector) - AI chat about current document (via Foundation Models)
 
@@ -45,12 +53,14 @@ Views observe state via Environment, mutate through coordinator methods.
 ### Key Files
 
 **Coordinator:**
-- `AppCoordinator.swift` - Central state coordinator with NavigationState, UIState, DocumentState
+- `AppCoordinator.swift` - Per-window state coordinator with NavigationState, UIState, DocumentState, FocusedValueKey
+- `CoordinatorRegistry.swift` - Tracks all live coordinators for bulk flush on termination
 
 **Models:**
 - `FolderItem.swift` - File/folder with `children: [FolderItem]?` for hierarchy
 - `ChatMessage.swift` - AI chat message model
 - `ChatConfiguration.swift` - FM constants (document cap, timeout)
+- `BrowserOpenRequest.swift` - Codable payload for opening browser windows
 - `AppError.swift` - Explicit error types
 
 **Services:**
@@ -62,6 +72,7 @@ Views observe state via Environment, mutate through coordinator methods.
 - `ChatTools.swift` - FM tools for cross-document recall (listDocuments, getDocumentHistory)
 - `ChatInputValidator.swift` - Input validation before sending to FM
 - `FileWatcher.swift` - DispatchSource file monitoring with reload pill
+- `WindowRouter.swift` - Bridges AppDelegate to SwiftUI window creation (stores OpenWindowAction)
 - `WelcomeManager.swift` - First-launch welcome state
 - `FolderTreeFilter.swift` - Search/filter within folder tree
 
@@ -76,7 +87,8 @@ Views observe state via Environment, mutate through coordinator methods.
 
 **Views:**
 - `AIMDReaderApp.swift` - App entry, window management, AppDelegate
-- `ContentView.swift` - BrowserView with NavigationSplitView
+- `ContentView.swift` - BrowserView with NavigationSplitView, NavigateUpButton
+- `BrowserWindowRoot.swift` - Per-window coordinator wrapper, hydrates from BrowserOpenRequest
 - `StartView.swift` - Pixelmator-style welcome with drag-and-drop
 - `MarkdownView.swift` - Markdown viewer with reload pill
 - `ChatView.swift` - AI chat with "Thinking..." indicator + full response display
@@ -112,7 +124,8 @@ AI chat uses Apple's on-device Foundation Models framework:
 - File I/O: `Task.detached` or async/await
 - Data models: Value types (structs)
 - Errors: Explicit error types, no force unwraps
-- Single-window architecture
+- Multi-window: each browser window has independent AppCoordinator
+- Shared: ModelContainer, settings (App level); Per-window: coordinator, folder watcher, chat
 
 ## Building
 

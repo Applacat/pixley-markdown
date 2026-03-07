@@ -8,7 +8,6 @@ import UniformTypeIdentifiers
 /// Shows when no folder is open. Click app icon to open Welcome tour (easter egg).
 struct StartView: View {
 
-    @Environment(\.coordinator) private var coordinator
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
 
@@ -19,9 +18,6 @@ struct StartView: View {
     @State private var recents: [RecentItem] = []
     @State private var hasPruned = false
 
-    /// Closure to perform launch logic (first launch, session restore)
-    var performLaunchIfNeeded: (() -> Void)? = nil
-
     private var hasRecents: Bool { !recents.isEmpty }
 
     var body: some View {
@@ -29,43 +25,55 @@ struct StartView: View {
             if isReady {
                 launcherContent
             } else {
-                // Show nothing while determining launch state
                 Color.clear
             }
         }
-        // Dynamic width: compact (480) when no recents, expanded (720) with recents panel
         .frame(width: hasRecents ? 720 : 480, height: 520)
         .animation(.easeInOut(duration: 0.25), value: hasRecents)
         .onAppear {
+            // Store openWindow action for AppDelegate bridge
+            WindowRouter.shared.openWindowAction = openWindow
+
             // Run launch logic first (only once)
             if !hasPerformedLaunch {
                 hasPerformedLaunch = true
-                performLaunchIfNeeded?()
+
+                if let request = determineLaunchRequest() {
+                    openWindow(id: "browser", value: request)
+                    dismissWindow(id: "start")
+                    return
+                }
             }
 
-            // If we have a root folder (from first launch or session restore),
-            // redirect to browser immediately
-            if coordinator.navigation.rootFolderURL != nil {
-                activateOrOpenBrowser()
-                dismissWindow(id: "start")
-            } else {
-                // Prune stale items once, then load recents for display
-                if !hasPruned {
-                    RecentFoldersManager.shared.pruneStaleItems()
-                    hasPruned = true
-                }
-                recents = RecentFoldersManager.shared.getAllRecents()
-                isReady = true
+            // Prune stale items once, then load recents
+            if !hasPruned {
+                RecentFoldersManager.shared.pruneStaleItems()
+                hasPruned = true
             }
+            recents = RecentFoldersManager.shared.getAllRecents()
+            isReady = true
         }
-        .onChange(of: coordinator.ui.shouldOpenBrowser) { _, shouldOpen in
-            // React to menu commands (Help, About) that request browser window
-            if shouldOpen {
-                coordinator.consumeOpenBrowser()  // Consume the flag
-                activateOrOpenBrowser()
-                dismissWindow(id: "start")
-            }
+    }
+
+    // MARK: - Launch Logic
+
+    private func determineLaunchRequest() -> BrowserOpenRequest? {
+        let hasLaunchedBefore = UserDefaults.standard.bool(forKey: AIMDReaderApp.hasLaunchedBeforeKey)
+
+        if !hasLaunchedBefore {
+            UserDefaults.standard.set(true, forKey: AIMDReaderApp.hasLaunchedBeforeKey)
+            guard let welcomeURL = WelcomeManager.ensureWelcomeFolder() else { return nil }
+            return BrowserOpenRequest(folderURL: welcomeURL, isFirstLaunchWelcome: true)
         }
+
+        // Restore both folder AND file — never open an empty browser
+        if let lastFolder = RecentFoldersManager.shared.lastSessionFolder(),
+           let folderURL = RecentFoldersManager.shared.resolveBookmark(lastFolder),
+           let fileURL = RecentFoldersManager.shared.lastSessionFile(forFolderPath: lastFolder.path) {
+            return BrowserOpenRequest(folderURL: folderURL, fileURL: fileURL)
+        }
+
+        return nil
     }
 
     // MARK: - Launcher Content
@@ -74,19 +82,13 @@ struct StartView: View {
         VStack(spacing: 0) {
             Spacer()
 
-            // Centered content
             VStack(spacing: 24) {
-                // App mascot + title (click for welcome tour)
                 mascotHeader
 
-                // Content area: shortcuts + optional recents panel
                 if hasRecents {
                     HStack(alignment: .top, spacing: 0) {
                         shortcutsColumn
-
-                        Divider()
-                            .padding(.vertical, 4)
-
+                        Divider().padding(.vertical, 4)
                         recentsColumn
                     }
                 } else {
@@ -96,7 +98,6 @@ struct StartView: View {
 
             Spacer()
 
-            // Footer hint
             Text("or drop a folder or .md file anywhere")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
@@ -244,20 +245,15 @@ struct StartView: View {
 
     private func openRecentItem(_ item: RecentItem) {
         if item.isFolder {
-            // Folder: resolve bookmark and open with sidebar visible
             let folders = RecentFoldersManager.shared.getRecentFolders()
             guard let folder = folders.first(where: { $0.path == item.path }),
                   let resolvedURL = RecentFoldersManager.shared.resolveBookmark(folder) else {
-                // Bookmark can't resolve — remove and refresh
                 removeRecentItem(item)
                 return
             }
             RecentFoldersManager.shared.addFolder(resolvedURL)
-            coordinator.openFolder(resolvedURL)
-            activateOrOpenBrowser()
-            dismissWindow(id: "start")
+            openBrowserAndDismiss(BrowserOpenRequest(folderURL: resolvedURL))
         } else {
-            // File: resolve parent folder bookmark, open folder + select file collapsed
             guard let parentPath = item.parentPath else {
                 removeRecentItem(item)
                 return
@@ -265,7 +261,6 @@ struct StartView: View {
             let folders = RecentFoldersManager.shared.getRecentFolders()
             guard let parentFolder = folders.first(where: { $0.path == parentPath }),
                   let resolvedURL = RecentFoldersManager.shared.resolveBookmark(parentFolder) else {
-                // Parent folder inaccessible — remove file from recents
                 removeRecentItem(item)
                 return
             }
@@ -274,11 +269,11 @@ struct StartView: View {
                 removeRecentItem(item)
                 return
             }
-            coordinator.openFolder(resolvedURL)
-            coordinator.selectFile(fileURL)
-            coordinator.requestSidebarCollapsed()
-            activateOrOpenBrowser()
-            dismissWindow(id: "start")
+            openBrowserAndDismiss(BrowserOpenRequest(
+                folderURL: resolvedURL,
+                fileURL: fileURL,
+                preferSidebarCollapsed: true
+            ))
         }
     }
 
@@ -306,7 +301,7 @@ struct StartView: View {
             }
         )
     }
-    
+
     #if os(macOS)
     private func showFolderPanel(for directory: FileManager.SearchPathDirectory, at url: URL) {
         let panel = NSOpenPanel()
@@ -327,10 +322,7 @@ struct StartView: View {
 
         panel.begin { @MainActor response in
             guard response == .OK, let selectedURL = panel.url else { return }
-
-            // Save bookmark via manager
             SecurityScopedBookmarkManager.shared.saveBookmark(selectedURL, for: directory)
-
             self.openFolder(selectedURL)
         }
     }
@@ -354,9 +346,7 @@ struct StartView: View {
 
     private func openFolder(_ url: URL) {
         RecentFoldersManager.shared.addFolder(url)
-        coordinator.openFolder(url)
-        activateOrOpenBrowser()
-        dismissWindow(id: "start")
+        openBrowserAndDismiss(BrowserOpenRequest(folderURL: url))
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
@@ -378,11 +368,11 @@ struct StartView: View {
                     guard ext == "md" || ext == "markdown" else { return }
                     let folderURL = url.deletingLastPathComponent()
                     RecentFoldersManager.shared.addFolder(folderURL)
-                    coordinator.openFolder(folderURL)
-                    coordinator.selectFile(url)
-                    coordinator.requestSidebarCollapsed()
-                    activateOrOpenBrowser()
-                    dismissWindow(id: "start")
+                    openBrowserAndDismiss(BrowserOpenRequest(
+                        folderURL: folderURL,
+                        fileURL: url,
+                        preferSidebarCollapsed: true
+                    ))
                 }
             }
         }
@@ -392,65 +382,39 @@ struct StartView: View {
     // MARK: - Welcome Folder (Easter Egg)
 
     private func openWelcomeFolder() {
-        // Ensure Welcome folder exists in Application Support (copy from bundle if needed)
-        guard let welcomeURL = WelcomeManager.ensureWelcomeFolder() else {
-            return
-        }
-
-        coordinator.openFolder(welcomeURL)
-        coordinator.setFirstLaunchWelcome(true)
-        activateOrOpenBrowser()
-        dismissWindow(id: "start")
+        guard let welcomeURL = WelcomeManager.ensureWelcomeFolder() else { return }
+        openBrowserAndDismiss(BrowserOpenRequest(
+            folderURL: welcomeURL,
+            isFirstLaunchWelcome: true
+        ))
     }
 
     // MARK: - Welcome Folder with AI Prompt
 
-    /// Opens Welcome folder with 01-Welcome.md selected and AI chat pre-filled
-    /// OOD Pattern: Uses existing infrastructure (openWithFileContext)
-    /// Same code path as manual file selection + typing question
     private func openWelcomeFolderWithPrompt() {
-        // Ensure Welcome folder exists in Application Support (copy from bundle if needed)
         guard let welcomeURL = WelcomeManager.ensureWelcomeFolder() else {
             showWelcomeError = true
             return
         }
 
-        // Find 01-Welcome.md
         let welcomeFile = welcomeURL.appendingPathComponent("01-Welcome.md")
-
-        // Verify file exists
         guard FileManager.default.fileExists(atPath: welcomeFile.path) else {
             showWelcomeError = true
             return
         }
 
-        // OOD: Use existing infrastructure
-        // This is the same code path as if user:
-        // 1. Opened folder manually
-        // 2. Selected file manually
-        // 3. Typed question manually
-        coordinator.openWithFileContext(
+        openBrowserAndDismiss(BrowserOpenRequest(
+            folderURL: welcomeURL,
             fileURL: welcomeFile,
-            question: "What is this app and what can I do with it?"
-        )
-
-        activateOrOpenBrowser()
-        dismissWindow(id: "start")
+            initialChatQuestion: "What is this app and what can I do with it?"
+        ))
     }
 
     // MARK: - Window Management
 
-    /// Activates an existing browser window if one is visible, otherwise opens a new one.
-    /// Prevents duplicate browser windows from being created by WindowGroup.
-    private func activateOrOpenBrowser() {
-        if let browserWindow = NSApp.windows.first(where: {
-            $0.identifier?.rawValue.contains("browser") == true && $0.isVisible
-        }) {
-            browserWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-        } else {
-            openWindow(id: "browser")
-        }
+    private func openBrowserAndDismiss(_ request: BrowserOpenRequest) {
+        openWindow(id: "browser", value: request)
+        dismissWindow(id: "start")
     }
 }
 

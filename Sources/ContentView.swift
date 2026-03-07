@@ -30,22 +30,19 @@ struct BrowserView: View {
             }
         }
         .onDisappear {
-            // Only tear down if this is the last browser window closing.
-            // During onDisappear the closing window is still in NSApp.windows
-            // and still isVisible, so count <= 1 means "only the one being closed".
-            let browserWindows = NSApp.windows.filter {
-                $0.identifier?.rawValue.contains("browser") == true
-            }
-            guard browserWindows.count <= 1 else { return }
-
-            // Invalidate cache for this folder
+            // Clean up this window's coordinator
             if let folderURL = coordinator.navigation.rootFolderURL {
                 FolderService.shared.invalidateCache(for: folderURL)
             }
-
-            // Clear folder state and reopen start window when browser closes
             coordinator.closeFolder()
-            openWindow(id: "start")
+
+            // If last browser window, show start
+            let browserWindows = NSApp.windows.filter {
+                $0.identifier?.rawValue.contains("browser") == true
+            }
+            if browserWindows.count <= 1 {
+                openWindow(id: "start")
+            }
         }
     }
 
@@ -204,6 +201,12 @@ struct OutlineFileListWrapper: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Navigate-up breadcrumb
+            if let rootURL = coordinator.navigation.rootFolderURL,
+               rootURL.pathComponents.count > 2 {
+                NavigateUpButton(rootURL: rootURL, coordinator: coordinator)
+            }
+
             // Sidebar filter field
             HStack(spacing: 4) {
                 Image(systemName: "magnifyingglass")
@@ -348,6 +351,63 @@ struct OutlineFileListWrapper: View {
         }
 
         isLoading = false
+    }
+}
+
+// MARK: - Navigate Up Button
+
+/// Sidebar breadcrumb button to navigate to the parent folder.
+struct NavigateUpButton: View {
+    let rootURL: URL
+    let coordinator: AppCoordinator
+
+    var body: some View {
+        Button {
+            navigateUp()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                    .font(.caption2.weight(.semibold))
+                Text(rootURL.lastPathComponent)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Navigate to parent folder")
+        .accessibilityLabel("Navigate up to parent folder")
+    }
+
+    private func navigateUp() {
+        let parentURL = rootURL.deletingLastPathComponent()
+
+        // Check if we can read the parent (may lack sandbox scope)
+        let canAccess = (try? FileManager.default.contentsOfDirectory(atPath: parentURL.path)) != nil
+
+        if canAccess {
+            RecentFoldersManager.shared.addFolder(parentURL)
+            coordinator.openFolder(parentURL)
+        } else {
+            // Request access via NSOpenPanel
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.directoryURL = parentURL
+            panel.message = "Grant access to parent folder"
+            panel.prompt = "Open"
+            panel.begin { @MainActor response in
+                guard response == .OK, let url = panel.url else { return }
+                RecentFoldersManager.shared.addFolder(url)
+                coordinator.openFolder(url)
+            }
+        }
     }
 }
 
