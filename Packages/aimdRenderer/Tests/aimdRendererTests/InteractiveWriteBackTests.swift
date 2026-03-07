@@ -417,4 +417,58 @@ final class InteractiveWriteBackTests: XCTestCase {
         }
         XCTAssertEqual(conf2.level, .confirmed)
     }
+
+    // MARK: - Adjacent CriticMarkup Suggestions
+
+    func testAdjacentSuggestions() {
+        var content = "Use {++REST++} instead of {--SOAP--} here.\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        let suggestions = elements.compactMap { e -> SuggestionElement? in
+            if case .suggestion(let s) = e { return s }; return nil
+        }
+        XCTAssertEqual(suggestions.count, 2)
+        XCTAssertEqual(suggestions[0].type, .addition)
+        XCTAssertEqual(suggestions[1].type, .deletion)
+
+        // Accept both in reverse order (preserve indices)
+        content.replaceSubrange(suggestions[1].range, with: "")
+        content.replaceSubrange(suggestions[0].range, with: suggestions[0].newText ?? "")
+        XCTAssertEqual(content, "Use REST instead of  here.\n")
+    }
+
+    func testAdjacentSubstitutions() {
+        var content = "Deploy {~~staging~>prod~~} on {~~Friday~>Monday~~}.\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        let suggestions = elements.compactMap { e -> SuggestionElement? in
+            if case .suggestion(let s) = e { return s }; return nil
+        }
+        XCTAssertEqual(suggestions.count, 2)
+
+        // Accept both in reverse order
+        content.replaceSubrange(suggestions[1].range, with: suggestions[1].newText ?? "")
+        content.replaceSubrange(suggestions[0].range, with: suggestions[0].newText ?? "")
+        XCTAssertEqual(content, "Deploy prod on Monday.\n")
+    }
+
+    // MARK: - Status: Forward-Only Transitions
+
+    func testStatusForwardOnlyTransition() {
+        let content = "<!-- status: draft | review | approved -->\n**Status:** review\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        guard case .status(let st) = elements.first else {
+            XCTFail("Expected status"); return
+        }
+        // From "review", only "approved" should be available — not "draft"
+        XCTAssertEqual(st.nextStates, ["approved"])
+        XCTAssertFalse(st.nextStates.contains("draft"))
+    }
+
+    func testStatusTerminalHasNoNextStates() {
+        let content = "<!-- status: draft | review | done -->\n**Status:** done\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        guard case .status(let st) = elements.first else {
+            XCTFail("Expected status"); return
+        }
+        XCTAssertTrue(st.nextStates.isEmpty)
+    }
 }
