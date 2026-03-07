@@ -87,6 +87,9 @@ struct AIMDReaderApp: App {
     /// Settings repository — injected into Environment for all views
     private let settings = UserDefaultsSettingsRepository.shared
 
+    /// Store service for Pro purchase management
+    private let storeService = StoreService.shared
+
     /// SwiftData container for file metadata persistence
     private let modelContainer: ModelContainer
 
@@ -105,8 +108,10 @@ struct AIMDReaderApp: App {
         Window("Pixley Markdown", id: "start") {
             StartView()
                 .environment(\.settings, settings)
+                .environment(\.storeService, storeService)
                 .modelContainer(modelContainer)
                 .preferredColorScheme(settings.appearance.colorScheme)
+                .task { await storeService.verifyOnLaunch() }
         }
         #if os(macOS)
         .defaultLaunchBehavior(.presented)
@@ -119,6 +124,7 @@ struct AIMDReaderApp: App {
         WindowGroup("Pixley Markdown", id: "browser", for: BrowserOpenRequest.self) { $request in
             BrowserWindowRoot(request: request)
                 .environment(\.settings, settings)
+                .environment(\.storeService, storeService)
                 .modelContainer(modelContainer)
                 .preferredColorScheme(settings.appearance.colorScheme)
         }
@@ -201,6 +207,21 @@ struct AIMDReaderApp: App {
                 .keyboardShortcut("g", modifiers: [.command, .shift])
             }
 
+            // Navigate menu — interactive element navigation
+            CommandGroup(before: .toolbar) {
+                Button("Next Interactive Element") {
+                    Self.sendNavigateAction(forward: true)
+                }
+                .keyboardShortcut("]", modifiers: [.command])
+                .disabled(activeCoordinator?.navigation.selectedFile == nil)
+
+                Button("Previous Interactive Element") {
+                    Self.sendNavigateAction(forward: false)
+                }
+                .keyboardShortcut("[", modifiers: [.command])
+                .disabled(activeCoordinator?.navigation.selectedFile == nil)
+            }
+
             // View menu — font size + AI Chat toggle
             CommandGroup(after: .toolbar) {
                 if #available(macOS 26, *) {
@@ -256,6 +277,15 @@ struct AIMDReaderApp: App {
                 Link("Report a Bug", destination: URL(string: "https://github.com")!)
             }
 
+            // Pro upgrade menu
+            CommandGroup(after: .appSettings) {
+                if !storeService.isUnlocked {
+                    Button("Upgrade to Pro...") {
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    }
+                }
+            }
+
             // About menu
             CommandGroup(replacing: .appInfo) {
                 Button("About Pixley Markdown") {
@@ -269,6 +299,7 @@ struct AIMDReaderApp: App {
         Settings {
             SettingsView()
                 .environment(\.settings, settings)
+                .environment(\.storeService, storeService)
         }
     }
 
@@ -283,6 +314,14 @@ struct AIMDReaderApp: App {
            let textView = findMarkdownTextView(in: window.contentView) {
             window.makeFirstResponder(textView)
             textView.performFindPanelAction(menuItem)
+        }
+    }
+
+    private static func sendNavigateAction(forward: Bool) {
+        if let window = NSApp.keyWindow,
+           let textView = findMarkdownTextView(in: window.contentView) as? MarkdownNSTextView {
+            window.makeFirstResponder(textView)
+            textView.navigateToElement(forward: forward)
         }
     }
 

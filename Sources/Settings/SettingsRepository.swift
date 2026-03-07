@@ -84,6 +84,13 @@ public enum InteractiveMode: String, CaseIterable, Identifiable, Sendable {
     case plain = "Plain"
 
     public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .enhanced: return "Enhanced — colors, pills, and highlights"
+        case .plain: return "Plain — minimal styling"
+        }
+    }
 }
 
 // MARK: - Setting Types
@@ -357,5 +364,19 @@ extension EnvironmentValues {
     public var settings: UserDefaultsSettingsRepository {
         get { self[SettingsRepositoryKey.self] }
         set { self[SettingsRepositoryKey.self] = newValue }
+    }
+}
+
+// MARK: - StoreService Environment Key
+
+private struct StoreServiceKey: @preconcurrency EnvironmentKey {
+    @MainActor static var defaultValue = StoreService.shared
+}
+
+extension EnvironmentValues {
+    @MainActor
+    var storeService: StoreService {
+        get { self[StoreServiceKey.self] }
+        set { self[StoreServiceKey.self] = newValue }
     }
 }

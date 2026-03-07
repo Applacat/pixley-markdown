@@ -33,13 +33,30 @@ final class MarkdownNSTextView: NSTextView {
     /// Callback for handling interactive element clicks. Includes optional option index for choice/review.
     var onInteractiveElementClicked: ((InteractiveElement, Int?, NSPoint) -> Void)?
 
+    /// Callback for status element dropdown selection (element, selected state).
+    var onStatusSelected: ((StatusElement, String) -> Void)?
+
     /// Tracks the currently hovered interactive element range for hover highlight
     private var hoveredRange: NSRange?
+
+    /// Pending status element for the native dropdown menu
+    private var pendingStatusElement: StatusElement?
+
+    /// Tracks the currently focused interactive element range (via Tab navigation)
+    private var focusedElementRange: NSRange?
+
+    /// Active upgrade popover (retained to prevent premature dealloc)
+    private var upgradePopover: NSPopover?
 
     /// The tracking area for mouse movement events
     private var hoverTrackingArea: NSTrackingArea?
 
     override func cancelOperation(_ sender: Any?) {
+        // Escape clears Tab focus first, then dismisses find bar
+        if focusedElementRange != nil {
+            clearFocusHighlight()
+            return
+        }
         let hideItem = NSMenuItem()
         hideItem.tag = NSTextFinder.Action.hideFindInterface.rawValue
         performFindPanelAction(hideItem)
@@ -106,8 +123,15 @@ final class MarkdownNSTextView: NSTextView {
 
     private func clearHoverHighlight() {
         guard let hoveredRange, let layoutManager else { return }
-        layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: hoveredRange)
         self.hoveredRange = nil
+        // Guard against stale range after text storage replacement
+        guard hoveredRange.location + hoveredRange.length <= layoutManager.numberOfGlyphs else { return }
+        layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: hoveredRange)
+    }
+
+    /// Clears hover state without touching temporary attributes (safe when text storage is being replaced).
+    func clearHover() {
+        hoveredRange = nil
     }
 
     // MARK: - Click Handling
@@ -121,13 +145,238 @@ final class MarkdownNSTextView: NSTextView {
             return
         }
 
+        // Clear Tab-focus when clicking anywhere
+        clearFocusHighlight()
+
         // Check if the click hit an interactive element
-        if let wrapper = textStorage?.attribute(.interactiveElement, at: charIndex, effectiveRange: nil) as? InteractiveElementWrapper {
+        var effectiveRange = NSRange()
+        if let wrapper = textStorage?.attribute(.interactiveElement, at: charIndex, effectiveRange: &effectiveRange) as? InteractiveElementWrapper {
+
+            // Gate: Pro elements require purchase
+            if wrapper.element.requiresPro && !StoreService.shared.isUnlocked {
+                flashClickFeedback(range: effectiveRange)
+                showUpgradePopover(for: wrapper.element, at: effectiveRange)
+                return
+            }
+
+            // Status elements with multiple next states: show native dropdown menu
+            if case .status(let st) = wrapper.element, st.nextStates.count > 1 {
+                flashClickFeedback(range: effectiveRange)
+                showStatusMenu(st, at: point)
+                return
+            }
+
+            // Visual click feedback: brief accent flash then restore
+            flashClickFeedback(range: effectiveRange)
             onInteractiveElementClicked?(wrapper.element, wrapper.optionIndex, point)
             return
         }
 
         super.mouseDown(with: event)
+    }
+
+    /// Flashes a brief accent highlight on the clicked element range for tactile feedback.
+    /// Respects Reduce Motion accessibility setting.
+    private func flashClickFeedback(range: NSRange) {
+        guard let layoutManager else { return }
+        // Skip flash animation when user prefers reduced motion
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { return }
+        let flashColor = NSColor.controlAccentColor.withAlphaComponent(0.25)
+        layoutManager.addTemporaryAttribute(.backgroundColor, value: flashColor, forCharacterRange: range)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard let self, let layoutManager = self.layoutManager else { return }
+            // Guard against text storage replacement during the delay
+            guard range.location + range.length <= layoutManager.numberOfGlyphs else { return }
+            layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: range)
+        }
+    }
+
+    // MARK: - Native Status Menu
+
+    /// Presents a native NSMenu dropdown at the given point for status state selection.
+    private func showStatusMenu(_ status: StatusElement, at point: NSPoint) {
+        pendingStatusElement = status
+        let menu = NSMenu()
+
+        // Current state (disabled, for context)
+        let currentItem = NSMenuItem(title: "✓ \(status.currentState)", action: nil, keyEquivalent: "")
+        currentItem.isEnabled = false
+        menu.addItem(currentItem)
+        menu.addItem(.separator())
+
+        // Next states as selectable items
+        for state in status.nextStates {
+            let item = NSMenuItem(title: state, action: #selector(handleStatusMenuItem(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = state as NSString
+            menu.addItem(item)
+        }
+
+        menu.popUp(positioning: nil, at: point, in: self)
+    }
+
+    @objc private func handleStatusMenuItem(_ sender: NSMenuItem) {
+        guard let state = sender.representedObject as? String,
+              let status = pendingStatusElement else { return }
+        pendingStatusElement = nil
+        onStatusSelected?(status, state)
+    }
+
+    // MARK: - Upgrade Popover
+
+    /// Shows an NSPopover at the clicked element prompting the user to upgrade to Pro.
+    private func showUpgradePopover(for element: InteractiveElement, at charRange: NSRange) {
+        upgradePopover?.close()
+
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentSize = NSSize(width: 260, height: 150)
+
+        let controller = UpgradePopoverController(
+            elementName: element.displayName,
+            price: StoreService.shared.productInfo?.displayPrice ?? "$9.99"
+        ) { [weak self] in
+            self?.upgradePopover?.close()
+        }
+        popover.contentViewController = controller
+
+        // Position popover at the element's glyph rect
+        guard let layoutManager, let textContainer else { return }
+        let glyphRange = layoutManager.glyphRange(forCharacterRange: charRange, actualCharacterRange: nil)
+        let rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+        let positionRect = rect.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+
+        upgradePopover = popover
+        popover.show(relativeTo: positionRect, of: self, preferredEdge: .maxY)
+    }
+
+    // MARK: - Tab Navigation
+
+    override func keyDown(with event: NSEvent) {
+        // Tab / Shift-Tab navigates between interactive elements
+        if event.keyCode == 48 { // Tab key
+            let forward = !event.modifierFlags.contains(.shift)
+            navigateToElement(forward: forward)
+            return
+        }
+        // Return/Space activates the focused element
+        if focusedElementRange != nil && (event.keyCode == 36 || event.keyCode == 49) {
+            activateFocusedElement()
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    /// Moves focus to the next (or previous) interactive element and scrolls to it.
+    func navigateToElement(forward: Bool) {
+        guard let textStorage else { return }
+        let length = textStorage.length
+        guard length > 0 else { return }
+
+        // Collect all interactive element ranges
+        var elementRanges: [NSRange] = []
+        textStorage.enumerateAttribute(.interactiveElement, in: NSRange(location: 0, length: length)) { value, range, _ in
+            guard value != nil else { return }
+            elementRanges.append(range)
+        }
+        guard !elementRanges.isEmpty else { return }
+
+        // Find the next element after the current focus
+        let currentEnd = focusedElementRange.map { $0.location + $0.length } ?? 0
+        let currentStart = focusedElementRange?.location ?? length
+
+        let targetRange: NSRange
+        if forward {
+            targetRange = elementRanges.first(where: { $0.location > currentEnd - 1 && $0 != focusedElementRange })
+                ?? elementRanges[0] // Wrap around (safe: guard ensures non-empty)
+        } else {
+            targetRange = elementRanges.last(where: { $0.location < currentStart && $0 != focusedElementRange })
+                ?? elementRanges[elementRanges.count - 1] // Wrap around
+        }
+
+        // Clear old focus highlight
+        clearFocusHighlight()
+
+        // Set new focus and request redraw for focus ring
+        focusedElementRange = targetRange
+        needsDisplay = true
+
+        // Scroll to show the focused element
+        scrollRangeToVisible(targetRange)
+
+        // VoiceOver: announce the focused element's tooltip
+        if let tooltip = textStorage.attribute(.toolTip, at: targetRange.location, effectiveRange: nil) as? String {
+            NSAccessibility.post(
+                element: self,
+                notification: .announcementRequested,
+                userInfo: [NSAccessibility.NotificationUserInfoKey.announcement: tooltip]
+            )
+        }
+    }
+
+    /// Activates (clicks) the currently focused interactive element.
+    private func activateFocusedElement() {
+        guard let focusedElementRange,
+              let wrapper = textStorage?.attribute(.interactiveElement, at: focusedElementRange.location, effectiveRange: nil) as? InteractiveElementWrapper else { return }
+        flashClickFeedback(range: focusedElementRange)
+
+        // Calculate a point within the element for the callback (in view coordinates)
+        let origin = textContainerOrigin
+        let point: NSPoint
+        if let layoutManager, let textContainer {
+            let glyphRange = layoutManager.glyphRange(forCharacterRange: focusedElementRange, actualCharacterRange: nil)
+            let rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+            point = NSPoint(x: rect.midX + origin.x, y: rect.midY + origin.y)
+        } else {
+            point = NSPoint(x: origin.x, y: origin.y)
+        }
+
+        onInteractiveElementClicked?(wrapper.element, wrapper.optionIndex, point)
+    }
+
+    func clearFocusHighlight() {
+        guard focusedElementRange != nil else { return }
+        focusedElementRange = nil
+        needsDisplay = true
+    }
+
+    // MARK: - Focus Ring Drawing
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        // Draw focus ring around Tab-focused interactive element
+        guard let focusedElementRange, let layoutManager, let textContainer else { return }
+        // Guard against stale range after text storage replacement
+        guard focusedElementRange.location + focusedElementRange.length <= (textStorage?.length ?? 0) else { return }
+
+        let glyphRange = layoutManager.glyphRange(forCharacterRange: focusedElementRange, actualCharacterRange: nil)
+        var focusRects: [NSRect] = []
+        layoutManager.enumerateEnclosingRects(forGlyphRange: glyphRange, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: textContainer) { rect, _ in
+            focusRects.append(rect)
+        }
+
+        guard !focusRects.isEmpty else { return }
+
+        // Union all rects into a single bounding rect, offset by text container origin
+        let origin = textContainerOrigin
+        var unionRect = focusRects[0]
+        for rect in focusRects.dropFirst() {
+            unionRect = unionRect.union(rect)
+        }
+        unionRect = unionRect.offsetBy(dx: origin.x, dy: origin.y)
+
+        // Draw rounded focus ring (stronger in high-contrast mode)
+        NSGraphicsContext.saveGraphicsState()
+        let ringRect = unionRect.insetBy(dx: -3, dy: -2)
+        let ringPath = NSBezierPath(roundedRect: ringRect, xRadius: 4, yRadius: 4)
+        let highContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        NSColor.controlAccentColor.withAlphaComponent(highContrast ? 0.6 : 0.3).setStroke()
+        NSColor.controlAccentColor.withAlphaComponent(highContrast ? 0.12 : 0.06).setFill()
+        ringPath.lineWidth = highContrast ? 3 : 2
+        ringPath.fill()
+        ringPath.stroke()
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     // MARK: - Cursor Rects
@@ -136,12 +385,15 @@ final class MarkdownNSTextView: NSTextView {
         super.resetCursorRects()
         guard let textStorage, let layoutManager, let textContainer else { return }
 
+        // Offset from text container coords to view coords
+        let origin = textContainerOrigin
+
         // Add pointing hand cursor over interactive elements
         textStorage.enumerateAttribute(.interactiveElement, in: NSRange(location: 0, length: textStorage.length)) { value, range, _ in
             guard value != nil else { return }
             let glyphRange = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
             layoutManager.enumerateEnclosingRects(forGlyphRange: glyphRange, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: textContainer) { rect, _ in
-                self.addCursorRect(rect, cursor: .pointingHand)
+                self.addCursorRect(rect.offsetBy(dx: origin.x, dy: origin.y), cursor: .pointingHand)
             }
         }
     }
@@ -156,6 +408,97 @@ final class InteractiveElementWrapper: NSObject {
     init(_ element: InteractiveElement, optionIndex: Int? = nil) {
         self.element = element
         self.optionIndex = optionIndex
+    }
+}
+
+// MARK: - Upgrade Popover Controller
+
+/// NSViewController that hosts the Pro upgrade prompt shown when a free user clicks a locked element.
+final class UpgradePopoverController: NSViewController {
+    private let elementName: String
+    private let price: String
+    private let onDismiss: () -> Void
+
+    init(elementName: String, price: String, onDismiss: @escaping () -> Void) {
+        self.elementName = elementName
+        self.price = price
+        self.onDismiss = onDismiss
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 150))
+
+        // Icon
+        let iconView = NSImageView(frame: .zero)
+        iconView.image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: "Locked")
+        iconView.symbolConfiguration = .init(pointSize: 20, weight: .medium)
+        iconView.contentTintColor = .controlAccentColor
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        // Title
+        let title = NSTextField(labelWithString: "Unlock \(elementName)")
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        title.translatesAutoresizingMaskIntoConstraints = false
+
+        // Subtitle
+        let subtitle = NSTextField(labelWithString: "Pixley Pro unlocks all interactive elements.")
+        subtitle.font = .systemFont(ofSize: 11)
+        subtitle.textColor = .secondaryLabelColor
+        subtitle.translatesAutoresizingMaskIntoConstraints = false
+
+        // Purchase button
+        let purchaseButton = NSButton(title: "Upgrade — \(price)", target: self, action: #selector(purchaseTapped))
+        purchaseButton.bezelStyle = .rounded
+        purchaseButton.controlSize = .large
+        purchaseButton.keyEquivalent = "\r"
+        purchaseButton.translatesAutoresizingMaskIntoConstraints = false
+
+        // Restore link
+        let restoreButton = NSButton(title: "Restore Purchase", target: self, action: #selector(restoreTapped))
+        restoreButton.bezelStyle = .inline
+        restoreButton.isBordered = false
+        restoreButton.contentTintColor = .controlAccentColor
+        restoreButton.font = .systemFont(ofSize: 11)
+        restoreButton.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = NSStackView(views: [iconView, title, subtitle, purchaseButton, restoreButton])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 6
+        stack.edgeInsets = NSEdgeInsets(top: 16, left: 20, bottom: 16, right: 20)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+
+        self.view = container
+    }
+
+    @objc private func purchaseTapped() {
+        Task { @MainActor in
+            await StoreService.shared.purchase()
+            if StoreService.shared.isUnlocked {
+                onDismiss()
+            }
+        }
+    }
+
+    @objc private func restoreTapped() {
+        Task { @MainActor in
+            await StoreService.shared.restore()
+            if StoreService.shared.isUnlocked {
+                onDismiss()
+            }
+        }
     }
 }
 
@@ -185,8 +528,8 @@ struct MarkdownEditor: NSViewRepresentable {
     /// Callback when an interactive element is clicked (element, optionIndex, point)
     var onInteractiveElementClicked: ((InteractiveElement, Int?, NSPoint) -> Void)? = nil
 
-    /// Interactive element rendering mode
-    var interactiveMode: InteractiveMode = .enhanced
+    /// Callback when a status state is selected via native dropdown (status, selected state)
+    var onStatusSelected: ((StatusElement, String) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
         // Manual TextKit stack so we can use our custom NSTextView subclass
@@ -283,8 +626,12 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.onInteractiveElementClicked = { element, optionIndex, point in
             coordinator.parent.onInteractiveElementClicked?(element, optionIndex, point)
         }
+        textView.onStatusSelected = { status, state in
+            coordinator.parent.onStatusSelected?(status, state)
+        }
 
-        // Initial content
+        // Initial content (set interactive mode before first highlight)
+        context.coordinator.interactiveMode = settings.behavior.interactiveMode
         context.coordinator.applyHighlighting(to: textView, text: text)
 
         return scrollView
@@ -333,8 +680,10 @@ struct MarkdownEditor: NSViewRepresentable {
             context.coordinator.applyHighlighting(to: textView, text: text)
         }
 
-        // Re-apply highlighting if text changed externally (but settings didn't)
-        else if textView.string != text {
+        // Re-apply highlighting if text changed externally (but settings didn't).
+        // Compare against lastAppliedText (not textView.string) because native indicator
+        // replacements (SF Symbol attachments) mutate the displayed string.
+        else if context.coordinator.lastAppliedText != text {
             context.coordinator.applyHighlighting(to: textView, text: text)
 
             // Restore scroll position after content loads
@@ -349,6 +698,9 @@ struct MarkdownEditor: NSViewRepresentable {
             let coordinator = context.coordinator
             tv.onInteractiveElementClicked = { element, optionIndex, point in
                 coordinator.parent.onInteractiveElementClicked?(element, optionIndex, point)
+            }
+            tv.onStatusSelected = { status, state in
+                coordinator.parent.onStatusSelected?(status, state)
             }
         }
 
@@ -390,6 +742,10 @@ struct MarkdownEditor: NSViewRepresentable {
         var colorScheme: ColorScheme?
         var interactiveMode: InteractiveMode = .enhanced
         var onError: ((AppError) -> Void)?
+        /// The source text that was last applied to highlighting.
+        /// Used instead of textView.string comparison because native indicator
+        /// replacements (SF Symbol attachments) mutate the displayed string.
+        private(set) var lastAppliedText: String = ""
 
         deinit {
             NotificationCenter.default.removeObserver(self)
@@ -429,6 +785,12 @@ struct MarkdownEditor: NSViewRepresentable {
             }
 
             isUpdating = true
+            lastAppliedText = text
+            // Clear focus and hover state since text storage is being replaced
+            if let mdTextView = textView as? MarkdownNSTextView {
+                mdTextView.clearFocusHighlight()
+                mdTextView.clearHover()
+            }
             let selectedRanges = textView.selectedRanges
 
             // Highlight synchronously — the debounced highlighter already coalesces rapid updates.

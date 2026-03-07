@@ -45,6 +45,8 @@ targets:
         buildPhase: resources
       - path: Resources/ACKNOWLEDGMENTS.md
         buildPhase: resources
+      - path: Resources/Products.storekit
+        buildPhase: none
     dependencies:
       - package: aimdRenderer
     settings:
@@ -104,6 +106,7 @@ schemes:
         AIMDReaderTests: [test]
     run:
       config: Debug
+      storeKitConfiguration: Resources/Products.storekit
     test:
       config: Debug
       targets:

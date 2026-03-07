@@ -27,14 +27,12 @@ struct MarkdownView: View {
     @State private var showingFillInPopover = false
     @State private var showingFeedbackPopover = false
     @State private var showingReviewNotesSheet = false
-    @State private var showingStatusMenu = false
     @State private var showingChallengeSheet = false
     @State private var popoverText = ""
     @State private var activeFillIn: FillInElement? = nil
     @State private var activeFeedback: FeedbackElement? = nil
     @State private var activeReview: ReviewElement? = nil
     @State private var activeReviewOptionIndex: Int? = nil
-    @State private var activeStatus: StatusElement? = nil
     @State private var activeConfidence: ConfidenceElement? = nil
     @State private var activeSuggestion: SuggestionElement? = nil
     @State private var showingSuggestionSheet = false
@@ -69,6 +67,10 @@ struct MarkdownView: View {
         .background(.ultraThinMaterial)
         .task(id: FileLoadTrigger(file: coordinator.navigation.selectedFile, reload: coordinator.document.reloadTrigger)) {
             await loadFile()
+        }
+        .onChange(of: StoreService.shared.isUnlocked) {
+            // Re-highlight after Pro purchase so elements become interactive immediately
+            coordinator.reloadDocument()
         }
     }
 
@@ -142,6 +144,9 @@ struct MarkdownView: View {
             },
             onInteractiveElementClicked: { element, optionIndex, point in
                 handleInteractiveClick(element, optionIndex: optionIndex)
+            },
+            onStatusSelected: { status, state in
+                submitStatusAdvance(status: status, to: state)
             }
         )
         .overlay(alignment: .topTrailing) {
@@ -187,20 +192,7 @@ struct MarkdownView: View {
                 }
             )
         }
-        .sheet(isPresented: $showingStatusMenu) {
-            if let status = activeStatus {
-                StatusPickerSheet(
-                    currentState: status.currentState,
-                    nextStates: status.nextStates,
-                    onSelect: { newState in
-                        submitStatusAdvance(to: newState)
-                    },
-                    onCancel: {
-                        showingStatusMenu = false
-                    }
-                )
-            }
-        }
+        // (Status dropdown handled natively via NSMenu in MarkdownNSTextView)
         .sheet(isPresented: $showingDatePicker) {
             DatePickerSheet(
                 onSubmit: { dateString in
@@ -346,20 +338,15 @@ struct MarkdownView: View {
                     showingSuggestionSheet = true
 
                 case .status(let st):
-                    let nextStates = st.nextStates
-                    if nextStates.count == 1 {
-                        // Single next state: advance directly
+                    // Single next state: advance directly
+                    // Multi-state handled by native NSMenu dropdown in MarkdownNSTextView
+                    if let nextState = st.nextStates.first, st.nextStates.count == 1 {
                         try await interactionHandler.advanceStatus(
-                            st, to: nextStates[0], in: fileURL, fileWatcher: fileWatcher
+                            st, to: nextState, in: fileURL, fileWatcher: fileWatcher
                         ) { newContent in
                             coordinator.updateDocumentContent(newContent)
                         }
-                    } else if nextStates.count > 1 {
-                        // Multiple next states: show picker
-                        activeStatus = st
-                        showingStatusMenu = true
                     }
-                    // No next states = terminal, ignore click
 
                 case .confidence(let conf):
                     if conf.level == .high {
@@ -468,12 +455,8 @@ struct MarkdownView: View {
 
     // MARK: - Status Advance Submit
 
-    private func submitStatusAdvance(to newState: String) {
-        guard let status = activeStatus,
-              let fileURL = coordinator.navigation.selectedFile else {
-            showingStatusMenu = false
-            return
-        }
+    private func submitStatusAdvance(status: StatusElement, to newState: String) {
+        guard let fileURL = coordinator.navigation.selectedFile else { return }
 
         Task {
             do {
@@ -485,8 +468,6 @@ struct MarkdownView: View {
             } catch {
                 coordinator.showError(.error(message: error.localizedDescription))
             }
-            showingStatusMenu = false
-            activeStatus = nil
         }
     }
 

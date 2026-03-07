@@ -17,6 +17,11 @@ struct SettingsView: View {
                 .tabItem {
                     Label("Behavior", systemImage: "gearshape")
                 }
+
+            ProSettingsTab()
+                .tabItem {
+                    Label("Pro", systemImage: "star.fill")
+                }
         }
         // Fixed 480x400: Settings window sized for form readability. macOS handles zoom at OS level.
         .frame(width: 480, height: 400)
@@ -195,7 +200,89 @@ struct BehaviorSettingsTab: View {
 
             Picker("Interactive Elements", selection: $behavior.interactiveMode) {
                 ForEach(InteractiveMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+
+            if settings.behavior.interactiveMode == .enhanced {
+                Text("Checkboxes, choices, and fill-ins are highlighted with colors and visual cues. Use Tab to navigate between them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Interactive elements appear as plain text. Hover or Tab to discover them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Pro Tab
+
+/// Shows Pro purchase status, feature list, and purchase/restore buttons.
+struct ProSettingsTab: View {
+
+    @Environment(\.storeService) private var store
+
+    var body: some View {
+        Form {
+            Section {
+                HStack {
+                    Text("Status")
+                    Spacer()
+                    if store.isUnlocked {
+                        Label("Pro (Unlocked)", systemImage: "checkmark.seal.fill")
+                            .foregroundStyle(.green)
+                    } else {
+                        Text("Free")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if store.isUnlocked {
+                Section("Thank You") {
+                    Text("You have full access to all interactive Pixley Markdown elements and AI field interaction.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Section("Pixley Pro Features") {
+                    Label("Choices, fill-ins, review, feedback", systemImage: "hand.tap")
+                    Label("Status, confidence, CriticMarkup", systemImage: "text.badge.checkmark")
+                    Label("AI can read and modify interactive fields", systemImage: "sparkles")
+                }
+                .font(.callout)
+
+                Section {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 8) {
+                            Button {
+                                Task { await store.purchase() }
+                            } label: {
+                                Text("Upgrade — \(store.productInfo?.displayPrice ?? "$9.99")")
+                                    .frame(minWidth: 180)
+                            }
+                            .controlSize(.large)
+                            .disabled(store.purchaseState == .purchasing)
+
+                            Button("Restore Purchase") {
+                                Task { await store.restore() }
+                            }
+                            .buttonStyle(.link)
+                            .font(.callout)
+                            .disabled(store.purchaseState == .restoring)
+
+                            if case .failed(let message) = store.purchaseState {
+                                Text(message)
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            }
+                        }
+                        Spacer()
+                    }
                 }
             }
         }

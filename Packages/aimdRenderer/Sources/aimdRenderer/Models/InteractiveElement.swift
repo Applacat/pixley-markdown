@@ -31,6 +31,31 @@ public enum InteractiveElement: Sendable, Identifiable {
     case conditional(ConditionalElement)
     case collapsible(CollapsibleElement)
 
+    /// Human-readable name of this element type for UI display.
+    public var displayName: String {
+        switch self {
+        case .checkbox: return "Checkbox"
+        case .choice: return "Choice"
+        case .review: return "Review"
+        case .fillIn: return "Fill-In"
+        case .feedback: return "Feedback"
+        case .suggestion: return "Suggestion"
+        case .status: return "Status"
+        case .confidence: return "Confidence"
+        case .conditional: return "Conditional"
+        case .collapsible: return "Collapsible"
+        }
+    }
+
+    /// Whether this element type requires Pro to interact with.
+    /// Checkboxes, collapsibles, and progress bars are always free.
+    public var requiresPro: Bool {
+        switch self {
+        case .checkbox, .collapsible: return false
+        default: return true
+        }
+    }
+
     /// The range of this element in the source text.
     public var range: Range<String.Index> {
         switch self {

@@ -41,7 +41,19 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
     /// Callback to apply edits — must be called on MainActor
     var onEdit: (@Sendable @MainActor (InteractiveEdit, URL) async throws -> String)?
 
+    /// Callback to show upgrade popover from the AI tool context
+    var onShowUpgradePrompt: (@MainActor () -> Void)?
+
     func call(arguments: Arguments) async throws -> String {
+        // Gate: non-checkbox edits require Pro
+        if arguments.editType != .checkbox {
+            let isUnlocked = await MainActor.run { StoreService.shared.isUnlocked }
+            if !isUnlocked {
+                await MainActor.run { onShowUpgradePrompt?() }
+                return "This feature requires Pixley Pro. The user was shown the upgrade prompt. Pixley Pro unlocks interactive element editing (choices, fill-ins, reviews, feedback, status, and more) for a one-time purchase."
+            }
+        }
+
         let elements = InteractiveElementDetector.detect(in: documentContent)
 
         guard arguments.elementIndex >= 0, arguments.elementIndex < elements.count else {
