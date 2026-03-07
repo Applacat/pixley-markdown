@@ -450,6 +450,32 @@ final class InteractiveWriteBackTests: XCTestCase {
         XCTAssertEqual(content, "Deploy prod on Monday.\n")
     }
 
+    // MARK: - Confidence Challenge
+
+    func testChallengeLowConfidence() {
+        var content = "> [confidence: low] WebSocket might be needed.\n"
+        let elements = InteractiveElementDetector.detect(in: content)
+        guard case .confidence(let conf) = elements.first else {
+            XCTFail("Expected confidence"); return
+        }
+        XCTAssertEqual(conf.level, .low)
+
+        // Challenge: insert feedback comment after the line
+        let comment = "\n<!-- feedback: We should use polling instead -->"
+        content.insert(contentsOf: comment, at: conf.range.upperBound)
+
+        XCTAssertTrue(content.contains("<!-- feedback: We should use polling instead -->"))
+        // Original confidence line preserved
+        XCTAssertTrue(content.contains("> [confidence: low] WebSocket might be needed."))
+
+        // Re-detect: both confidence and feedback should be found
+        let after = InteractiveElementDetector.detect(in: content)
+        let confidences = after.filter { if case .confidence = $0 { return true }; return false }
+        let feedbacks = after.filter { if case .feedback = $0 { return true }; return false }
+        XCTAssertEqual(confidences.count, 1)
+        XCTAssertEqual(feedbacks.count, 1)
+    }
+
     // MARK: - Status: Forward-Only Transitions
 
     func testStatusForwardOnlyTransition() {

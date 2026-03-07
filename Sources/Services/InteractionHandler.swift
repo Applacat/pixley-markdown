@@ -337,6 +337,24 @@ final class InteractionHandler {
         )
     }
 
+    /// Challenges a low-confidence indicator by appending a feedback comment after it.
+    func challengeConfidence(
+        _ element: ConfidenceElement,
+        feedback: String,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        let comment = "\n<!-- feedback: \(feedback) -->"
+        // Insert the comment right after the confidence element's range
+        try await apply(
+            edit: .replace(range: element.range.upperBound..<element.range.upperBound, newText: comment),
+            to: url,
+            fileWatcher: fileWatcher,
+            onContentUpdated: onContentUpdated
+        )
+    }
+
     // MARK: - Helpers
 
     private static func todayString() -> String {

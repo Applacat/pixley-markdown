@@ -28,12 +28,14 @@ struct MarkdownView: View {
     @State private var showingFeedbackPopover = false
     @State private var showingReviewNotesSheet = false
     @State private var showingStatusMenu = false
+    @State private var showingChallengeSheet = false
     @State private var popoverText = ""
     @State private var activeFillIn: FillInElement? = nil
     @State private var activeFeedback: FeedbackElement? = nil
     @State private var activeReview: ReviewElement? = nil
     @State private var activeReviewOptionIndex: Int? = nil
     @State private var activeStatus: StatusElement? = nil
+    @State private var activeConfidence: ConfidenceElement? = nil
 
     // MARK: - Body
 
@@ -196,6 +198,17 @@ struct MarkdownView: View {
                 )
             }
         }
+        .sheet(isPresented: $showingChallengeSheet) {
+            FeedbackSheet(
+                text: $popoverText,
+                onSubmit: {
+                    submitChallenge()
+                },
+                onCancel: {
+                    showingChallengeSheet = false
+                }
+            )
+        }
     }
 
     // MARK: - Load File
@@ -333,11 +346,10 @@ struct MarkdownView: View {
                             coordinator.updateDocumentContent(newContent)
                         }
                     } else if conf.level == .low {
-                        // Challenge low confidence: open feedback
-                        activeFeedback = nil
+                        // Challenge low confidence: open sheet to append feedback comment
+                        activeConfidence = conf
                         popoverText = ""
-                        // Create a synthetic feedback element? No — just open a sheet that appends a comment
-                        showingFeedbackPopover = true
+                        showingChallengeSheet = true
                     }
                     // medium/confirmed: no action on click
 
@@ -451,6 +463,30 @@ struct MarkdownView: View {
             }
             showingStatusMenu = false
             activeStatus = nil
+        }
+    }
+
+    private func submitChallenge() {
+        guard let confidence = activeConfidence,
+              let fileURL = coordinator.navigation.selectedFile,
+              !popoverText.isEmpty else {
+            showingChallengeSheet = false
+            return
+        }
+
+        Task {
+            do {
+                try await interactionHandler.challengeConfidence(
+                    confidence, feedback: popoverText, in: fileURL, fileWatcher: fileWatcher
+                ) { newContent in
+                    coordinator.updateDocumentContent(newContent)
+                }
+            } catch {
+                coordinator.showError(.error(message: error.localizedDescription))
+            }
+            showingChallengeSheet = false
+            activeConfidence = nil
+            popoverText = ""
         }
     }
 
