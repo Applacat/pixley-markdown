@@ -1,41 +1,35 @@
 # NOW — Current Focus
 
-**Idea:** Pixley Interactive Markdown Protocol (v3.0)
-**Phase:** Phase 4 complete (all stories) → commit gate
-**Pipeline:** Spec [DONE] -> Foundation [DONE] -> Core Patterns [DONE] -> Advanced Patterns [DONE] -> AI Integration [DONE] -> Multiplatform [PENDING]
+**Idea:** Pixley 3.0 — Premium Gate + Interactive Protocol
+**Phase:** Spec 1 SHIPPED — ready for next spec
+**Pipeline:** Spec 1 [DONE] → Spec 2 [PENDING] → Spec 3 [PENDING] → Spec 4 [PENDING]
 
-## Phase 4 Complete
+## Spec 1: Premium Gate + Self-Describing Protocol — COMPLETE
 
-- US-15: FM context uses DocumentStructure.summary() + element state index instead of raw truncation
-- US-16: Voice Commands via EditInteractiveElementsTool (FM @Tool) — AI can toggle checkboxes, select choices, fill placeholders, set reviews, add feedback
-- US-17: Interactive Starter Document with all 9 patterns + AI prompt template
-- Build succeeds, all tests pass
+Committed as `f54a59f`. All 8 user stories implemented:
+- StoreService (DockPops pattern) with 16 unit tests
+- Interaction gate + NSPopover upgrade prompt
+- Settings Pro tab + app menu item
+- SelfDescribingElement protocol (10 conformances, sacred code)
+- SectionResolver for heading-based element grouping
+- AI tool entitlement gate
 
-## Implementation Summary (v3.0 so far)
+## Remaining Specs
 
-### Foundation (Phase 1)
-- InteractiveElementDetector: 10 pattern types, single-pass detection
-- MarkdownStructureParser: heading tree + element assignment
-- InteractionHandler: atomic read-modify-write with FileWatcher suppression
+### Spec 2: Classic Rendering Mode
+Real NSControls via NSTextAttachmentViewProvider (NSButton, NSPopUpButton, NSTextField inline in NSTextView). Both Classic and Pro modes are free — visual preference only.
 
-### Core Patterns (Phase 2)
-- Click detection via NSAttributedString custom attribute
-- Visual affordances for all elements
-- FillInSheet, FeedbackSheet, NSOpenPanel integration
+### Spec 3: Pixley Modal + AI Interaction
+Inline chat component with editable rows, section-aware resolution, [+] add row.
 
-### Advanced Patterns (Phase 3)
-- Reviews with date stamps and notes
-- CriticMarkup accept/reject
-- Status state machines with transition enforcement
-- Confidence confirm/challenge
-- Progress bars on section headings
+### Spec 4: .pixley Bundle Format
+Document bundle with markdown contents, chat logs, context/summary for AI orientation.
 
-### AI Integration (Phase 4)
-- Structured FM context (outline + element index)
-- EditInteractiveElementsTool for voice-driven element editing
-- Starter Document with all 9 patterns
+## Uncommitted Prior Work (3 files)
+- ContentView.swift, MarkdownHighlighter.swift, InteractionHandler.swift
+- From v1.1 native controls work (pre-Spec 1)
 
-### Deferred Items
+## Deferred Items
 - US-12: Conditional/Collapsible (NSTextView layout complexity)
 - US-14: Gutter Refactor (significant extension)
 - US-18/19: Multiplatform + Ecosystem

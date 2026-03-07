@@ -428,7 +428,7 @@ struct InteractiveModeToggle: View {
         } label: {
             Image(systemName: isEnhanced ? "hand.tap.fill" : "hand.tap")
         }
-        .help(isEnhanced ? "Interactive elements: Enhanced (click to switch to Plain)" : "Interactive elements: Plain (click to switch to Enhanced)")
+        .help(isEnhanced ? "Interactive elements: Enhanced. Tab to navigate, Return to activate. Click to switch to Plain." : "Interactive elements: Plain. Tab to navigate, Return to activate. Click to switch to Enhanced.")
         .accessibilityLabel("Toggle interactive element styling")
     }
 }

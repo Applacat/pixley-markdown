@@ -59,58 +59,61 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        // Step 1: Read fresh from disk
-        let currentContent: String
-        do {
-            let data = try Data(contentsOf: url)
-            guard let text = String(data: data, encoding: .utf8) else {
-                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"]))
+        // Step 1: Read + compute edit off main thread (no file write yet)
+        let newContent = try await Task.detached(priority: .userInitiated) {
+            let currentContent: String
+            do {
+                let data = try Data(contentsOf: url)
+                guard let text = String(data: data, encoding: .utf8) else {
+                    throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"]))
+                }
+                currentContent = text
+            } catch let error as WriteError {
+                throw error
+            } catch {
+                throw WriteError.readFailed(url, error)
             }
-            currentContent = text
-        } catch let error as WriteError {
-            throw error
-        } catch {
-            throw WriteError.readFailed(url, error)
-        }
 
-        // Step 2: Apply the edit
-        let newContent: String
-        switch edit {
-        case .replace(let range, let newText):
-            guard range.lowerBound >= currentContent.startIndex,
-                  range.upperBound <= currentContent.endIndex else {
-                throw WriteError.rangeMismatch
-            }
-            var modified = currentContent
-            modified.replaceSubrange(range, with: newText)
-            newContent = modified
-
-        case .replaceMultiple(let replacements):
-            var modified = currentContent
-            // Sort replacements in reverse order so earlier indices stay valid
-            let sorted = replacements.sorted { $0.range.lowerBound > $1.range.lowerBound }
-            for (range, newText) in sorted {
-                guard range.lowerBound >= modified.startIndex,
-                      range.upperBound <= modified.endIndex else {
+            let newContent: String
+            switch edit {
+            case .replace(let range, let newText):
+                guard range.lowerBound >= currentContent.startIndex,
+                      range.upperBound <= currentContent.endIndex else {
                     throw WriteError.rangeMismatch
                 }
+                var modified = currentContent
                 modified.replaceSubrange(range, with: newText)
-            }
-            newContent = modified
-        }
+                newContent = modified
 
-        // Step 3: Suppress FileWatcher before writing
+            case .replaceMultiple(let replacements):
+                var modified = currentContent
+                let sorted = replacements.sorted { $0.range.lowerBound > $1.range.lowerBound }
+                for (range, newText) in sorted {
+                    guard range.lowerBound >= modified.startIndex,
+                          range.upperBound <= modified.endIndex else {
+                        throw WriteError.rangeMismatch
+                    }
+                    modified.replaceSubrange(range, with: newText)
+                }
+                newContent = modified
+            }
+
+            return newContent
+        }.value
+
+        // Step 2: Suppress FileWatcher BEFORE writing (main actor — FileWatcher is main-actor-bound)
         fileWatcher?.suppressNextChange = true
 
-        // Step 4: Write atomically
-        do {
-            try newContent.write(to: url, atomically: true, encoding: .utf8)
-        } catch {
-            fileWatcher?.suppressNextChange = false
-            throw WriteError.writeFailed(url, error)
-        }
+        // Step 3: Write atomically off main thread
+        try await Task.detached(priority: .userInitiated) {
+            do {
+                try newContent.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                throw WriteError.writeFailed(url, error)
+            }
+        }.value
 
-        // Step 5: Update in-memory state
+        // Step 4: Update in-memory state (main actor)
         onContentUpdated?(newContent)
     }
 
