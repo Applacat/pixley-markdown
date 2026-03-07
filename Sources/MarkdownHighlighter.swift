@@ -198,13 +198,20 @@ final class MarkdownHighlighter {
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
                 let tooltip = cb.isChecked ? "Click to uncheck" : "Click to mark as complete"
                 attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
-                // Color the bracket area
+                // Rounded background pill on the bracket area
                 if let checkNS = Optional(NSRange(cb.checkRange, in: text)) {
                     let bracketStart = max(0, checkNS.location - 1)
                     let bracketEnd = min(attributed.length, checkNS.location + checkNS.length + 1)
                     let bracketRange = NSRange(location: bracketStart, length: bracketEnd - bracketStart)
                     let checkColor: NSColor = cb.isChecked ? .systemGreen : .systemGray
                     attributed.addAttribute(.foregroundColor, value: checkColor, range: bracketRange)
+                    attributed.addAttribute(.backgroundColor, value: checkColor.withAlphaComponent(0.15), range: bracketRange)
+                }
+                // Dim checked items to show completion
+                if cb.isChecked {
+                    attributed.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: nsRange)
+                    attributed.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
+                    attributed.addAttribute(.strikethroughColor, value: NSColor.secondaryLabelColor.withAlphaComponent(0.4), range: nsRange)
                 }
 
             case .choice(let ch):
@@ -215,6 +222,10 @@ final class MarkdownHighlighter {
                     let optionWrapper = InteractiveElementWrapper(element, optionIndex: i)
                     attributed.addAttribute(.interactiveElement, value: optionWrapper, range: optionNS)
                     attributed.addAttribute(.toolTip, value: "Click to select this option", range: optionNS)
+                    // Selected option gets blue background highlight
+                    if option.isSelected {
+                        attributed.addAttribute(.backgroundColor, value: NSColor.systemBlue.withAlphaComponent(0.12), range: optionNS)
+                    }
                     // Color the bracket area
                     if let checkNS = Optional(NSRange(option.checkRange, in: text)) {
                         let bracketStart = max(0, checkNS.location - 1)
@@ -222,6 +233,7 @@ final class MarkdownHighlighter {
                         let bracketRange = NSRange(location: bracketStart, length: bracketEnd - bracketStart)
                         let checkColor: NSColor = option.isSelected ? .systemBlue : .systemGray
                         attributed.addAttribute(.foregroundColor, value: checkColor, range: bracketRange)
+                        attributed.addAttribute(.backgroundColor, value: checkColor.withAlphaComponent(0.15), range: bracketRange)
                     }
                 }
 
@@ -234,20 +246,30 @@ final class MarkdownHighlighter {
                     attributed.addAttribute(.interactiveElement, value: optionWrapper, range: optionNS)
                     let tooltip = "Click to set review: \(option.status.rawValue)"
                     attributed.addAttribute(.toolTip, value: tooltip, range: optionNS)
+                    // Status-colored background pill on the full option
+                    let statusColor = Self.reviewStatusColor(option.status)
+                    if option.isSelected {
+                        attributed.addAttribute(.backgroundColor, value: statusColor.withAlphaComponent(0.2), range: optionNS)
+                        attributed.addAttribute(.foregroundColor, value: statusColor, range: optionNS)
+                    }
                     // Color the bracket area
                     if let checkNS = Optional(NSRange(option.checkRange, in: text)) {
                         let bracketStart = max(0, checkNS.location - 1)
                         let bracketEnd = min(attributed.length, checkNS.location + checkNS.length + 1)
                         let bracketRange = NSRange(location: bracketStart, length: bracketEnd - bracketStart)
-                        let checkColor: NSColor = option.isSelected ? .systemOrange : .systemGray
+                        let checkColor: NSColor = option.isSelected ? statusColor : .systemGray
                         attributed.addAttribute(.foregroundColor, value: checkColor, range: bracketRange)
+                        if option.isSelected {
+                            attributed.addAttribute(.backgroundColor, value: statusColor.withAlphaComponent(0.2), range: bracketRange)
+                        }
                     }
                 }
 
             case .fillIn(let fi):
-                // Dotted underline + hint color
+                // Field outline: teal background tint + dashed underline to look like a text field
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
                 attributed.addAttribute(.foregroundColor, value: NSColor.systemTeal, range: nsRange)
+                attributed.addAttribute(.backgroundColor, value: NSColor.systemTeal.withAlphaComponent(0.06), range: nsRange)
                 attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.patternDash.rawValue | NSUnderlineStyle.single.rawValue, range: nsRange)
                 attributed.addAttribute(.underlineColor, value: NSColor.systemTeal.withAlphaComponent(0.6), range: nsRange)
                 let tooltip: String
@@ -375,6 +397,17 @@ final class MarkdownHighlighter {
         // Recurse into children (process in reverse order since insertions shift positions)
         for child in section.children.reversed() {
             annotateSectionProgress(child, attributed: attributed, text: text)
+        }
+    }
+
+    /// Maps review statuses to semantic colors for visual differentiation.
+    private static func reviewStatusColor(_ status: ReviewStatus) -> NSColor {
+        switch status {
+        case .approved, .pass: return .systemGreen
+        case .fail: return .systemRed
+        case .passWithNotes: return .systemYellow
+        case .blocked: return .systemOrange
+        case .notApplicable: return .systemGray
         }
     }
 
