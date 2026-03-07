@@ -38,6 +38,7 @@ struct MarkdownView: View {
     @State private var activeConfidence: ConfidenceElement? = nil
     @State private var activeSuggestion: SuggestionElement? = nil
     @State private var showingSuggestionSheet = false
+    @State private var showingDatePicker = false
 
     // MARK: - Body
 
@@ -200,6 +201,19 @@ struct MarkdownView: View {
                 )
             }
         }
+        .sheet(isPresented: $showingDatePicker) {
+            DatePickerSheet(
+                onSubmit: { dateString in
+                    popoverText = dateString
+                    submitFillIn()
+                    showingDatePicker = false
+                },
+                onCancel: {
+                    showingDatePicker = false
+                    activeFillIn = nil
+                }
+            )
+        }
         .sheet(isPresented: $showingSuggestionSheet) {
             if let suggestion = activeSuggestion {
                 SuggestionSheet(
@@ -313,10 +327,13 @@ struct MarkdownView: View {
                         openFilePicker(for: fi)
                     case .folder:
                         openFolderPicker(for: fi)
-                    case .text, .date:
+                    case .text:
                         activeFillIn = fi
                         popoverText = fi.value ?? ""
                         showingFillInPopover = true
+                    case .date:
+                        activeFillIn = fi
+                        showingDatePicker = true
                     }
 
                 case .feedback(let fb):

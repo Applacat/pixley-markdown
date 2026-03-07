@@ -53,6 +53,58 @@ struct FillInSheet: View {
     }
 }
 
+// MARK: - Date Picker Sheet
+
+/// A sheet for picking a date to fill in a `[[pick date]]` placeholder.
+struct DatePickerSheet: View {
+    @State private var selectedDate: Date
+    let onSubmit: (String) -> Void
+    let onCancel: () -> Void
+
+    private static let outputFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    init(initialDate: Date = Date(), onSubmit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        self._selectedDate = State(initialValue: initialDate)
+        self.onSubmit = onSubmit
+        self.onCancel = onCancel
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Pick a Date")
+                .font(.headline)
+
+            DatePicker(
+                "Date",
+                selection: $selectedDate,
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+
+            HStack {
+                Button("Cancel", role: .cancel) {
+                    onCancel()
+                }
+                .keyboardShortcut(.escape)
+
+                Spacer()
+
+                Button("Submit") {
+                    onSubmit(Self.outputFormatter.string(from: selectedDate))
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 340)
+    }
+}
+
 // MARK: - Feedback Sheet
 
 /// A sheet for leaving feedback in a `<!-- feedback -->` comment.
