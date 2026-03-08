@@ -1,0 +1,155 @@
+{
+  "feature": "Liquid Glass Line Indicators",
+  "slug": "this-refactor",
+  "status": "PENDING",
+  "created": "2026-03-08",
+  "problem": "NSRulerView gutter has persistent layout bugs in SwiftUI NSViewRepresentable. Gutter model conflicts with infinite canvas aesthetic. Single-line bookmarks too granular for AI workflows.",
+  "solution": "Replace NSRulerView with floating SwiftUI line numbers on infinite canvas, Liquid Glass bookmark bubbles for range bookmarks, corner badge collapse/expand toggle, AI context integration.",
+  "phases": [
+    {
+      "id": 1,
+      "name": "Foundation",
+      "stories": ["US-1", "US-2"],
+      "description": "Remove NSRulerView, transparent canvas, LineLayoutState bridge",
+      "status": "PENDING"
+    },
+    {
+      "id": 2,
+      "name": "Line Numbers + Toggle",
+      "stories": ["US-3", "US-4"],
+      "description": "SwiftUI floating line number overlay, corner badge collapse/expand with spring animation",
+      "status": "PENDING"
+    },
+    {
+      "id": 3,
+      "name": "Range Bookmarks",
+      "stories": ["US-5", "US-6", "US-7"],
+      "description": "Data model migration, Liquid Glass bubbles, click-drag interaction with auto-merge",
+      "status": "PENDING"
+    },
+    {
+      "id": 4,
+      "name": "AI Integration",
+      "stories": ["US-8"],
+      "description": "Bookmark context in AI chat, GetBookmarkedSectionsTool FM tool",
+      "status": "PENDING"
+    }
+  ],
+  "stories": [
+    {
+      "id": "US-1",
+      "title": "Infinite Canvas Foundation",
+      "phase": 1,
+      "description": "Remove NSRulerView and make text view a transparent infinite canvas",
+      "status": "PENDING"
+    },
+    {
+      "id": "US-2",
+      "title": "Line Layout Bridge",
+      "phase": 1,
+      "description": "Create shared @Observable LineLayoutState bridging NSLayoutManager to SwiftUI",
+      "status": "PENDING"
+    },
+    {
+      "id": "US-3",
+      "title": "Floating Line Numbers",
+      "phase": 2,
+      "description": "SwiftUI overlay rendering line numbers via LineLayoutState",
+      "status": "PENDING"
+    },
+    {
+      "id": "US-4",
+      "title": "Corner Badge Toggle",
+      "phase": 2,
+      "description": "Line count badge as collapse/expand toggle with spring animation",
+      "status": "PENDING"
+    },
+    {
+      "id": "US-5",
+      "title": "Range Bookmark Data Model",
+      "phase": 3,
+      "description": "Migrate from single-line Bookmark to RangeBookmark with auto-merge",
+      "status": "PENDING"
+    },
+    {
+      "id": "US-6",
+      "title": "Bookmark Bubble Visualization",
+      "phase": 3,
+      "description": "Liquid Glass bubbles behind bookmarked line ranges",
+      "status": "PENDING"
+    },
+    {
+      "id": "US-7",
+      "title": "Bookmark Interaction",
+      "phase": 3,
+      "description": "Click-drag to create range bookmarks, hover-to-reveal delete",
+      "status": "PENDING"
+    },
+    {
+      "id": "US-8",
+      "title": "AI Bookmark Context",
+      "phase": 4,
+      "description": "Auto-include bookmarked sections in AI chat, GetBookmarkedSectionsTool",
+      "status": "PENDING"
+    }
+  ],
+  "designDecisions": [
+    {"id": "D1", "title": "Infinite Canvas", "summary": "NSTextView transparent, background owned by SwiftUI parent"},
+    {"id": "D2", "title": "Line Layout Bridge", "summary": "Shared @Observable LineLayoutState from NSLayoutManager to SwiftUI"},
+    {"id": "D3", "title": "Bookmark Visualization", "summary": "No bookmarks = no glass. Range bookmarks get Liquid Glass bubbles."},
+    {"id": "D4", "title": "Collapse/Expand", "summary": "Corner line-count badge toggles. Collapsed = dot. Spring animation."},
+    {"id": "D5", "title": "Coordinate Anchor", "summary": "Line indicators define text origin. Fixes clipping bug by design."},
+    {"id": "D6", "title": "Range Storage", "summary": "startLine + endLine integers. Auto-merge overlapping ranges."},
+    {"id": "D7", "title": "AI Integration", "summary": "Bookmarked sections auto-included in chat context. FM tool for programmatic access."}
+  ],
+  "filesDeleted": [
+    "Sources/Views/Components/LineNumberRulerView.swift"
+  ],
+  "filesModified": [
+    "Sources/MarkdownEditor.swift",
+    "Sources/Persistence/Bookmark.swift",
+    "Sources/Persistence/FileMetadataRepository.swift",
+    "Sources/Persistence/SwiftDataMetadataRepository.swift",
+    "Sources/Coordinator/AppCoordinator.swift",
+    "Sources/Views/Screens/MarkdownView.swift",
+    "Sources/Services/ChatService.swift",
+    "Sources/Settings/SettingsRepository.swift"
+  ],
+  "filesCreated": [
+    "Sources/Views/Components/LineIndicatorOverlay.swift",
+    "Sources/Models/LineLayoutState.swift"
+  ],
+  "verification": {
+    "build": "xcodebuild -project AIMDReader.xcodeproj -scheme AIMDReader -destination 'platform=macOS' build",
+    "packageTests": "cd Packages/aimdRenderer && swift test"
+  },
+  "codeGrepTouchPoints": {
+    "showLineNumbers": [
+      "SettingsRepository.swift:57 (property)",
+      "SettingsRepository.swift:265 (load)",
+      "SettingsRepository.swift:307 (save)",
+      "SettingsRepository.swift:354 (observe)",
+      "SettingsView.swift:149 (toggle UI)",
+      "MarkdownEditor.swift:727,850,851 (ruler visibility)"
+    ],
+    "bookmarkedLines": [
+      "MarkdownEditor.swift:647 (property)",
+      "MarkdownEditor.swift:724,855 (ruler assignment)",
+      "MarkdownView.swift:26 (state)",
+      "MarkdownView.swift:140,142,222,227 (usage)",
+      "LineNumberRulerView.swift:16,133 (drawing)"
+    ],
+    "bookmarkModel": [
+      "AppCoordinator.swift:277-291 (add,get,delete)",
+      "FileMetadataRepository.swift:40-59 (protocol)",
+      "SwiftDataMetadataRepository.swift:98-136 (implementation)"
+    ]
+  },
+  "migration": {
+    "currentSchemaVersion": "SchemaV2",
+    "targetSchemaVersion": "SchemaV3",
+    "migrationType": "custom (Bookmark.lineNumber → RangeBookmark.startLine/endLine)",
+    "migrationFile": "Sources/Persistence/SwiftDataMetadataRepository.swift"
+  },
+  "workingTreeNote": "Current working tree has uncommitted GutteredScrollView and LineNumberRulerView.backgroundColor changes from earlier gutter fix session. These are SUPERSEDED by this spec — discard before implementation."
+}

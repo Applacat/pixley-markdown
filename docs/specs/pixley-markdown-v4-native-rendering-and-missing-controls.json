@@ -1,0 +1,130 @@
+{
+  "spec": "Pixley Markdown v4 — Native Rendering & Missing Controls",
+  "version": "1.0",
+  "date": "2026-03-08",
+  "status": "BRD",
+  "thesis": "Expose native Swift/SwiftUI/AppKit controls through markdown syntax. Just pipes. AI and user decide what to do with them.",
+  "design_principles": [
+    "Classic markdown look — inline controls render as standard macOS controls, not glass",
+    "Glass for containers — tables and popovers get Liquid Glass treatment",
+    "Just pipes — expose the control, let AI compose"
+  ],
+  "phases": [
+    {
+      "id": "phase-1",
+      "name": "Native Rendering Blocks",
+      "description": "SwiftUI blocks embedded inline in NSTextView for markdown constructs that look bad as styled text",
+      "stories": [
+        {
+          "id": "US-1",
+          "title": "Table Rendering",
+          "description": "Detect pipe-delimited tables with separator rows, render as SwiftUI grid in Liquid Glass container inline in text flow. Interactive elements inside cells are detected and functional.",
+          "trigger": "| col | col | with |---|---| separator row",
+          "write_back": "Only for interactive elements within cells"
+        },
+        {
+          "id": "US-2",
+          "title": "Image Rendering",
+          "description": "Detect ![alt](path) syntax, render actual image inline. Local file paths resolved relative to document.",
+          "trigger": "![alt](path)",
+          "write_back": "None — display only"
+        },
+        {
+          "id": "US-3",
+          "title": "Code Block Rendering",
+          "description": "Detect fenced code blocks with optional language identifier, render in SwiftUI framed container with syntax highlighting and copy-to-clipboard button.",
+          "trigger": "Fenced ``` with language",
+          "write_back": "None — display only"
+        },
+        {
+          "id": "US-4",
+          "title": "Collapsible Section Rendering",
+          "description": "Detect collapsible comment markers (already in parser), render as native SwiftUI DisclosureGroup.",
+          "trigger": "<!-- collapsible: Title --> ... <!-- endcollapsible -->",
+          "write_back": "None — ephemeral view state"
+        }
+      ]
+    },
+    {
+      "id": "phase-2",
+      "name": "New Interactive Controls",
+      "description": "New fill-in types using existing [[...]] detection pattern plus checkbox variant",
+      "stories": [
+        {
+          "id": "US-5",
+          "title": "Slider Control",
+          "description": "Detect [[slide MIN-MAX]] or [[rate MIN-MAX]], render as inline NSSlider. Write-back replaces trigger with selected number.",
+          "trigger": "[[slide MIN-MAX]] or [[rate MIN-MAX]]",
+          "native_element": "NSSlider",
+          "write_back": "Number replacing [[...]]"
+        },
+        {
+          "id": "US-6",
+          "title": "Color Picker",
+          "description": "Detect [[pick color]], show NSColorWell/ColorPicker in popover. Write-back replaces trigger with hex color.",
+          "trigger": "[[pick color]]",
+          "native_element": "NSColorWell / SwiftUI ColorPicker",
+          "write_back": "#hex replacing [[...]]"
+        },
+        {
+          "id": "US-7",
+          "title": "Stepper Control",
+          "description": "Detect [[pick number]] or [[pick number MIN-MAX]], render as inline NSStepper. Write-back replaces trigger with selected number.",
+          "trigger": "[[pick number]] or [[pick number MIN-MAX]]",
+          "native_element": "NSStepper",
+          "write_back": "Number replacing [[...]]"
+        },
+        {
+          "id": "US-8",
+          "title": "Toggle Switch",
+          "description": "Detect [[toggle]], render as inline NSSwitch. Write-back replaces trigger with on or off.",
+          "trigger": "[[toggle]]",
+          "native_element": "NSSwitch",
+          "write_back": "on or off replacing [[...]]"
+        },
+        {
+          "id": "US-9",
+          "title": "Auditable Checkbox",
+          "description": "Checkbox that auto-appends timestamp when checked. Optionally prompts for notes. Replaces old Review pattern. AI writes any labels it wants — Pixley does not interpret them.",
+          "trigger": "Documented pattern (AI writes checkbox with audit syntax)",
+          "behavior": {
+            "check": "Appends — YYYY-MM-DD",
+            "check_with_notes": "Appends — YYYY-MM-DD: user note",
+            "uncheck": "Removes timestamp and notes"
+          },
+          "write_back": "[x] — DATE or [x] — DATE: notes"
+        },
+        {
+          "id": "US-10",
+          "title": "File/Folder Picker Re-pick",
+          "description": "After [[choose file]] or [[choose folder]] is filled, the path renders as a clickable badge. Clicking re-opens NSOpenPanel. New selection replaces old path.",
+          "trigger": "Filled [[choose file]] or [[choose folder]]",
+          "write_back": "New path replaces old"
+        }
+      ]
+    }
+  ],
+  "dropped": [
+    {
+      "feature": "Confidence indicators",
+      "reason": "Was a slider with high/medium/low opinions baked in",
+      "replacement": "Slider control — [[slide 0-100]] or [[rate 1-5]]"
+    },
+    {
+      "feature": "Review pattern (PASS/FAIL/APPROVED)",
+      "reason": "Was an auditable checkbox with keyword opinions",
+      "replacement": "Auditable checkbox — AI writes any label it wants"
+    },
+    {
+      "feature": "Conditional sections",
+      "reason": "Display logic, not a control",
+      "replacement": "Punted — not a pipe"
+    }
+  ],
+  "technical_considerations": [
+    "NSTextAttachmentViewProvider (macOS 12+) for embedding SwiftUI in NSTextView",
+    "Inline controls (slider, stepper, toggle) in attributed text flow",
+    "SwiftUI table handles own hit testing for interactive elements in cells",
+    "Local file paths only for images in v1 — no remote URLs"
+  ]
+}

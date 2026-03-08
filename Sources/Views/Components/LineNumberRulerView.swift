@@ -6,6 +6,12 @@ final class LineNumberRulerView: NSRulerView {
 
     private weak var textView: NSTextView?
 
+    /// Background color matching the text editor theme — makes the gutter
+    /// visually part of the editor viewport instead of floating above it.
+    var backgroundColor: NSColor = .textBackgroundColor {
+        didSet { needsDisplay = true }
+    }
+
     /// Set of bookmarked line numbers (1-based)
     var bookmarkedLines: Set<Int> = [] {
         didSet { needsDisplay = true }
@@ -14,9 +20,9 @@ final class LineNumberRulerView: NSRulerView {
     /// Called when user clicks a line to toggle bookmark
     var onToggleBookmark: ((Int) -> Void)?
 
-    init(textView: NSTextView) {
+    init(textView: NSTextView, scrollView: NSScrollView) {
         self.textView = textView
-        super.init(scrollView: textView.enclosingScrollView!, orientation: .verticalRuler)
+        super.init(scrollView: scrollView, orientation: .verticalRuler)
         self.clientView = textView
         self.ruleThickness = 40
 
@@ -32,7 +38,7 @@ final class LineNumberRulerView: NSRulerView {
         NotificationCenter.default.addObserver(
             self, selector: #selector(boundsDidChange),
             name: NSView.boundsDidChangeNotification,
-            object: textView.enclosingScrollView?.contentView
+            object: scrollView.contentView
         )
     }
 
@@ -86,6 +92,10 @@ final class LineNumberRulerView: NSRulerView {
     // MARK: - Drawing
 
     override func drawHashMarksAndLabels(in rect: NSRect) {
+        // Fill background to match the text editor's theme
+        backgroundColor.setFill()
+        rect.fill()
+
         guard let textView,
               let layoutManager = textView.layoutManager,
               let textContainer = textView.textContainer else { return }

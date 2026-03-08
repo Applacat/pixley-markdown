@@ -254,22 +254,32 @@ struct AIMDReaderApp: App {
                 }
                 .keyboardShortcut("/", modifiers: [.command])
 
-                Button("Reading Documents") {
-                    openWelcomeToPage("02-Reading.md")
+                Button("Project Kickoff Example") {
+                    openWelcomeToPage("02-Project-Kickoff.md")
                 }
 
-                Button("Navigating Files") {
-                    openWelcomeToPage("03-Navigating.md")
+                Button("Design Review Example") {
+                    openWelcomeToPage("03-Design-Review.md")
+                }
+
+                Button("Release Checklist Example") {
+                    openWelcomeToPage("04-Release-Checklist.md")
+                }
+
+                Divider()
+
+                Button("App Guide") {
+                    openWelcomeToPage("Tips and Tricks/05-App-Guide.md")
                 }
 
                 if #available(macOS 26, *) {
                     Button("AI Chat") {
-                        openWelcomeToPage("Tips and Tricks/04-AI-Chat.md")
+                        openWelcomeToPage("Tips and Tricks/06-AI-Chat.md")
                     }
                 }
 
                 Button("Quick Reference") {
-                    openWelcomeToPage("Tips and Tricks/05-Quick-Reference.md")
+                    openWelcomeToPage("Tips and Tricks/07-Quick-Reference.md")
                 }
 
                 Divider()

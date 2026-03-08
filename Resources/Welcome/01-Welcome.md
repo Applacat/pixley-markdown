@@ -1,34 +1,27 @@
 # Welcome to Pixley
 
-A markdown reader for your Mac. Open a folder, pick a file, read it beautifully.
+Pixley makes markdown files interactive. Click things. Make choices. Fill in blanks. Everything saves back to the file.
 
-## What You're Looking At
+This Welcome folder walks you through what's possible. Each document introduces new controls — and uses them for real.
 
-This is a **Welcome folder** with a few short guides. The sidebar on the left shows them all — click any file to open it here.
+## Your Tour
 
-> Pixley doesn't edit files. It reads them. Everything you see is styled with your current color theme, font, and heading scale — all adjustable in **Settings** (`⌘,`).
+Check these off as you go:
 
-## A Quick Example
+- [ ] Read this document (you're doing it now)
+- [ ] Set up a project in **02-Project-Kickoff**
+- [ ] Review a design proposal in **03-Design-Review**
+- [ ] Run a release checklist in **04-Release-Checklist**
 
-Here's a Python function, rendered with your current theme:
+## How It Works
 
-```python
-def read_markdown(path: str) -> str:
-    """Read a markdown file and return its contents."""
-    with open(path, "r") as f:
-        return f.read()
-```
+When you click a checkbox, Pixley writes the change back to the `.md` file. If an AI tool is watching the file, it can see your response. That's the whole idea — markdown becomes a two-way conversation.
 
-A few shortcuts to get started:
+## Getting Around
 
+- **Sidebar** — click any file to open it
 - **Quick Switcher** — `⌘P`
-- **Find in document** — `⌘F`
-- **AI Chat** — `⌘⇧A`
-- **Settings** — `⌘,`
+- **AI Chat** — `⌘⇧A` (ask questions about what you're reading)
+- **Settings** — `⌘,` (themes, fonts, appearance)
 
-## Next Steps
-
-- **Reading** — Themes, fonts, bookmarks, and search
-- **Navigating** — Sidebar, Quick Switcher, favorites
-- **AI Chat** — Ask questions about your documents
-- **Quick Reference** — Every shortcut in one place
+More in **Tips and Tricks** when you're ready. For now, open **02-Project-Kickoff** in the sidebar.

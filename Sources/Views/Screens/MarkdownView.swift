@@ -234,6 +234,7 @@ struct MarkdownView: View {
     /// through showElementPopover in MarkdownNSTextView → onInputSubmitted.
     private func handleInteractiveClick(_ element: InteractiveElement, optionIndex: Int? = nil) {
         guard let fileURL = coordinator.navigation.selectedFile else { return }
+        coordinator.suppressFolderChangeMarking()
 
         Task {
             do {
@@ -300,6 +301,7 @@ struct MarkdownView: View {
     /// Handles submissions from inline NSPopovers (fill-in, feedback, suggestion, review notes, challenge).
     private func handleInputSubmitted(_ element: InteractiveElement, optionIndex: Int?, fieldName: String, value: String) {
         guard let fileURL = coordinator.navigation.selectedFile else { return }
+        coordinator.suppressFolderChangeMarking()
 
         Task {
             do {
@@ -365,6 +367,7 @@ struct MarkdownView: View {
 
     private func submitStatusAdvance(status: StatusElement, to newState: String) {
         guard let fileURL = coordinator.navigation.selectedFile else { return }
+        coordinator.suppressFolderChangeMarking()
 
         Task {
             do {
@@ -383,6 +386,7 @@ struct MarkdownView: View {
 
     private func openFilePicker(for fillIn: FillInElement) {
         guard let fileURL = coordinator.navigation.selectedFile else { return }
+        coordinator.suppressFolderChangeMarking()
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -407,6 +411,7 @@ struct MarkdownView: View {
 
     private func openFolderPicker(for fillIn: FillInElement) {
         guard let fileURL = coordinator.navigation.selectedFile else { return }
+        coordinator.suppressFolderChangeMarking()
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true

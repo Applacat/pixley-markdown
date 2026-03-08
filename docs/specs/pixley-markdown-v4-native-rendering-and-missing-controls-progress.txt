@@ -1,0 +1,16 @@
+Pixley Markdown v4 — Native Rendering & Missing Controls
+=========================================================
+
+Phase 1: Native Rendering Blocks
+  [PENDING] US-1: Table Rendering
+  [PENDING] US-2: Image Rendering
+  [PENDING] US-3: Code Block Rendering
+  [PENDING] US-4: Collapsible Section Rendering
+
+Phase 2: New Interactive Controls
+  [PENDING] US-5: Slider Control
+  [PENDING] US-6: Color Picker
+  [PENDING] US-7: Stepper Control
+  [PENDING] US-8: Toggle Switch
+  [PENDING] US-9: Auditable Checkbox
+  [PENDING] US-10: File/Folder Picker Re-pick
