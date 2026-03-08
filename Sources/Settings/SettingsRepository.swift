@@ -82,31 +82,45 @@ public enum InteractiveMode: String, CaseIterable, Identifiable, Sendable {
     case plain = "Plain"
     /// Enhanced text rendering with hover states, tooltips, and visual pills
     case enhanced = "Enhanced"
-    /// Liquid Glass — native SwiftUI block renderer with glass material nesting (Pro)
+    /// Hybrid — enhanced text rendering with native macOS controls for interactive elements
+    case hybrid = "Hybrid"
+    /// Liquid Glass — full SwiftUI block renderer with glass material nesting
     case liquidGlass = "Liquid Glass"
 
     public var id: String { rawValue }
 
-    /// Short label for toolbar segmented control
+    /// Short label for toolbar picker
     public var shortName: String {
         switch self {
-        case .enhanced: return "Enhanced"
         case .plain: return "Plain"
-        case .liquidGlass: return "Pro"
+        case .enhanced: return "Enhanced"
+        case .hybrid: return "Hybrid"
+        case .liquidGlass: return "Liquid Glass"
+        }
+    }
+
+    /// Icon for toolbar picker
+    public var systemImage: String {
+        switch self {
+        case .plain: return "doc.plaintext"
+        case .enhanced: return "doc.richtext"
+        case .hybrid: return "slider.horizontal.3"
+        case .liquidGlass: return "cube.transparent"
         }
     }
 
     public var displayName: String {
         switch self {
-        case .enhanced: return "Enhanced — colors, pills, and highlights"
         case .plain: return "Plain — minimal styling"
+        case .enhanced: return "Enhanced — colors, pills, and highlights"
+        case .hybrid: return "Hybrid — enhanced text, native controls"
         case .liquidGlass: return "Liquid Glass — native controls, glass blocks"
         }
     }
 
     /// Whether this mode requires a Pro purchase
     public var requiresPro: Bool {
-        self == .liquidGlass
+        self == .hybrid || self == .liquidGlass
     }
 }
 

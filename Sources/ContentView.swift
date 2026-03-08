@@ -417,43 +417,33 @@ struct NavigateUpButton: View {
 
 // MARK: - View Mode Picker
 
-/// Toolbar segmented control for switching rendering mode: Plain / Enhanced / Pro.
+/// Toolbar menu for switching rendering mode: Plain / Enhanced / Hybrid / Liquid Glass.
 struct ViewModePicker: View {
     @Environment(\.settings) private var settings
     @Environment(\.storeService) private var store
     @State private var purchaseError: String?
 
     var body: some View {
-        HStack(spacing: 4) {
-            Picker("View Mode", selection: Binding(
-                get: { settings.behavior.interactiveMode },
-                set: { newMode in
-                    if newMode.requiresPro && !store.isUnlocked {
-                        guard store.purchaseState != .purchasing else { return }
-                        Task {
-                            await store.purchase()
-                            if store.isUnlocked {
-                                settings.behavior.interactiveMode = newMode
-                            } else if case .failed(let msg) = store.purchaseState {
-                                purchaseError = msg
-                            }
+        Menu {
+            ForEach(InteractiveMode.allCases) { mode in
+                Button {
+                    selectMode(mode)
+                } label: {
+                    HStack {
+                        Label(mode.shortName, systemImage: mode.systemImage)
+                        if mode.requiresPro && !store.isUnlocked {
+                            Text("PRO")
                         }
-                    } else {
-                        settings.behavior.interactiveMode = newMode
                     }
                 }
-            )) {
-                ForEach(InteractiveMode.allCases) { mode in
-                    Text(mode.requiresPro && !store.isUnlocked
-                         ? "\(mode.shortName) 🔒"
-                         : mode.shortName)
-                        .tag(mode)
-                }
+                .disabled(mode == settings.behavior.interactiveMode)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
+        } label: {
+            Label(settings.behavior.interactiveMode.shortName,
+                  systemImage: settings.behavior.interactiveMode.systemImage)
         }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
         .help("Switch document rendering mode")
         .accessibilityLabel("Document view mode")
         .accessibilityValue(settings.behavior.interactiveMode.shortName)
@@ -464,6 +454,22 @@ struct ViewModePicker: View {
             Button("OK") { purchaseError = nil }
         } message: {
             Text(purchaseError ?? "")
+        }
+    }
+
+    private func selectMode(_ mode: InteractiveMode) {
+        if mode.requiresPro && !store.isUnlocked {
+            guard store.purchaseState != .purchasing else { return }
+            Task {
+                await store.purchase()
+                if store.isUnlocked {
+                    settings.behavior.interactiveMode = mode
+                } else if case .failed(let msg) = store.purchaseState {
+                    purchaseError = msg
+                }
+            }
+        } else {
+            settings.behavior.interactiveMode = mode
         }
     }
 }

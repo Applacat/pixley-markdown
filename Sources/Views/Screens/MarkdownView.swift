@@ -119,9 +119,11 @@ struct MarkdownView: View {
 
     @ViewBuilder
     private var markdownContent: some View {
-        if settings.behavior.interactiveMode == .liquidGlass {
+        switch settings.behavior.interactiveMode {
+        case .liquidGlass:
             liquidGlassContent
-        } else {
+        case .plain, .enhanced, .hybrid:
+            // Hybrid will use enhanced rendering with native control overlays (TODO)
             enhancedContent
         }
     }
@@ -193,6 +195,16 @@ struct MarkdownView: View {
             pendingScrollPosition = savedPosition > 0 ? savedPosition : nil
             refreshBookmarks()
             startWatching(fileURL)
+            
+            // Clear pending scroll position after a brief delay to prevent it from
+            // being re-applied during subsequent content updates (interactive edits).
+            // The MarkdownEditor will have already consumed it by this point.
+            if pendingScrollPosition != nil {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(100))
+                    pendingScrollPosition = nil
+                }
+            }
         }
     }
 
