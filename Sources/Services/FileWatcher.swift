@@ -2,25 +2,38 @@ import Foundation
 
 /// Watches a file for external modifications using DispatchSource.
 /// Notifies via callback when the file content changes on disk.
+///
+/// Handles atomic writes correctly: atomic writes create a temp file then rename,
+/// which invalidates the original file descriptor. On `.rename`/`.delete` events,
+/// the watcher re-opens the file to track the new inode.
 @MainActor
 final class FileWatcher {
 
     private var source: DispatchSourceFileSystemObject?
     private var fileDescriptor: Int32 = -1
     private var lastModificationDate: Date?
+    private var watchedPath: String?
     private let onChange: @MainActor () -> Void
 
-    /// When true, the next file change event is suppressed (used by InteractionHandler
-    /// to avoid showing the reload pill for self-initiated writes).
-    var suppressNextChange: Bool = false
+    /// Time-based suppression window for self-initiated writes.
+    /// Atomic writes fire multiple DispatchSource events (write + rename),
+    /// so a simple boolean flag is insufficient.
+    private var suppressUntil: Date?
 
     init(onChange: @escaping @MainActor () -> Void) {
         self.onChange = onChange
     }
 
     deinit {
-        // Cancel triggers setCancelHandler which closes the file descriptor
         source?.cancel()
+    }
+
+    /// Suppress file change notifications for the next short window.
+    /// Call this before writing to the watched file to prevent reload pills.
+    /// Default of 1.0 second handles atomic writes which can trigger multiple
+    /// file system events (write + rename + delete) that may be delayed/coalesced by macOS.
+    func suppressChanges(for duration: TimeInterval = 1.0) {
+        suppressUntil = Date().addingTimeInterval(duration)
     }
 
     /// Start watching a file at the given URL.
@@ -29,6 +42,31 @@ final class FileWatcher {
         stop()
 
         let path = url.path
+        watchedPath = path
+        startSource(path: path)
+    }
+
+    /// Stop watching the current file.
+    func stop() {
+        source?.cancel()
+        source = nil
+        fileDescriptor = -1
+        watchedPath = nil
+    }
+
+    // MARK: - Private
+
+    private func startSource(path: String) {
+        // Close previous fd if any
+        if fileDescriptor >= 0 {
+            let oldFD = fileDescriptor
+            source?.cancel()
+            source = nil
+            // setCancelHandler closes it, but if no source was set, close manually
+            close(oldFD)
+            fileDescriptor = -1
+        }
+
         fileDescriptor = open(path, O_EVTONLY)
         guard fileDescriptor >= 0 else { return }
 
@@ -57,22 +95,29 @@ final class FileWatcher {
         source.resume()
     }
 
-    /// Stop watching the current file.
-    func stop() {
-        source?.cancel()
-        source = nil
-        fileDescriptor = -1
-    }
-
     private func handleFileEvent(path: String) {
+        // Atomic writes invalidate the fd (rename replaces the inode).
+        // Re-watch the path to track the new file.
+        let events = source?.data ?? []
+        if events.contains(.rename) || events.contains(.delete) {
+            // Small delay to let the atomic rename complete
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(50))
+                guard let self, self.watchedPath == path else { return }
+                self.startSource(path: path)
+            }
+        }
+
         let currentDate = Self.modificationDate(for: path)
         guard currentDate != lastModificationDate else { return }
         lastModificationDate = currentDate
 
-        if suppressNextChange {
-            suppressNextChange = false
+        // Check time-based suppression window
+        if let suppressUntil, Date() < suppressUntil {
             return
         }
+        suppressUntil = nil
+
         onChange()
     }
 

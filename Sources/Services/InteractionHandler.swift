@@ -59,7 +59,13 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        // Step 1: Read + compute edit off main thread (no file write yet)
+        // Step 1: Suppress FileWatcher EARLY with longer window to cover atomic writes
+        // Atomic writes can trigger multiple DispatchSource events (write + rename + delete),
+        // and macOS may buffer/delay these events, so we need a generous window.
+        // Extended to 1.0 second to handle slow disk I/O and event coalescing.
+        fileWatcher?.suppressChanges(for: 1.0)
+
+        // Step 2: Read + compute edit off main thread (no file write yet)
         let newContent = try await Task.detached(priority: .userInitiated) {
             let currentContent: String
             do {
@@ -100,9 +106,6 @@ final class InteractionHandler {
 
             return newContent
         }.value
-
-        // Step 2: Suppress FileWatcher BEFORE writing (main actor — FileWatcher is main-actor-bound)
-        fileWatcher?.suppressNextChange = true
 
         // Step 3: Write atomically off main thread
         try await Task.detached(priority: .userInitiated) {
