@@ -18,25 +18,13 @@ private struct FileLoadTrigger: Equatable {
 struct MarkdownView: View {
 
     @Environment(\.coordinator) private var coordinator
+    @Environment(\.settings) private var settings
 
     @State private var pendingScrollPosition: Double? = nil
     @State private var fileWatcher: FileWatcher? = nil
     @State private var readingProgress: Double = 0
     @State private var bookmarkedLines: Set<Int> = []
     @State private var interactionHandler = InteractionHandler()
-    @State private var showingFillInPopover = false
-    @State private var showingFeedbackPopover = false
-    @State private var showingReviewNotesSheet = false
-    @State private var showingChallengeSheet = false
-    @State private var popoverText = ""
-    @State private var activeFillIn: FillInElement? = nil
-    @State private var activeFeedback: FeedbackElement? = nil
-    @State private var activeReview: ReviewElement? = nil
-    @State private var activeReviewOptionIndex: Int? = nil
-    @State private var activeConfidence: ConfidenceElement? = nil
-    @State private var activeSuggestion: SuggestionElement? = nil
-    @State private var showingSuggestionSheet = false
-    @State private var showingDatePicker = false
 
     // MARK: - Body
 
@@ -129,7 +117,16 @@ struct MarkdownView: View {
 
     // MARK: - Markdown Content
 
+    @ViewBuilder
     private var markdownContent: some View {
+        if settings.behavior.interactiveMode == .liquidGlass {
+            liquidGlassContent
+        } else {
+            enhancedContent
+        }
+    }
+
+    private var enhancedContent: some View {
         MarkdownEditor(
             text: .constant(coordinator.document.content),
             onError: { error in coordinator.showError(error) },
@@ -147,6 +144,9 @@ struct MarkdownView: View {
             },
             onStatusSelected: { status, state in
                 submitStatusAdvance(status: status, to: state)
+            },
+            onInputSubmitted: { element, optionIndex, fieldName, value in
+                handleInputSubmitted(element, optionIndex: optionIndex, fieldName: fieldName, value: value)
             }
         )
         .overlay(alignment: .topTrailing) {
@@ -155,78 +155,21 @@ struct MarkdownView: View {
                     .padding(8)
             }
         }
-        .sheet(isPresented: $showingFillInPopover) {
-            FillInSheet(
-                hint: activeFillIn?.hint ?? "",
-                text: $popoverText,
-                onSubmit: {
-                    submitFillIn()
-                },
-                onCancel: {
-                    showingFillInPopover = false
-                }
-            )
-        }
-        .sheet(isPresented: $showingFeedbackPopover) {
-            FeedbackSheet(
-                text: $popoverText,
-                onSubmit: {
-                    submitFeedback()
-                },
-                onCancel: {
-                    showingFeedbackPopover = false
-                }
-            )
-        }
-        .sheet(isPresented: $showingReviewNotesSheet) {
-            ReviewNotesSheet(
-                status: activeReview.flatMap { rv in
-                    activeReviewOptionIndex.map { rv.options[$0].status }
-                } ?? .fail,
-                text: $popoverText,
-                onSubmit: {
-                    submitReviewNotes()
-                },
-                onCancel: {
-                    showingReviewNotesSheet = false
-                }
-            )
-        }
-        // (Status dropdown handled natively via NSMenu in MarkdownNSTextView)
-        .sheet(isPresented: $showingDatePicker) {
-            DatePickerSheet(
-                onSubmit: { dateString in
-                    popoverText = dateString
-                    submitFillIn()
-                    showingDatePicker = false
-                },
-                onCancel: {
-                    showingDatePicker = false
-                    activeFillIn = nil
-                }
-            )
-        }
-        .sheet(isPresented: $showingSuggestionSheet) {
-            if let suggestion = activeSuggestion {
-                SuggestionSheet(
-                    suggestion: suggestion,
-                    onAccept: { submitSuggestion(accept: true) },
-                    onReject: { submitSuggestion(accept: false) },
-                    onCancel: { showingSuggestionSheet = false }
-                )
+    }
+
+    private var liquidGlassContent: some View {
+        LiquidGlassDocumentView(
+            content: coordinator.document.content,
+            onInteractiveElementChanged: { element, optionIndex, fieldName, value in
+                handleInputSubmitted(element, optionIndex: optionIndex, fieldName: fieldName, value: value)
+            },
+            onInteractiveElementClicked: { element, optionIndex in
+                handleInteractiveClick(element, optionIndex: optionIndex)
+            },
+            onStatusSelected: { status, state in
+                submitStatusAdvance(status: status, to: state)
             }
-        }
-        .sheet(isPresented: $showingChallengeSheet) {
-            FeedbackSheet(
-                text: $popoverText,
-                onSubmit: {
-                    submitChallenge()
-                },
-                onCancel: {
-                    showingChallengeSheet = false
-                }
-            )
-        }
+        )
     }
 
     // MARK: - Load File
@@ -272,8 +215,11 @@ struct MarkdownView: View {
         bookmarkedLines = Set(bookmarks.map(\.lineNumber))
     }
 
-    // MARK: - Interactive Element Handling
+    // MARK: - Interactive Element Handling (Direct Actions)
 
+    /// Handles direct-action clicks (checkbox toggle, choice select, etc.).
+    /// Popover-based interactions (fill-in, feedback, suggestion, etc.) are routed
+    /// through showElementPopover in MarkdownNSTextView → onInputSubmitted.
     private func handleInteractiveClick(_ element: InteractiveElement, optionIndex: Int? = nil) {
         guard let fileURL = coordinator.navigation.selectedFile else { return }
 
@@ -288,58 +234,29 @@ struct MarkdownView: View {
                     }
 
                 case .choice(let ch):
-                    let targetIndex = optionIndex ?? 0
                     try await interactionHandler.selectChoice(
-                        optionIndex: targetIndex, in: ch, url: fileURL, fileWatcher: fileWatcher
+                        optionIndex: optionIndex ?? 0, in: ch, url: fileURL, fileWatcher: fileWatcher
                     ) { newContent in
                         coordinator.updateDocumentContent(newContent)
                     }
 
                 case .review(let rv):
-                    let targetIndex = optionIndex ?? 0
-                    let targetOption = rv.options[targetIndex]
-                    if targetOption.status.promptsForNotes {
-                        // Show notes sheet for FAIL, PASS WITH NOTES, BLOCKED
-                        activeReview = rv
-                        activeReviewOptionIndex = targetIndex
-                        popoverText = ""
-                        showingReviewNotesSheet = true
-                    } else {
-                        // Direct selection: APPROVED, PASS, N/A
-                        try await interactionHandler.selectReview(
-                            optionIndex: targetIndex, in: rv, url: fileURL, fileWatcher: fileWatcher
-                        ) { newContent in
-                            coordinator.updateDocumentContent(newContent)
-                        }
+                    // Only non-notes options reach here (notes options are handled by popover)
+                    try await interactionHandler.selectReview(
+                        optionIndex: optionIndex ?? 0, in: rv, url: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
                     }
 
                 case .fillIn(let fi):
+                    // Only file/folder pickers reach here (text/date handled by popover)
                     switch fi.type {
-                    case .file:
-                        openFilePicker(for: fi)
-                    case .folder:
-                        openFolderPicker(for: fi)
-                    case .text:
-                        activeFillIn = fi
-                        popoverText = fi.value ?? ""
-                        showingFillInPopover = true
-                    case .date:
-                        activeFillIn = fi
-                        showingDatePicker = true
+                    case .file: openFilePicker(for: fi)
+                    case .folder: openFolderPicker(for: fi)
+                    default: break
                     }
 
-                case .feedback(let fb):
-                    activeFeedback = fb
-                    popoverText = fb.existingText ?? ""
-                    showingFeedbackPopover = true
-
-                case .suggestion(let s):
-                    activeSuggestion = s
-                    showingSuggestionSheet = true
-
                 case .status(let st):
-                    // Single next state: advance directly
-                    // Multi-state handled by native NSMenu dropdown in MarkdownNSTextView
                     if let nextState = st.nextStates.first, st.nextStates.count == 1 {
                         try await interactionHandler.advanceStatus(
                             st, to: nextState, in: fileURL, fileWatcher: fileWatcher
@@ -350,22 +267,14 @@ struct MarkdownView: View {
 
                 case .confidence(let conf):
                     if conf.level == .high {
-                        // Confirm high confidence
                         try await interactionHandler.confirmConfidence(
                             conf, in: fileURL, fileWatcher: fileWatcher
                         ) { newContent in
                             coordinator.updateDocumentContent(newContent)
                         }
-                    } else if conf.level == .low {
-                        // Challenge low confidence: open sheet to append feedback comment
-                        activeConfidence = conf
-                        popoverText = ""
-                        showingChallengeSheet = true
                     }
-                    // medium/confirmed: no action on click
 
-                case .conditional, .collapsible:
-                    // Handled at the rendering level, not click-through
+                default:
                     break
                 }
             } catch {
@@ -374,82 +283,69 @@ struct MarkdownView: View {
         }
     }
 
-    private func submitFillIn() {
-        guard let fillIn = activeFillIn,
-              let fileURL = coordinator.navigation.selectedFile,
-              !popoverText.isEmpty else {
-            showingFillInPopover = false
-            return
-        }
+    // MARK: - Popover Input Handling
+
+    /// Handles submissions from inline NSPopovers (fill-in, feedback, suggestion, review notes, challenge).
+    private func handleInputSubmitted(_ element: InteractiveElement, optionIndex: Int?, fieldName: String, value: String) {
+        guard let fileURL = coordinator.navigation.selectedFile else { return }
 
         Task {
             do {
-                try await interactionHandler.fillIn(
-                    fillIn, value: popoverText, in: fileURL, fileWatcher: fileWatcher
-                ) { newContent in
-                    coordinator.updateDocumentContent(newContent)
+                switch element {
+                case .fillIn(let fi):
+                    try await interactionHandler.fillIn(
+                        fi, value: value, in: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+
+                case .feedback(let fb):
+                    try await interactionHandler.setFeedback(
+                        fb, text: value, in: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+
+                case .suggestion(let s):
+                    if value == "accept" {
+                        try await interactionHandler.acceptSuggestion(
+                            s, in: fileURL, fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                        }
+                    } else {
+                        try await interactionHandler.rejectSuggestion(
+                            s, in: fileURL, fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                        }
+                    }
+
+                case .review(let rv):
+                    guard let optionIndex else { return }
+                    try await interactionHandler.selectReview(
+                        optionIndex: optionIndex,
+                        notes: value.isEmpty ? nil : value,
+                        in: rv,
+                        url: fileURL,
+                        fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+
+                case .confidence(let conf):
+                    try await interactionHandler.challengeConfidence(
+                        conf, feedback: value, in: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+
+                default:
+                    break
                 }
             } catch {
                 coordinator.showError(.error(message: error.localizedDescription))
             }
-            showingFillInPopover = false
-            activeFillIn = nil
-            popoverText = ""
-        }
-    }
-
-    private func submitFeedback() {
-        guard let feedback = activeFeedback,
-              let fileURL = coordinator.navigation.selectedFile,
-              !popoverText.isEmpty else {
-            showingFeedbackPopover = false
-            return
-        }
-
-        Task {
-            do {
-                try await interactionHandler.setFeedback(
-                    feedback, text: popoverText, in: fileURL, fileWatcher: fileWatcher
-                ) { newContent in
-                    coordinator.updateDocumentContent(newContent)
-                }
-            } catch {
-                coordinator.showError(.error(message: error.localizedDescription))
-            }
-            showingFeedbackPopover = false
-            activeFeedback = nil
-            popoverText = ""
-        }
-    }
-
-    // MARK: - Review Notes Submit
-
-    private func submitReviewNotes() {
-        guard let review = activeReview,
-              let optionIndex = activeReviewOptionIndex,
-              let fileURL = coordinator.navigation.selectedFile else {
-            showingReviewNotesSheet = false
-            return
-        }
-
-        Task {
-            do {
-                try await interactionHandler.selectReview(
-                    optionIndex: optionIndex,
-                    notes: popoverText.isEmpty ? nil : popoverText,
-                    in: review,
-                    url: fileURL,
-                    fileWatcher: fileWatcher
-                ) { newContent in
-                    coordinator.updateDocumentContent(newContent)
-                }
-            } catch {
-                coordinator.showError(.error(message: error.localizedDescription))
-            }
-            showingReviewNotesSheet = false
-            activeReview = nil
-            activeReviewOptionIndex = nil
-            popoverText = ""
         }
     }
 
@@ -468,60 +364,6 @@ struct MarkdownView: View {
             } catch {
                 coordinator.showError(.error(message: error.localizedDescription))
             }
-        }
-    }
-
-    private func submitSuggestion(accept: Bool) {
-        guard let suggestion = activeSuggestion,
-              let fileURL = coordinator.navigation.selectedFile else {
-            showingSuggestionSheet = false
-            return
-        }
-
-        Task {
-            do {
-                if accept {
-                    try await interactionHandler.acceptSuggestion(
-                        suggestion, in: fileURL, fileWatcher: fileWatcher
-                    ) { newContent in
-                        coordinator.updateDocumentContent(newContent)
-                    }
-                } else {
-                    try await interactionHandler.rejectSuggestion(
-                        suggestion, in: fileURL, fileWatcher: fileWatcher
-                    ) { newContent in
-                        coordinator.updateDocumentContent(newContent)
-                    }
-                }
-            } catch {
-                coordinator.showError(.error(message: error.localizedDescription))
-            }
-            showingSuggestionSheet = false
-            activeSuggestion = nil
-        }
-    }
-
-    private func submitChallenge() {
-        guard let confidence = activeConfidence,
-              let fileURL = coordinator.navigation.selectedFile,
-              !popoverText.isEmpty else {
-            showingChallengeSheet = false
-            return
-        }
-
-        Task {
-            do {
-                try await interactionHandler.challengeConfidence(
-                    confidence, feedback: popoverText, in: fileURL, fileWatcher: fileWatcher
-                ) { newContent in
-                    coordinator.updateDocumentContent(newContent)
-                }
-            } catch {
-                coordinator.showError(.error(message: error.localizedDescription))
-            }
-            showingChallengeSheet = false
-            activeConfidence = nil
-            popoverText = ""
         }
     }
 

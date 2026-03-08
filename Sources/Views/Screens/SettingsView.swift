@@ -197,25 +197,10 @@ struct BehaviorSettingsTab: View {
             }
 
             Toggle("Underline Links", isOn: $behavior.underlineLinks)
-
-            Picker("Interactive Elements", selection: $behavior.interactiveMode) {
-                ForEach(InteractiveMode.allCases) { mode in
-                    Text(mode.displayName).tag(mode)
-                }
-            }
-
-            if settings.behavior.interactiveMode == .enhanced {
-                Text("Checkboxes, choices, and fill-ins are highlighted with colors and visual cues. Use Tab to navigate between them.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Interactive elements appear as plain text. Hover or Tab to discover them.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
         .formStyle(.grouped)
     }
+
 }
 
 // MARK: - Pro Tab

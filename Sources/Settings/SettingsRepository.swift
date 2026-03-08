@@ -78,18 +78,35 @@ public final class BehaviorSettings {
 
 /// Interactive element rendering mode
 public enum InteractiveMode: String, CaseIterable, Identifiable, Sendable {
-    /// Enhanced text rendering with hover states, tooltips, and visual pills
-    case enhanced = "Enhanced"
     /// Plain text rendering (minimal styling, for power users)
     case plain = "Plain"
+    /// Enhanced text rendering with hover states, tooltips, and visual pills
+    case enhanced = "Enhanced"
+    /// Liquid Glass — native SwiftUI block renderer with glass material nesting (Pro)
+    case liquidGlass = "Liquid Glass"
 
     public var id: String { rawValue }
+
+    /// Short label for toolbar segmented control
+    public var shortName: String {
+        switch self {
+        case .enhanced: return "Enhanced"
+        case .plain: return "Plain"
+        case .liquidGlass: return "Pro"
+        }
+    }
 
     public var displayName: String {
         switch self {
         case .enhanced: return "Enhanced — colors, pills, and highlights"
         case .plain: return "Plain — minimal styling"
+        case .liquidGlass: return "Liquid Glass — native controls, glass blocks"
         }
+    }
+
+    /// Whether this mode requires a Pro purchase
+    public var requiresPro: Bool {
+        self == .liquidGlass
     }
 }
 

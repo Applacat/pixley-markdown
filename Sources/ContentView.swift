@@ -86,9 +86,9 @@ struct BrowserView: View {
         .modifier(AIChatModifier(coordinator: coordinator))
         .navigationTitle(coordinator.navigation.selectedFile?.deletingPathExtension().lastPathComponent ?? "Pixley Markdown")
         .toolbar {
-            // Interactive mode toggle
+            // View mode picker: Plain / Enhanced / Pro
             ToolbarItem(placement: .automatic) {
-                InteractiveModeToggle()
+                ViewModePicker()
             }
             // Font size stepper (trailing edge, own pill)
             ToolbarItem(placement: .primaryAction) {
@@ -415,21 +415,56 @@ struct NavigateUpButton: View {
     }
 }
 
-/// MARK: - Interactive Mode Toggle
+// MARK: - View Mode Picker
 
-/// Toolbar toggle for interactive element rendering mode (Enhanced / Plain).
-struct InteractiveModeToggle: View {
+/// Toolbar segmented control for switching rendering mode: Plain / Enhanced / Pro.
+struct ViewModePicker: View {
     @Environment(\.settings) private var settings
+    @Environment(\.storeService) private var store
+    @State private var purchaseError: String?
 
     var body: some View {
-        let isEnhanced = settings.behavior.interactiveMode == .enhanced
-        Button {
-            settings.behavior.interactiveMode = isEnhanced ? .plain : .enhanced
-        } label: {
-            Image(systemName: isEnhanced ? "hand.tap.fill" : "hand.tap")
+        HStack(spacing: 4) {
+            Picker("View Mode", selection: Binding(
+                get: { settings.behavior.interactiveMode },
+                set: { newMode in
+                    if newMode.requiresPro && !store.isUnlocked {
+                        guard store.purchaseState != .purchasing else { return }
+                        Task {
+                            await store.purchase()
+                            if store.isUnlocked {
+                                settings.behavior.interactiveMode = newMode
+                            } else if case .failed(let msg) = store.purchaseState {
+                                purchaseError = msg
+                            }
+                        }
+                    } else {
+                        settings.behavior.interactiveMode = newMode
+                    }
+                }
+            )) {
+                ForEach(InteractiveMode.allCases) { mode in
+                    Text(mode.requiresPro && !store.isUnlocked
+                         ? "\(mode.shortName) 🔒"
+                         : mode.shortName)
+                        .tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
         }
-        .help(isEnhanced ? "Interactive elements: Enhanced. Tab to navigate, Return to activate. Click to switch to Plain." : "Interactive elements: Plain. Tab to navigate, Return to activate. Click to switch to Enhanced.")
-        .accessibilityLabel("Toggle interactive element styling")
+        .help("Switch document rendering mode")
+        .accessibilityLabel("Document view mode")
+        .accessibilityValue(settings.behavior.interactiveMode.shortName)
+        .alert("Purchase Failed", isPresented: Binding(
+            get: { purchaseError != nil },
+            set: { if !$0 { purchaseError = nil } }
+        )) {
+            Button("OK") { purchaseError = nil }
+        } message: {
+            Text(purchaseError ?? "")
+        }
     }
 }
 

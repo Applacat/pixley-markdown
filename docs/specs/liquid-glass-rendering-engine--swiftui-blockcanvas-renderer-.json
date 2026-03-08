@@ -1,0 +1,64 @@
+{
+  "feature": "Liquid Glass Rendering Engine",
+  "slug": "liquid-glass-rendering-engine--swiftui-blockcanvas-renderer-",
+  "status": "specified",
+  "created": "2026-03-07",
+  "summary": "Pure SwiftUI block/canvas renderer with nested glass material blocks driven by heading hierarchy, native macOS controls for all AIMD interactive elements, collapsible sections, SF Mono typography, Cmd+F search, and premium gating.",
+  "phases": [
+    {
+      "id": 1,
+      "name": "Glass Structure + Static Content",
+      "status": "pending",
+      "stories": ["US-1", "US-2", "US-4"]
+    },
+    {
+      "id": 2,
+      "name": "Native Interactive Controls",
+      "status": "pending",
+      "stories": ["US-3"]
+    },
+    {
+      "id": 3,
+      "name": "Search + Premium Gate + Polish",
+      "status": "pending",
+      "stories": ["US-5", "US-6"]
+    }
+  ],
+  "userStories": [
+    {
+      "id": "US-1",
+      "title": "Glass Document Structure",
+      "status": "pending"
+    },
+    {
+      "id": "US-2",
+      "title": "Collapsible Sections",
+      "status": "pending"
+    },
+    {
+      "id": "US-3",
+      "title": "Native Interactive Controls",
+      "status": "pending"
+    },
+    {
+      "id": "US-4",
+      "title": "Static Content Rendering",
+      "status": "pending"
+    },
+    {
+      "id": "US-5",
+      "title": "In-Document Search",
+      "status": "pending"
+    },
+    {
+      "id": "US-6",
+      "title": "Mode Selection & Premium Gate",
+      "status": "pending"
+    }
+  ],
+  "verification": {
+    "build": "swift build",
+    "visual": "Manual visual check of glass blocks, controls, and search"
+  },
+  "premium": true
+}

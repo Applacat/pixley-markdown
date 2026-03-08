@@ -210,11 +210,9 @@ final class MarkdownHighlighter {
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
                 let tooltip = cb.isChecked ? "Click to uncheck" : "Click to mark as complete"
                 attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
-                // Dim checked items to show completion
+                // Dim checked items to show completion (no strikethrough — native feel)
                 if cb.isChecked {
                     attributed.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: nsRange)
-                    attributed.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
-                    attributed.addAttribute(.strikethroughColor, value: NSColor.secondaryLabelColor.withAlphaComponent(0.4), range: nsRange)
                 }
 
             case .choice(let ch):
@@ -391,7 +389,7 @@ final class MarkdownHighlighter {
             switch element {
             case .checkbox(let cb):
                 let symbol = cb.isChecked ? "checkmark.square.fill" : "square"
-                let color: NSColor = cb.isChecked ? .systemGreen : .tertiaryLabelColor
+                let color: NSColor = cb.isChecked ? .controlAccentColor : .tertiaryLabelColor
                 replaceBracketArea(checkRange: cb.checkRange, in: attributed, text: text,
                                    symbol: symbol, color: color, fontSize: fontSize)
 

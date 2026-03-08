@@ -297,7 +297,8 @@ public enum InteractiveElementDetector: Sendable {
         let lower = hint.lowercased().trimmingCharacters(in: .whitespaces)
         if lower.hasPrefix("choose file") { return .file }
         if lower.hasPrefix("choose folder") { return .folder }
-        if lower.hasPrefix("pick date") { return .date }
+        // Match any hint containing "date" — covers "pick date", "choose a date", "start date", etc.
+        if lower.contains("date") { return .date }
         return .text
     }
 

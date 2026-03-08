@@ -36,6 +36,9 @@ final class MarkdownNSTextView: NSTextView {
     /// Callback for status element dropdown selection (element, selected state).
     var onStatusSelected: ((StatusElement, String) -> Void)?
 
+    /// Callback for input popover submissions (element, optionIndex, field name, value).
+    var onInputSubmitted: ((InteractiveElement, Int?, String, String) -> Void)?
+
     /// Tracks the currently hovered interactive element range for hover highlight
     private var hoveredRange: NSRange?
 
@@ -166,7 +169,13 @@ final class MarkdownNSTextView: NSTextView {
                 return
             }
 
-            // Visual click feedback: brief accent flash then restore
+            // Popover-based elements: show inline popover instead of calling back
+            if showElementPopover(wrapper.element, optionIndex: wrapper.optionIndex, at: effectiveRange) {
+                flashClickFeedback(range: effectiveRange)
+                return
+            }
+
+            // Direct-action elements: brief accent flash then callback
             flashClickFeedback(range: effectiveRange)
             onInteractiveElementClicked?(wrapper.element, wrapper.optionIndex, point)
             return
@@ -241,12 +250,171 @@ final class MarkdownNSTextView: NSTextView {
         popover.contentViewController = controller
 
         // Position popover at the element's glyph rect
-        guard let layoutManager, let textContainer else { return }
+        guard let positionRect = glyphRect(for: charRange) else { return }
+        upgradePopover = popover
+        popover.show(relativeTo: positionRect, of: self, preferredEdge: .maxY)
+    }
+
+    // MARK: - Popover Routing
+
+    /// Active input popover (retained to prevent premature dealloc)
+    private var inputPopover: NSPopover?
+
+    /// Returns the view-coordinate rect for a character range (for popover positioning).
+    private func glyphRect(for charRange: NSRange) -> NSRect? {
+        guard let layoutManager, let textContainer else { return nil }
         let glyphRange = layoutManager.glyphRange(forCharacterRange: charRange, actualCharacterRange: nil)
         let rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-        let positionRect = rect.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        return rect.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+    }
 
-        upgradePopover = popover
+    /// Checks if the element needs an inline popover and shows it. Returns true if handled.
+    private func showElementPopover(_ element: InteractiveElement, optionIndex: Int?, at charRange: NSRange) -> Bool {
+        switch element {
+        case .fillIn(let fi):
+            switch fi.type {
+            case .text:
+                showInputPopover(for: element, at: charRange, config: InputPopoverConfig(
+                    title: "Fill In",
+                    subtitle: fi.hint,
+                    fieldName: "value",
+                    placeholder: fi.hint,
+                    initialValue: fi.value ?? ""
+                ))
+                return true
+            case .date:
+                showDatePickerPopover(for: element, at: charRange)
+                return true
+            case .file, .folder:
+                return false // NSOpenPanel handled by callback
+            }
+
+        case .feedback(let fb):
+            showInputPopover(for: element, at: charRange, config: InputPopoverConfig(
+                title: fb.existingText != nil ? "Edit Feedback" : "Leave Feedback",
+                subtitle: "Your comment will be saved in the document.",
+                fieldName: "text",
+                initialValue: fb.existingText ?? "",
+                multiline: true
+            ))
+            return true
+
+        case .suggestion(let s):
+            showSuggestionPopover(for: element, suggestion: s, at: charRange)
+            return true
+
+        case .review(let rv):
+            guard let optionIndex, optionIndex < rv.options.count else { return false }
+            if rv.options[optionIndex].status.promptsForNotes {
+                showInputPopover(for: element, at: charRange, config: InputPopoverConfig(
+                    title: "Review: \(rv.options[optionIndex].status.rawValue)",
+                    subtitle: "Add notes for this review status.",
+                    fieldName: "notes",
+                    multiline: true,
+                    allowEmpty: true
+                ), optionIndex: optionIndex)
+                return true
+            }
+            return false
+
+        case .confidence(let conf):
+            if conf.level == .low {
+                showInputPopover(for: element, at: charRange, config: InputPopoverConfig(
+                    title: "Challenge AI Confidence",
+                    subtitle: "Explain why you disagree with this assessment.",
+                    fieldName: "challenge",
+                    multiline: true
+                ))
+                return true
+            }
+            return false
+
+        default:
+            return false
+        }
+    }
+
+    // MARK: - Input Popover
+
+    /// Shows an inline text input popover at the element's position.
+    private func showInputPopover(for element: InteractiveElement, at charRange: NSRange, config: InputPopoverConfig, optionIndex: Int? = nil) {
+        inputPopover?.close()
+
+        let popover = NSPopover()
+        popover.behavior = .transient
+
+        let controller = InputPopoverController(config: config) { [weak self] value in
+            self?.inputPopover?.close()
+            self?.inputPopover = nil
+            self?.onInputSubmitted?(element, optionIndex, config.fieldName, value)
+        } onCancel: { [weak self] in
+            self?.inputPopover?.close()
+            self?.inputPopover = nil
+        }
+        popover.contentViewController = controller
+
+        guard let positionRect = glyphRect(for: charRange) else { return }
+        inputPopover = popover
+        popover.show(relativeTo: positionRect, of: self, preferredEdge: .maxY)
+    }
+
+    // MARK: - Date Picker Popover
+
+    /// Shows a graphical date picker popover at the element's position.
+    private func showDatePickerPopover(for element: InteractiveElement, at charRange: NSRange) {
+        inputPopover?.close()
+
+        let popover = NSPopover()
+        popover.behavior = .transient
+
+        let controller = DatePickerPopoverController(
+            onSubmit: { [weak self] dateString in
+                self?.inputPopover?.close()
+                self?.inputPopover = nil
+                self?.onInputSubmitted?(element, nil, "value", dateString)
+            },
+            onCancel: { [weak self] in
+                self?.inputPopover?.close()
+                self?.inputPopover = nil
+            }
+        )
+        popover.contentViewController = controller
+
+        guard let positionRect = glyphRect(for: charRange) else { return }
+        inputPopover = popover
+        popover.show(relativeTo: positionRect, of: self, preferredEdge: .maxY)
+    }
+
+    // MARK: - Suggestion Popover
+
+    /// Shows an accept/reject popover for CriticMarkup suggestions.
+    private func showSuggestionPopover(for element: InteractiveElement, suggestion: SuggestionElement, at charRange: NSRange) {
+        inputPopover?.close()
+
+        let popover = NSPopover()
+        popover.behavior = .transient
+
+        let controller = SuggestionPopoverController(
+            suggestion: suggestion,
+            onAccept: { [weak self] in
+                self?.inputPopover?.close()
+                self?.inputPopover = nil
+                self?.onInputSubmitted?(element, nil, "action", "accept")
+            },
+            onReject: { [weak self] in
+                self?.inputPopover?.close()
+                self?.inputPopover = nil
+                self?.onInputSubmitted?(element, nil, "action", "reject")
+            },
+            onCancel: { [weak self] in
+                self?.inputPopover?.close()
+                self?.inputPopover = nil
+            }
+        )
+        popover.contentViewController = controller
+
+        guard let positionRect = glyphRect(for: charRange) else { return }
+        inputPopover = popover
         popover.show(relativeTo: positionRect, of: self, preferredEdge: .maxY)
     }
 
@@ -502,6 +670,352 @@ final class UpgradePopoverController: NSViewController {
     }
 }
 
+// MARK: - Input Popover Configuration
+
+/// Configuration for inline input popovers shown at interactive element positions.
+struct InputPopoverConfig {
+    let title: String
+    let subtitle: String?
+    let fieldName: String
+    let placeholder: String
+    let initialValue: String
+    let multiline: Bool
+    let allowEmpty: Bool
+
+    init(title: String, subtitle: String? = nil, fieldName: String, placeholder: String = "",
+         initialValue: String = "", multiline: Bool = false, allowEmpty: Bool = false) {
+        self.title = title
+        self.subtitle = subtitle
+        self.fieldName = fieldName
+        self.placeholder = placeholder
+        self.initialValue = initialValue
+        self.multiline = multiline
+        self.allowEmpty = allowEmpty
+    }
+}
+
+// MARK: - Input Popover Controller
+
+/// NSViewController hosting a text input popover for fill-in, feedback, review notes, etc.
+final class InputPopoverController: NSViewController {
+    private let config: InputPopoverConfig
+    private let onSubmit: (String) -> Void
+    private let onCancel: () -> Void
+    private var textField: NSTextField?
+    private var scrolledTextView: NSScrollView?
+
+    init(config: InputPopoverConfig, onSubmit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        self.config = config
+        self.onSubmit = onSubmit
+        self.onCancel = onCancel
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        let width: CGFloat = config.multiline ? 320 : 280
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 10))
+
+        let title = NSTextField(labelWithString: config.title)
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+
+        var views: [NSView] = [title]
+
+        if let sub = config.subtitle {
+            let subtitle = NSTextField(wrappingLabelWithString: sub)
+            subtitle.font = .systemFont(ofSize: 11)
+            subtitle.textColor = .secondaryLabelColor
+            views.append(subtitle)
+        }
+
+        if config.multiline {
+            let sv = NSScrollView(frame: NSRect(x: 0, y: 0, width: width - 32, height: 80))
+            let tv = NSTextView(frame: sv.contentView.bounds)
+            tv.isRichText = false
+            tv.font = .systemFont(ofSize: 13)
+            tv.string = config.initialValue
+            tv.isVerticallyResizable = true
+            tv.autoresizingMask = [.width]
+            tv.textContainer?.widthTracksTextView = true
+            sv.documentView = tv
+            sv.hasVerticalScroller = true
+            sv.borderType = .bezelBorder
+            sv.translatesAutoresizingMaskIntoConstraints = false
+            sv.heightAnchor.constraint(equalToConstant: 80).isActive = true
+            scrolledTextView = sv
+            views.append(sv)
+        } else {
+            let tf = NSTextField(string: config.initialValue)
+            tf.placeholderString = config.placeholder
+            tf.font = .systemFont(ofSize: 13)
+            tf.target = self
+            tf.action = #selector(submitTapped)
+            textField = tf
+            views.append(tf)
+        }
+
+        let cancelButton = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
+        cancelButton.keyEquivalent = "\u{1b}"
+
+        let submitButton = NSButton(title: "Submit", target: self, action: #selector(submitTapped))
+        submitButton.keyEquivalent = "\r"
+        submitButton.bezelStyle = .rounded
+
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let buttonStack = NSStackView(views: [cancelButton, spacer, submitButton])
+        buttonStack.orientation = .horizontal
+        views.append(buttonStack)
+
+        let stack = NSStackView(views: views)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            stack.widthAnchor.constraint(equalToConstant: width),
+        ])
+
+        self.view = container
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        if let tf = textField {
+            tf.becomeFirstResponder()
+            tf.selectText(nil)
+        } else if let sv = scrolledTextView, let tv = sv.documentView as? NSTextView {
+            view.window?.makeFirstResponder(tv)
+        }
+    }
+
+    private var inputValue: String {
+        if let tf = textField {
+            return tf.stringValue
+        } else if let sv = scrolledTextView, let tv = sv.documentView as? NSTextView {
+            return tv.string
+        }
+        return ""
+    }
+
+    @objc private func submitTapped() {
+        let value = inputValue
+        guard config.allowEmpty || !value.isEmpty else { return }
+        onSubmit(value)
+    }
+
+    @objc private func cancelTapped() {
+        onCancel()
+    }
+}
+
+// MARK: - Date Picker Popover Controller
+
+/// NSViewController hosting a graphical date picker popover.
+final class DatePickerPopoverController: NSViewController {
+    private let onSubmit: (String) -> Void
+    private let onCancel: () -> Void
+    private var datePicker: NSDatePicker!
+
+    private static let outputFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    init(onSubmit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        self.onSubmit = onSubmit
+        self.onCancel = onCancel
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 10))
+
+        let title = NSTextField(labelWithString: "Pick a Date")
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+
+        datePicker = NSDatePicker()
+        datePicker.datePickerStyle = .clockAndCalendar
+        datePicker.datePickerElements = .yearMonthDay
+        datePicker.dateValue = Date()
+
+        let cancelButton = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
+        cancelButton.keyEquivalent = "\u{1b}"
+
+        let submitButton = NSButton(title: "Submit", target: self, action: #selector(submitTapped))
+        submitButton.keyEquivalent = "\r"
+        submitButton.bezelStyle = .rounded
+
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let buttonStack = NSStackView(views: [cancelButton, spacer, submitButton])
+        buttonStack.orientation = .horizontal
+
+        let stack = NSStackView(views: [title, datePicker, buttonStack])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.edgeInsets = NSEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+
+        self.view = container
+    }
+
+    @objc private func submitTapped() {
+        onSubmit(Self.outputFormatter.string(from: datePicker.dateValue))
+    }
+
+    @objc private func cancelTapped() {
+        onCancel()
+    }
+}
+
+// MARK: - Suggestion Popover Controller
+
+/// NSViewController hosting an accept/reject popover for CriticMarkup suggestions.
+final class SuggestionPopoverController: NSViewController {
+    private let suggestion: SuggestionElement
+    private let onAccept: () -> Void
+    private let onReject: () -> Void
+    private let onCancel: () -> Void
+
+    init(suggestion: SuggestionElement, onAccept: @escaping () -> Void, onReject: @escaping () -> Void, onCancel: @escaping () -> Void) {
+        self.suggestion = suggestion
+        self.onAccept = onAccept
+        self.onReject = onReject
+        self.onCancel = onCancel
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 10))
+
+        let title = NSTextField(labelWithString: "Suggested Edit")
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+
+        var contentViews: [NSView] = []
+
+        if let oldText = suggestion.oldText, !oldText.isEmpty {
+            let icon = NSImageView(image: NSImage(systemSymbolName: "minus.circle.fill", accessibilityDescription: "Remove")!)
+            icon.contentTintColor = .systemRed
+            let label = NSTextField(wrappingLabelWithString: oldText)
+            label.font = .systemFont(ofSize: 12)
+            let attrStr = NSMutableAttributedString(string: oldText, attributes: [
+                .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .font: NSFont.systemFont(ofSize: 12),
+            ])
+            label.attributedStringValue = attrStr
+            let row = NSStackView(views: [icon, label])
+            row.orientation = .horizontal
+            row.spacing = 4
+            contentViews.append(row)
+        }
+
+        if let newText = suggestion.newText, !newText.isEmpty {
+            let icon = NSImageView(image: NSImage(systemSymbolName: "plus.circle.fill", accessibilityDescription: "Add")!)
+            icon.contentTintColor = .systemGreen
+            let label = NSTextField(wrappingLabelWithString: newText)
+            label.font = .systemFont(ofSize: 12)
+            let row = NSStackView(views: [icon, label])
+            row.orientation = .horizontal
+            row.spacing = 4
+            contentViews.append(row)
+        }
+
+        if let comment = suggestion.comment {
+            let icon = NSImageView(image: NSImage(systemSymbolName: "text.bubble", accessibilityDescription: "Comment")!)
+            icon.contentTintColor = .systemYellow
+            let label = NSTextField(wrappingLabelWithString: comment)
+            label.font = .systemFont(ofSize: 12)
+            label.textColor = .secondaryLabelColor
+            let row = NSStackView(views: [icon, label])
+            row.orientation = .horizontal
+            row.spacing = 4
+            contentViews.append(row)
+        }
+
+        let contentStack = NSStackView(views: contentViews)
+        contentStack.orientation = .vertical
+        contentStack.alignment = .leading
+        contentStack.spacing = 6
+
+        let box = NSBox()
+        box.boxType = .custom
+        box.cornerRadius = 6
+        box.fillColor = .quaternaryLabelColor
+        box.borderColor = .clear
+        box.contentView = contentStack
+        box.contentViewMargins = NSSize(width: 8, height: 8)
+
+        let cancelButton = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
+        cancelButton.keyEquivalent = "\u{1b}"
+
+        let rejectButton = NSButton(title: "Reject", target: self, action: #selector(rejectTapped))
+        rejectButton.contentTintColor = .systemRed
+
+        let acceptButton = NSButton(title: "Accept", target: self, action: #selector(acceptTapped))
+        acceptButton.keyEquivalent = "\r"
+        acceptButton.bezelStyle = .rounded
+
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let buttonStack = NSStackView(views: [cancelButton, spacer, rejectButton, acceptButton])
+        buttonStack.orientation = .horizontal
+
+        let stack = NSStackView(views: [title, box, buttonStack])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.edgeInsets = NSEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+
+        self.view = container
+    }
+
+    @objc private func acceptTapped() { onAccept() }
+    @objc private func rejectTapped() { onReject() }
+    @objc private func cancelTapped() { onCancel() }
+}
+
 // MARK: - Markdown Editor
 
 /// NSTextView wrapper with Markdown syntax highlighting.
@@ -530,6 +1044,9 @@ struct MarkdownEditor: NSViewRepresentable {
 
     /// Callback when a status state is selected via native dropdown (status, selected state)
     var onStatusSelected: ((StatusElement, String) -> Void)? = nil
+
+    /// Callback when a popover-based input is submitted (element, optionIndex, fieldName, value)
+    var onInputSubmitted: ((InteractiveElement, Int?, String, String) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
         // Manual TextKit stack so we can use our custom NSTextView subclass
@@ -629,6 +1146,9 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.onStatusSelected = { status, state in
             coordinator.parent.onStatusSelected?(status, state)
         }
+        textView.onInputSubmitted = { element, optionIndex, fieldName, value in
+            coordinator.parent.onInputSubmitted?(element, optionIndex, fieldName, value)
+        }
 
         // Initial content (set interactive mode before first highlight)
         context.coordinator.interactiveMode = settings.behavior.interactiveMode
@@ -701,6 +1221,9 @@ struct MarkdownEditor: NSViewRepresentable {
             }
             tv.onStatusSelected = { status, state in
                 coordinator.parent.onStatusSelected?(status, state)
+            }
+            tv.onInputSubmitted = { element, optionIndex, fieldName, value in
+                coordinator.parent.onInputSubmitted?(element, optionIndex, fieldName, value)
             }
         }
 
@@ -792,6 +1315,8 @@ struct MarkdownEditor: NSViewRepresentable {
                 mdTextView.clearHover()
             }
             let selectedRanges = textView.selectedRanges
+            // Save scroll position before replacing text storage
+            let scrollOrigin = textView.enclosingScrollView?.contentView.bounds.origin
 
             // Highlight synchronously — the debounced highlighter already coalesces rapid updates.
             // NSAttributedString isn't Sendable on macOS, so offloading to Task.detached
@@ -814,6 +1339,10 @@ struct MarkdownEditor: NSViewRepresentable {
             textView.textStorage?.setAttributedString(mutable)
 
             textView.selectedRanges = selectedRanges
+            // Restore scroll position — setAttributedString can reset the scroll view
+            if let origin = scrollOrigin {
+                textView.enclosingScrollView?.contentView.scroll(to: origin)
+            }
             // Reset cursor rects so interactive elements get pointing hand
             textView.window?.invalidateCursorRects(for: textView)
             isUpdating = false
