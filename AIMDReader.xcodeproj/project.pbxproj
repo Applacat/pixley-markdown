@@ -59,6 +59,7 @@
 		BB174584FE104D70D385E20E /* FileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FF93B49ABA3FCB6C03C7C38 /* FileWatcher.swift */; };
 		BC04BAD3F95C917D34BB426D /* Welcome in Resources */ = {isa = PBXBuildFile; fileRef = A72700B55F5611A9AC19DEB3 /* Welcome */; };
 		BEEFBEB46ACBF94B9377CCC3 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C78C33F2E9C456D069393467 /* MarkdownView.swift */; };
+		BF44B15895467314278C594F /* PopoverControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A70093718A58E9919D50A1B /* PopoverControllers.swift */; };
 		BFD9484897D734404ED58CA7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7B6BCC5252188EB88279BA7C /* Assets.xcassets */; };
 		C0F9DA259FD606DD4F891090 /* ChatService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DB54E4A3239D66FA5943C91 /* ChatService.swift */; };
 		C3B2AF15A1897838583348F2 /* MarkdownHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31DD46F97E687CCA317452EB /* MarkdownHighlighter.swift */; };
@@ -80,6 +81,7 @@
 		F1735D44AA4881A7EBD8B737 /* MarkdownEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F528FFCD63F5222C991B12C2 /* MarkdownEditor.swift */; };
 		F18E74EA9365CCC7B955CB3E /* SyntaxThemeSettingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9CCD8590E8EDEFCF146FE6E /* SyntaxThemeSettingTests.swift */; };
 		F24EE8CB2083D2E2F5FB8794 /* SwiftDataMetadataRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = E127865B25F512D96EE53163 /* SwiftDataMetadataRepository.swift */; };
+		F41C18C43FB9A0DCCD4ECEC2 /* InteractiveAnnotator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D3EE7A20192BD16B9BE2E7F /* InteractiveAnnotator.swift */; };
 		F4A57D8982AD51C396510A82 /* ChatConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E829AB1C1DC61172A97135F /* ChatConfiguration.swift */; };
 		F7F41355DE763EFE1AEC02F2 /* StoreServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F784538D5AB27ED909878B4C /* StoreServiceTests.swift */; };
 		F8FCCF511D28D7CF5895CA36 /* ChatMessageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B6F6BEF14966EA2F7BDE94D /* ChatMessageTests.swift */; };
@@ -129,6 +131,8 @@
 		7CE3303CE8C9CDA35E6D110F /* QuickSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitcher.swift; sourceTree = "<group>"; };
 		7DEAC2E5FF06D13FFF9D03C3 /* AIMDReader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AIMDReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		872D8BEA52B0C1733AEB87ED /* FileLoadTriggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLoadTriggerTests.swift; sourceTree = "<group>"; };
+		8A70093718A58E9919D50A1B /* PopoverControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverControllers.swift; sourceTree = "<group>"; };
+		8D3EE7A20192BD16B9BE2E7F /* InteractiveAnnotator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractiveAnnotator.swift; sourceTree = "<group>"; };
 		8DB54E4A3239D66FA5943C91 /* ChatService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatService.swift; sourceTree = "<group>"; };
 		8F6719C4B9C47975C150E0A9 /* ContentBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentBlockView.swift; sourceTree = "<group>"; };
 		92EABFB8D259D145F0686804 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -207,8 +211,10 @@
 			children = (
 				11D99AD8354DE6CF1DD21F50 /* AIMDReaderApp.swift */,
 				92EABFB8D259D145F0686804 /* ContentView.swift */,
+				8D3EE7A20192BD16B9BE2E7F /* InteractiveAnnotator.swift */,
 				F528FFCD63F5222C991B12C2 /* MarkdownEditor.swift */,
 				31DD46F97E687CCA317452EB /* MarkdownHighlighter.swift */,
+				8A70093718A58E9919D50A1B /* PopoverControllers.swift */,
 				0DBA1764977EF384F4BDE349 /* Coordinator */,
 				846283BFB309E61FC9C9BED6 /* Extensions */,
 				B52FFDED8153B878EF5792B4 /* Models */,
@@ -553,6 +559,7 @@
 				E5E300FEB131BE8C39834293 /* FolderWatcher.swift in Sources */,
 				97CFBC4D53A07F2DA341DCAE /* GlassSectionView.swift in Sources */,
 				D8A80879E81D4208F043DD72 /* InteractionHandler.swift in Sources */,
+				F41C18C43FB9A0DCCD4ECEC2 /* InteractiveAnnotator.swift in Sources */,
 				3D5283B99383C6453797F8B0 /* InteractiveSheets.swift in Sources */,
 				8C0B20D7D4D27728EDDC2860 /* LineNumberRulerView.swift in Sources */,
 				60B534F1550C56BF0AAF921A /* LiquidGlassDocumentView.swift in Sources */,
@@ -562,6 +569,7 @@
 				BEEFBEB46ACBF94B9377CCC3 /* MarkdownView.swift in Sources */,
 				9A2BE73B4A0DC431C4287E95 /* NativeControlView.swift in Sources */,
 				331A6A9490B0445164AB5E73 /* OutlineFileList.swift in Sources */,
+				BF44B15895467314278C594F /* PopoverControllers.swift in Sources */,
 				43CDFF554DF839BB7391A61E /* QuickSwitcher.swift in Sources */,
 				DC66F69416DB06DAB5CFE2B2 /* RecentFoldersManager.swift in Sources */,
 				0BEA5CA3C28DF79C38788886 /* SectionResolver.swift in Sources */,

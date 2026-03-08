@@ -1,0 +1,8 @@
+Phase 1 — Complete:
+  [COMPLETE] US-1: Popover Controllers (MarkdownEditor -> PopoverControllers.swift)
+  [COMPLETE] US-2: Interactive Annotator (MarkdownHighlighter -> InteractiveAnnotator.swift)
+
+Dropped after OOD review (2026-03-08):
+  [DROPPED] US-3: Interaction Routing — would degrade InteractionHandler cohesion
+  [DROPPED] US-4: Toolbar Extension — sub-views already extracted, cosmetic shuffling
+  [DROPPED] US-5: Folder Change Tracker — folder watching is inherently coordination
