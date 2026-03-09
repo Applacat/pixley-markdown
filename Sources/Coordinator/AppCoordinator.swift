@@ -47,11 +47,6 @@ public final class AppCoordinator {
     /// Coalesces rapid FSEvent-triggered reloads into a single tree reload
     private var folderReloadTask: Task<Void, Never>?
 
-    /// Suppresses marking sibling files as changed during self-initiated writes.
-    /// Atomic writes update the parent directory's mtime, which triggers FSEvents
-    /// for the whole directory — this window prevents false-positive blue dots.
-    private var folderChangeSuppressedUntil: Date = .distantPast
-
     /// Debounced scroll save task — coalesces ~60 saves/sec into ~2/sec
     private var scrollSaveTask: Task<Void, Never>?
     private var pendingScrollPosition: (url: URL, position: Double)?
@@ -131,13 +126,6 @@ public final class AppCoordinator {
     /// Updates document content after an interactive write-back (no reload needed)
     public func updateDocumentContent(_ newContent: String) {
         document.updateContent(newContent)
-    }
-
-    /// Suppresses folder watcher from marking sibling files as changed.
-    /// Call before writing to a file — atomic writes update directory mtime,
-    /// which would otherwise cause false-positive blue dots on sibling files.
-    public func suppressFolderChangeMarking(for duration: TimeInterval = 1.5) {
-        folderChangeSuppressedUntil = Date().addingTimeInterval(duration)
     }
 
     /// Marks the document as having external changes
@@ -376,19 +364,15 @@ public final class AppCoordinator {
 
             // New files = paths in new that weren't in old
             let addedPaths = newPaths.subtracting(oldPaths)
-
-            // Only mark sibling files as modified if we're NOT in a suppression window.
-            // Self-initiated writes (checkbox toggle, etc.) update directory mtime via
-            // atomic write, which would falsely mark all siblings as changed.
+            // Modified files = files in changed directories (exclude currently open file)
             var modifiedPaths = Set<String>()
-            if Date() > self.folderChangeSuppressedUntil {
-                for dir in changedDirs {
-                    Self.collectFilePathsUnder(dir, from: newDisplay, into: &modifiedPaths)
-                }
-                // Don't mark the currently open file (user is already seeing it)
-                if let selected = self.navigation.selectedFile {
-                    modifiedPaths.remove(selected.path)
-                }
+            for dir in changedDirs {
+                Self.collectFilePathsUnder(dir, from: newDisplay, into: &modifiedPaths)
+            }
+
+            // Don't mark the currently open file (user is already seeing it)
+            if let selected = self.navigation.selectedFile {
+                modifiedPaths.remove(selected.path)
             }
 
             self.navigation.markPathsChanged(addedPaths.union(modifiedPaths))

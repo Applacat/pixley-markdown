@@ -16,33 +16,6 @@ enum MarkdownConfig {
     static let maxHighlightSize = 1_048_576
 }
 
-// MARK: - Guttered Scroll View
-
-/// Custom NSScrollView that guarantees the clip view is offset to account
-/// for the vertical ruler (line number gutter). In a SwiftUI NSViewRepresentable
-/// context, standard NSScrollView.tile() can fail to reposition the clip view,
-/// causing text to render behind the ruler.
-private final class GutteredScrollView: NSScrollView {
-    override func tile() {
-        super.tile()
-
-        guard let ruler = verticalRulerView, rulersVisible else { return }
-
-        let rulerWidth = ruler.ruleThickness
-        var clipFrame = contentView.frame
-
-        // Standard tile() should offset the clip view for the ruler, but
-        // this can fail in SwiftUI NSViewRepresentable. Force correct layout.
-        guard clipFrame.origin.x < rulerWidth else { return }
-
-        // Preserve the right edge (accounts for scroller width, etc.)
-        let currentRightEdge = clipFrame.maxX
-        clipFrame.origin.x = rulerWidth
-        clipFrame.size.width = currentRightEdge - rulerWidth
-        contentView.frame = clipFrame
-    }
-}
-
 // MARK: - Interactive Element Attribute Key
 
 extension NSAttributedString.Key {
@@ -677,7 +650,7 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.minSize = .zero
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
 
-        let scrollView = GutteredScrollView()
+        let scrollView = NSScrollView()
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
@@ -701,7 +674,10 @@ struct MarkdownEditor: NSViewRepresentable {
         // We manage theme colors explicitly — don't let AppKit remap them
         textView.usesAdaptiveColorMappingForDarkAppearance = false
 
-        Self.configureInsets(textView: textView, fontSize: fontSize)
+        // Scale insets proportionally with font size (base 16pt at font size 14)
+        let insetScale = max(1.0, fontSize / 14.0)
+        let scaledInset = round(16.0 * insetScale)
+        textView.textContainerInset = NSSize(width: scaledInset, height: scaledInset)
 
         // Native find bar (Cmd+F) with incremental search
         textView.usesFindBar = true
@@ -717,13 +693,12 @@ struct MarkdownEditor: NSViewRepresentable {
         }
         textView.linkTextAttributes = linkAttrs
 
-        // Line numbers + bookmarks — set hasVerticalRuler before assigning the ruler view
-        scrollView.hasVerticalRuler = true
-        let lineNumberView = LineNumberRulerView(textView: textView, scrollView: scrollView)
-        lineNumberView.backgroundColor = NSColor(hex: palette.background) ?? .textBackgroundColor
+        // Line numbers + bookmarks
+        let lineNumberView = LineNumberRulerView(textView: textView)
         lineNumberView.bookmarkedLines = bookmarkedLines
         lineNumberView.onToggleBookmark = onToggleBookmark
         scrollView.verticalRulerView = lineNumberView
+        scrollView.hasVerticalRuler = true
         scrollView.rulersVisible = settings.rendering.showLineNumbers
 
         // Accessibility
@@ -790,15 +765,9 @@ struct MarkdownEditor: NSViewRepresentable {
 
             // Update text view colors
             let palette = currentTheme.rendererTheme(for: currentColorScheme).palette
-            let bgColor = NSColor(hex: palette.background) ?? .textBackgroundColor
             textView.textColor = NSColor(hex: palette.foreground) ?? .labelColor
-            textView.backgroundColor = bgColor
+            textView.backgroundColor = NSColor(hex: palette.background) ?? .textBackgroundColor
             textView.insertionPointColor = NSColor(hex: palette.foreground) ?? .labelColor
-
-            // Keep gutter background in sync with editor theme
-            if let ruler = scrollView.verticalRulerView as? LineNumberRulerView {
-                ruler.backgroundColor = bgColor
-            }
 
             // Update link appearance
             var linkAttrs: [NSAttributedString.Key: Any] = [
@@ -809,10 +778,6 @@ struct MarkdownEditor: NSViewRepresentable {
                 linkAttrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
             }
             textView.linkTextAttributes = linkAttrs
-
-            if fontChanged {
-                Self.configureInsets(textView: textView, fontSize: currentFontSize)
-            }
 
             // Re-apply highlighting with new settings
             context.coordinator.applyHighlighting(to: textView, text: text)
@@ -846,29 +811,12 @@ struct MarkdownEditor: NSViewRepresentable {
         }
 
         // Toggle line numbers + update bookmarks
-        let rulersWereVisible = scrollView.rulersVisible
         scrollView.rulersVisible = settings.rendering.showLineNumbers
-        if rulersWereVisible != settings.rendering.showLineNumbers {
-            scrollView.tile()
-        }
         if let ruler = scrollView.verticalRulerView as? LineNumberRulerView {
             ruler.bookmarkedLines = bookmarkedLines
             ruler.onToggleBookmark = onToggleBookmark
             ruler.needsDisplay = true
         }
-    }
-
-    // MARK: - Shared Inset Configuration
-
-    /// Scales text view insets proportionally with font size (base 16pt at font size 14).
-    /// Uses height-only textContainerInset + lineFragmentPadding for horizontal padding.
-    /// textContainerInset.width inflates intrinsic width beyond the clip view, causing
-    /// unwanted horizontal scroll — lineFragmentPadding avoids this.
-    private static func configureInsets(textView: NSTextView, fontSize: CGFloat) {
-        let insetScale = max(1.0, fontSize / 14.0)
-        let scaledInset = round(16.0 * insetScale)
-        textView.textContainerInset = NSSize(width: 0, height: scaledInset)
-        textView.textContainer?.lineFragmentPadding = scaledInset
     }
 
     static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
@@ -977,11 +925,10 @@ struct MarkdownEditor: NSViewRepresentable {
             textView.selectedRanges = selectedRanges
             
             // Restore scroll position — setAttributedString can reset the scroll view.
-            // Defer to next run loop to ensure layout is complete after text replacement.
-            // Pin x to 0 since this is a vertical-only scroll view.
+            // Defer to next run loop to ensure layout is complete and prevent SwiftUI from overriding.
             if let origin = scrollOrigin, let scrollView = textView.enclosingScrollView {
                 DispatchQueue.main.async {
-                    scrollView.contentView.scroll(to: NSPoint(x: 0, y: origin.y))
+                    scrollView.contentView.scroll(to: origin)
                 }
             }
             

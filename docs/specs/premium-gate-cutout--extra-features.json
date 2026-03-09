@@ -1,0 +1,119 @@
+{
+  "spec_name": "Premium Gate + Self-Describing Element Protocol",
+  "slug": "premium-gate-cutout--extra-features",
+  "version": "1.0",
+  "date": "2026-03-07",
+  "status": "approved",
+  "price": "$9.99",
+  "related_specs": [
+    "classic-rendering-mode",
+    "pixley-modal-ai-interaction",
+    "pixley-bundle-format"
+  ],
+  "tiers": {
+    "free": [
+      "Markdown reading + syntax highlighting",
+      "Folder browsing, file watching, reload pill",
+      "Checkbox toggling",
+      "AI Chat: Q&A, cross-doc recall, summaries",
+      "Settings, Quick Switcher, favorites, recents",
+      "Progress bars (section completion)",
+      "Collapsible sections",
+      "Both rendering modes (Classic / Pro)"
+    ],
+    "pro": [
+      "Interactive elements: choices, fill-in, feedback, review, status, confidence, CriticMarkup",
+      "AI Chat Pro: read and modify parsed interactive fields",
+      "Pixley Modal confirmation flow"
+    ]
+  },
+  "user_stories": [
+    {
+      "id": "US-1",
+      "title": "StoreService Foundation",
+      "phase": 1
+    },
+    {
+      "id": "US-2",
+      "title": "Interaction Gate in Click Handler",
+      "phase": 2
+    },
+    {
+      "id": "US-3",
+      "title": "Settings Pro Tab",
+      "phase": 3
+    },
+    {
+      "id": "US-4",
+      "title": "App Menu Upgrade Item",
+      "phase": 3
+    },
+    {
+      "id": "US-5",
+      "title": "Unlock Animation",
+      "phase": 3
+    },
+    {
+      "id": "US-6",
+      "title": "SelfDescribingElement Protocol",
+      "phase": 4
+    },
+    {
+      "id": "US-7",
+      "title": "SectionResolver",
+      "phase": 4
+    },
+    {
+      "id": "US-8",
+      "title": "AI Tool Entitlement Gate",
+      "phase": 5
+    }
+  ],
+  "phases": [
+    {
+      "number": 1,
+      "name": "StoreService + .storekit Config",
+      "stories": ["US-1"],
+      "verification": "swift test + xcodebuild build"
+    },
+    {
+      "number": 2,
+      "name": "Interaction Gate + NSPopover",
+      "stories": ["US-2"],
+      "verification": "Manual test: click locked element -> popover appears"
+    },
+    {
+      "number": 3,
+      "name": "Purchase UI",
+      "stories": ["US-3", "US-4", "US-5"],
+      "verification": "StoreKit testing: purchase -> settings/menu/animation update"
+    },
+    {
+      "number": 4,
+      "name": "Self-Describing Protocol",
+      "stories": ["US-6", "US-7"],
+      "verification": "swift test: conformances + section resolution"
+    },
+    {
+      "number": 5,
+      "name": "AI Tool Gate",
+      "stories": ["US-8"],
+      "verification": "Manual test: AI modify field (free/pro)"
+    }
+  ],
+  "decisions": {
+    "rendering_modes_free": true,
+    "gate_visual": "render_natively_lock_interaction",
+    "popover_type": "NSPopover_at_click_point",
+    "popover_copy": "generic_plus_element_name",
+    "storekit_pattern": "dockpops_store_service",
+    "ai_gate": "tool_checks_entitlement_fires_upsell",
+    "ai_tool_response": "return_explanation_to_ai",
+    "progress_bars_free": true,
+    "collapsibles_free": true,
+    "unlock_animation": "re_render_with_pulse",
+    "purchase_entry_points": ["inline_popover", "settings_pro_tab", "app_menu"],
+    "schema_format": "generable_structured_sacred_code",
+    "element_intelligence": "smart_element_wanderlust_pattern"
+  }
+}

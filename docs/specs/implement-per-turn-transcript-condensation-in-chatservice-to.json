@@ -1,0 +1,47 @@
+{
+  "feature": "Per-Turn Transcript Condensation with Multi-Document Context",
+  "status": "implemented",
+  "created": "2026-03-03",
+  "stories": {
+    "US-1": {
+      "title": "Core Condensation Engine",
+      "status": "implemented",
+      "phase": 1
+    },
+    "US-2": {
+      "title": "SwiftData Summary Persistence",
+      "status": "implemented",
+      "phase": 2
+    },
+    "US-3": {
+      "title": "Foundation Models Retrieval Tools",
+      "status": "implemented",
+      "phase": 3
+    },
+    "US-4": {
+      "title": "Multi-Document Context & Document Switching",
+      "status": "implemented",
+      "phase": 4
+    },
+    "US-5": {
+      "title": "UX Updates",
+      "status": "implemented",
+      "phase": 4
+    }
+  },
+  "phases": 4,
+  "key_files": [
+    "Sources/Services/ChatService.swift",
+    "Sources/Models/ChatConfiguration.swift",
+    "Sources/Views/Screens/ChatView.swift",
+    "Sources/Coordinator/AppCoordinator.swift",
+    "Sources/Persistence/SwiftDataMetadataRepository.swift",
+    "Sources/AIMDReaderApp.swift"
+  ],
+  "new_files": [
+    "Sources/Services/TranscriptCondenser.swift",
+    "Sources/Persistence/ChatSummary.swift",
+    "Sources/Persistence/ChatSummaryRepository.swift",
+    "Sources/Services/ChatTools.swift"
+  ]
+}

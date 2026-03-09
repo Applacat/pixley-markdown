@@ -1,0 +1,71 @@
+{
+  "feature": "Downgrade macOS Deployment Target from 26 to 15 (Sequoia)",
+  "slug": "downgrade-macos-deployment-target-from-26-to-15-sequoia",
+  "version": "1.2.0",
+  "build": "3",
+  "created": "2026-02-15",
+  "status": "ready",
+  "stories": [
+    {
+      "id": "US-1",
+      "title": "Change Deployment Target",
+      "description": "Update project.yml deployment target from 26.0 to 15.0, bump version to 1.2.0 build 3",
+      "phase": 1,
+      "files": ["project.yml"],
+      "status": "pending"
+    },
+    {
+      "id": "US-2",
+      "title": "Gate Foundation Models Behind Availability Check",
+      "description": "Wrap ChatService, ChatView, and FoundationModels imports behind @available(macOS 26, *)",
+      "phase": 1,
+      "files": [
+        "Sources/Services/ChatService.swift",
+        "Sources/Views/Screens/ChatView.swift",
+        "Sources/Models/ChatConfiguration.swift"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "US-3",
+      "title": "Hide AI Chat UI on macOS <26",
+      "description": "Wrap inspector panel and chat toolbar button in if #available(macOS 26, *)",
+      "phase": 2,
+      "files": [
+        "Sources/ContentView.swift",
+        "Sources/Coordinator/AppCoordinator.swift"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "US-4",
+      "title": "Hide AI Chat Help Menu Item on macOS <26",
+      "description": "Wrap AI Chat button in Help menu with if #available(macOS 26, *)",
+      "phase": 2,
+      "files": ["Sources/AIMDReaderApp.swift"],
+      "status": "pending"
+    },
+    {
+      "id": "US-5",
+      "title": "Update Welcome Tutorial",
+      "description": "Add note to 03-AI-Chat.md that AI Chat requires macOS 26 (Tahoe) or later",
+      "phase": 2,
+      "files": ["Resources/Welcome/03-AI-Chat.md"],
+      "status": "pending"
+    }
+  ],
+  "phases": [
+    {
+      "id": 1,
+      "name": "Build Configuration + Foundation Models Gating",
+      "stories": ["US-1", "US-2"],
+      "verification": "cd AIMDReader && xcodegen generate && xcodebuild -scheme AIMDReader build"
+    },
+    {
+      "id": 2,
+      "name": "UI Gating + Content Updates",
+      "stories": ["US-3", "US-4", "US-5"],
+      "verification": "cd AIMDReader && xcodegen generate && xcodebuild -scheme AIMDReader build"
+    }
+  ]
+}

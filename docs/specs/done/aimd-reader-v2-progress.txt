@@ -1,0 +1,72 @@
+# QoL Improvements v2 (OOD-Aligned) - Progress Tracker
+
+## Phase 1: Foundation Package
+- [COMPLETE] US-F1: Create aimdRenderer Package with DocumentModel
+- [COMPLETE] US-F2: Add AST Parsing with swift-markdown
+
+## Phase 1.5: Pre-Refactor Cleanup (HIGH Priority)
+- [COMPLETE] US-F2.1: Extract FolderTreeFilter Utility
+- [COMPLETE] US-F2.2: Extract SecurityScopedBookmarkManager
+- [COMPLETE] US-F2.3: Extract ChatInputValidator
+- [COMPLETE] US-F2.4: Create ChatConfiguration Enum
+- [COMPLETE] US-F2.5: Fix Async Document Coordination
+- [COMPLETE] US-F2.6: Add Status Bar Error UI
+
+## Phase 1.6: Tech Debt Cleanup (MEDIUM Priority, Optional)
+- [COMPLETE] US-F2.7: Fix MarkdownView Task Race Condition
+- [COMPLETE] US-F2.8: Fix NSTextViewDelegate Isolation
+- [COMPLETE] US-F2.9: Fix RecentFoldersManager Stale Bookmark Duplicate
+- [COMPLETE] US-F2.10: Fix FolderService Cache Invalidation
+
+## Phase 2: Foundation App
+- [COMPLETE] US-F3: Theme/Renderer Protocol System (SyntaxTheme/SyntaxPalette wired into MarkdownEditor + Highlighter)
+- [COMPLETE] US-F4: AppCoordinator and State Decomposition (environment-injected into all views)
+- [COMPLETE] US-F5: SettingsRepository Abstraction (driving fonts, themes, line numbers across views)
+
+## Phase 3: Persistence
+- [COMPLETE] US-F6: FileMetadataRepository with SwiftData (FileMetadata + Bookmark @Models, full repository)
+
+## Phase 4: Epic 1 - Settings & Customization
+- [COMPLETE] US-1.1: Settings Window Infrastructure (Cmd+, via SwiftUI Settings scene)
+- [COMPLETE] US-1.2: Appearance Settings Tab (merged with Rendering — color scheme, theme, font, heading scale, line numbers)
+- [COMPLETE] US-1.3: Rendering Settings Tab (merged into Appearance tab — all controls present)
+- [COMPLETE] US-1.4: Behavior Settings Tab (link behavior, underline toggle)
+
+## Phase 5: Epic 2 - Search & Navigation
+- [COMPLETE] US-2.1: File Tree Filter (sidebar search field with debounce + favorites-only toggle)
+- [COMPLETE] US-2.2: Content Search & Navigation (native NSTextView find bar — Cmd+F, Cmd+G, Cmd+Shift+G)
+- [COMPLETE] US-2.3: File Tree Keyboard Navigation (KeyHandlingOutlineView — Return, Escape, arrow keys)
+- [COMPLETE] US-2.4: Quick Switcher (Cmd+P — fuzzy matching, arrow nav, overlay)
+
+## Phase 6: Epic 4 - Reading Experience
+- [COMPLETE] US-4.1: Reading Progress Persistence (scroll position saved/restored via SwiftData)
+- [COMPLETE] US-4.2: Reading Progress Indicator (ReadingProgressBadge — percentage in top-right)
+- [COMPLETE] US-4.3: File Favorites (star buttons, sidebar filter, persisted via SwiftData)
+- [COMPLETE] US-4.4: Line Bookmarks (gutter dots, click-to-toggle, persisted via SwiftData)
+- [COMPLETE] US-4.5: File Watching (DispatchSource with debounce, reload pill)
+
+## Bonus (not in original spec)
+- [COMPLETE] WelcomeManager: Onboarding tutorial folder, first-launch setup, Help menu integration
+
+---
+Updated: 2026-02-23
+Total Stories: 30 (US-2.2 and US-2.3 merged — native find bar covers both)
+Completed: 30
+
+## Implementation Notes
+
+### Spec Deviations
+- US-1.2/1.3: Appearance and Rendering merged into one settings tab (all controls present, cleaner UX)
+- US-2.2/2.3: Content search and search navigation are one feature via native NSTextView find bar (usesFindBar + isIncrementalSearchingEnabled)
+- Themes wired via SyntaxTheme/SyntaxPalette, not SwiftUITheme/MarkdownTheme protocol directly
+
+### Key Architectural Decisions
+1. AppCoordinator pattern for state management
+2. aimdRenderer as local Swift Package
+3. Themes = Renderers (pluggable output strategies)
+4. SwiftData for persistence with FileMetadataRepository protocol
+5. Apple swift-markdown for AST parsing
+6. Split View deferred to applacatCanvas (v2.0/v3.0)
+7. Phase 1.5/1.6 inserted for audit fixes (2026-02-04)
+8. Async document coordination via callback on AppState
+9. Error display via status bar (hidden normally, slides up on error)
