@@ -25,6 +25,22 @@ public protocol SettingsRepository {
 
 // MARK: - Settings Containers (Pure Data)
 
+/// Which direction Pixley faces in the app icon
+public enum MascotDirection: String, CaseIterable, Identifiable, Sendable {
+    case left = "Left"
+    case right = "Right"
+
+    public var id: String { rawValue }
+
+    /// Asset catalog image name for this direction
+    var assetName: String {
+        switch self {
+        case .left: return "PixleyLeft"
+        case .right: return "PixleyRight"
+        }
+    }
+}
+
 /// Appearance settings (color scheme, theme).
 /// Pure observable data — no persistence logic. Repository handles read/write.
 @MainActor
@@ -32,6 +48,9 @@ public protocol SettingsRepository {
 public final class AppearanceSettings {
     /// Color scheme preference (nil = follow system)
     public var colorScheme: ColorScheme? = nil
+
+    /// Which direction the mascot faces in the Dock icon
+    public var mascotDirection: MascotDirection = .left
 
     public init() {}
 }
@@ -255,6 +274,8 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
         if let raw = defaults.string(forKey: "colorScheme") {
             appearance.colorScheme = raw == "dark" ? .dark : .light
         }
+        let directionRaw = defaults.string(forKey: "mascotDirection") ?? MascotDirection.left.rawValue
+        appearance.mascotDirection = MascotDirection(rawValue: directionRaw) ?? .left
 
         rendering.fontSize = defaults.object(forKey: "fontSize") as? CGFloat ?? 14.0
         rendering.fontFamily = defaults.string(forKey: "fontFamily")
@@ -293,6 +314,7 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
         } else {
             defaults.removeObject(forKey: "colorScheme")
         }
+        defaults.set(appearance.mascotDirection.rawValue, forKey: "mascotDirection")
     }
 
     private func persistRendering() {
@@ -336,6 +358,7 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
     private func observeAppearance() {
         withObservationTracking {
             _ = appearance.colorScheme
+            _ = appearance.mascotDirection
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }

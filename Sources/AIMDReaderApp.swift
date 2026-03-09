@@ -7,6 +7,14 @@ import SwiftData
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Apply saved mascot direction to Dock icon
+        let direction = UserDefaultsSettingsRepository.shared.appearance.mascotDirection
+        if let image = NSImage(named: direction.assetName) {
+            NSApp.applicationIconImage = image
+        }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         CoordinatorRegistry.shared.flushAll()
         FolderService.shared.flushCacheIfNeeded()

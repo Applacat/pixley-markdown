@@ -32,11 +32,18 @@ struct MarkdownView: View {
         ZStack {
             if coordinator.navigation.selectedFile == nil {
                 emptyState
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.ultraThinMaterial)
             } else if coordinator.document.isLoading {
                 loadingView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.ultraThinMaterial)
             } else if let error = coordinator.document.errorMessage {
                 errorView(error)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.ultraThinMaterial)
             } else {
+                // No SwiftUI background — NSTextView draws its own
                 markdownContent
             }
 
@@ -52,7 +59,6 @@ struct MarkdownView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.ultraThinMaterial)
         .task(id: FileLoadTrigger(file: coordinator.navigation.selectedFile, reload: coordinator.document.reloadTrigger)) {
             await loadFile()
         }

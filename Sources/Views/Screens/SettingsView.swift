@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // MARK: - Settings View
@@ -147,8 +148,42 @@ struct AppearanceSettingsTab: View {
 
             // Line numbers
             Toggle("Show Line Numbers", isOn: $rendering.showLineNumbers)
+
+            // Mascot direction
+            HStack {
+                Text("Pixley Faces")
+                Spacer()
+                HStack(spacing: 12) {
+                    ForEach(MascotDirection.allCases) { direction in
+                        Button {
+                            settings.appearance.mascotDirection = direction
+                            applyMascotIcon(direction)
+                        } label: {
+                            Image(direction.assetName)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 40, height: 40)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(
+                                            settings.appearance.mascotDirection == direction
+                                                ? Color.accentColor : Color.clear,
+                                            lineWidth: 2
+                                        )
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private func applyMascotIcon(_ direction: MascotDirection) {
+        guard let image = NSImage(named: direction.assetName) else { return }
+        NSApp.applicationIconImage = image
     }
 
     /// Indicator showing whether a theme has light+dark variants or is dark-only

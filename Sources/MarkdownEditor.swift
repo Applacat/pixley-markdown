@@ -54,6 +54,11 @@ final class MarkdownNSTextView: NSTextView {
     /// The tracking area for mouse movement events
     private var hoverTrackingArea: NSTrackingArea?
 
+    // MARK: - Gutter Constants
+
+    /// Width of the line number gutter column (used by GutterOverlayView)
+    static let gutterWidth: CGFloat = 44
+
     override func cancelOperation(_ sender: Any?) {
         // Escape clears Tab focus first, then dismisses find bar
         if focusedElementRange != nil {
@@ -528,7 +533,7 @@ final class MarkdownNSTextView: NSTextView {
         needsDisplay = true
     }
 
-    // MARK: - Focus Ring Drawing
+    // MARK: - Drawing (Focus Ring only — line numbers handled by GutterOverlayView)
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
@@ -567,6 +572,8 @@ final class MarkdownNSTextView: NSTextView {
         NSGraphicsContext.restoreGraphicsState()
     }
 
+    // (Line number drawing moved to GutterOverlayView — a sibling view that can't be covered)
+
     // MARK: - Cursor Rects
 
     override func resetCursorRects() {
@@ -596,6 +603,146 @@ final class InteractiveElementWrapper: NSObject {
     init(_ element: InteractiveElement, optionIndex: Int? = nil) {
         self.element = element
         self.optionIndex = optionIndex
+    }
+}
+
+// MARK: - Gutter Overlay View
+
+/// Floating line number gutter drawn as a subview of the NSScrollView.
+/// Sits above the text view in z-order so nothing can cover it.
+/// Reads the text view's layout manager to draw line numbers at exact line positions.
+final class GutterOverlayView: NSView {
+
+    override var isFlipped: Bool { true }
+
+    weak var textView: MarkdownNSTextView?
+
+    var lineNumberColor: NSColor = .secondaryLabelColor { didSet { needsDisplay = true } }
+    var gutterBackground: NSColor = .textBackgroundColor { didSet { needsDisplay = true } }
+    var bookmarkedLines: Set<Int> = [] { didSet { needsDisplay = true } }
+    var onToggleBookmark: ((Int) -> Void)?
+
+    var lineNumberFont: NSFont = .monospacedDigitSystemFont(ofSize: 10, weight: .regular) {
+        didSet { needsDisplay = true }
+    }
+
+    // MARK: - Drawing
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let textView,
+              let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer,
+              let textStorage = textView.textStorage else { return }
+
+        // Fill gutter background
+        gutterBackground.setFill()
+        dirtyRect.fill()
+
+        // Separator line on right edge
+        NSColor.separatorColor.withAlphaComponent(0.2).setStroke()
+        let sep = NSBezierPath()
+        sep.move(to: NSPoint(x: bounds.width - 0.5, y: dirtyRect.origin.y))
+        sep.line(to: NSPoint(x: bounds.width - 0.5, y: NSMaxY(dirtyRect)))
+        sep.lineWidth = 1
+        sep.stroke()
+
+        // Get visible area from clip view
+        guard let clipView = textView.enclosingScrollView?.contentView else { return }
+        let clipBounds = clipView.bounds
+
+        let visibleGlyphRange = layoutManager.glyphRange(forBoundingRect: clipBounds, in: textContainer)
+        guard visibleGlyphRange.length > 0 else { return }
+        let visibleCharRange = layoutManager.characterRange(forGlyphRange: visibleGlyphRange, actualGlyphRange: nil)
+
+        let nsText = textStorage.string as NSString
+        guard nsText.length > 0, visibleCharRange.location < nsText.length else { return }
+
+        // Count lines before visible range to get starting line number
+        var lineNumber = 1
+        let scanEnd = min(visibleCharRange.location, nsText.length)
+        for i in 0..<scanEnd {
+            if nsText.character(at: i) == 0x0A { lineNumber += 1 }
+        }
+
+        let textContainerOrigin = textView.textContainerOrigin
+        let gutterContentWidth = bounds.width - 8 // right padding before separator
+
+        // Walk visible lines
+        var charIndex = visibleCharRange.location
+        while charIndex < NSMaxRange(visibleCharRange) && charIndex < nsText.length {
+            let lineRange = nsText.lineRange(for: NSRange(location: charIndex, length: 0))
+            let lineGlyphRange = layoutManager.glyphRange(forCharacterRange: lineRange, actualCharacterRange: nil)
+            guard lineGlyphRange.location < layoutManager.numberOfGlyphs else { break }
+
+            let lineRect = layoutManager.lineFragmentRect(forGlyphAt: lineGlyphRange.location, effectiveRange: nil)
+
+            // Convert: text container → text view → gutter overlay
+            let yInGutter = lineRect.origin.y + textContainerOrigin.y - clipBounds.origin.y
+
+            if yInGutter + lineRect.height >= dirtyRect.origin.y && yInGutter < NSMaxY(dirtyRect) {
+                let isBookmarked = bookmarkedLines.contains(lineNumber)
+                let numStr = "\(lineNumber)" as NSString
+                let color = isBookmarked ? NSColor.systemOrange : lineNumberColor
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: lineNumberFont,
+                    .foregroundColor: color
+                ]
+                let size = numStr.size(withAttributes: attrs)
+                let x = gutterContentWidth - size.width
+                let y = yInGutter + (lineRect.height - size.height) / 2
+                numStr.draw(at: NSPoint(x: max(4, x), y: y), withAttributes: attrs)
+
+                // Bookmark indicator dot
+                if isBookmarked {
+                    let dotSize: CGFloat = 5
+                    let dotRect = NSRect(
+                        x: 3,
+                        y: yInGutter + (lineRect.height - dotSize) / 2,
+                        width: dotSize,
+                        height: dotSize
+                    )
+                    NSColor.systemOrange.setFill()
+                    NSBezierPath(ovalIn: dotRect).fill()
+                }
+            }
+
+            lineNumber += 1
+            charIndex = NSMaxRange(lineRange)
+            if charIndex <= lineRange.location { break } // safety
+        }
+    }
+
+    // MARK: - Gutter Click (Bookmark Toggle)
+
+    override func mouseDown(with event: NSEvent) {
+        guard let textView,
+              let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer,
+              let textStorage = textView.textStorage,
+              let clipView = textView.enclosingScrollView?.contentView else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        let point = convert(event.locationInWindow, from: nil)
+        let clipBounds = clipView.bounds
+        let textContainerOrigin = textView.textContainerOrigin
+
+        // Convert gutter y → text container y
+        let tcY = point.y + clipBounds.origin.y - textContainerOrigin.y
+        let tcPoint = NSPoint(x: 0, y: tcY)
+
+        let glyphIndex = layoutManager.glyphIndex(for: tcPoint, in: textContainer)
+        guard glyphIndex < layoutManager.numberOfGlyphs else { return }
+        let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+
+        let nsText = textStorage.string as NSString
+        var lineNum = 1
+        for i in 0..<min(charIndex, nsText.length) {
+            if nsText.character(at: i) == 0x0A { lineNum += 1 }
+        }
+
+        onToggleBookmark?(lineNum)
     }
 }
 
@@ -631,9 +778,12 @@ struct MarkdownEditor: NSViewRepresentable {
     /// Callback when a popover-based input is submitted (element, optionIndex, fieldName, value)
     var onInputSubmitted: ((InteractiveElement, Int?, String, String) -> Void)? = nil
 
-    func makeNSView(context: Context) -> NSScrollView {
-        // Manual TextKit stack so we can use our custom NSTextView subclass
-        // (MarkdownNSTextView handles Esc to dismiss the find bar in SwiftUI)
+    func makeNSView(context: Context) -> NSView {
+        // Container: gutter (left) + scroll view (right), side by side via Auto Layout.
+        // Gutter is a sibling, not a child of the scroll view — no z-order conflicts.
+        let container = NSView()
+
+        // --- Text system ---
         let textStorage = NSTextStorage()
         let layoutManager = NSLayoutManager()
         textStorage.addLayoutManager(layoutManager)
@@ -650,6 +800,7 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.minSize = .zero
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
 
+        // --- Scroll view ---
         let scrollView = NSScrollView()
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
@@ -660,30 +811,26 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.isEditable = false
         textView.isRichText = false
 
-        // Get theme colors from settings (resolve light/dark variant from appearance)
+        // Theme colors
         let syntaxTheme = settings.rendering.syntaxTheme.rendererTheme(for: settings.appearance.colorScheme)
         let palette = syntaxTheme.palette
-
-        // Apply user preferences with theme colors
         let fontSize = settings.rendering.fontSize
         textView.font = MarkdownHighlighter.resolveFont(family: settings.rendering.fontFamily, size: fontSize, weight: .regular)
         textView.textColor = NSColor(hex: palette.foreground) ?? .labelColor
         textView.backgroundColor = NSColor(hex: palette.background) ?? .textBackgroundColor
         textView.insertionPointColor = NSColor(hex: palette.foreground) ?? .labelColor
-
-        // We manage theme colors explicitly — don't let AppKit remap them
         textView.usesAdaptiveColorMappingForDarkAppearance = false
 
-        // Scale insets proportionally with font size (base 16pt at font size 14)
+        // Uniform padding (no gutter space — gutter is a separate sibling view)
         let insetScale = max(1.0, fontSize / 14.0)
         let scaledInset = round(16.0 * insetScale)
         textView.textContainerInset = NSSize(width: scaledInset, height: scaledInset)
 
-        // Native find bar (Cmd+F) with incremental search
+        // Native find bar
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
 
-        // Link appearance — theme color with optional underline
+        // Link appearance
         var linkAttrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: NSColor(hex: palette.function) ?? .systemTeal,
             .cursor: NSCursor.pointingHand
@@ -693,14 +840,6 @@ struct MarkdownEditor: NSViewRepresentable {
         }
         textView.linkTextAttributes = linkAttrs
 
-        // Line numbers + bookmarks
-        let lineNumberView = LineNumberRulerView(textView: textView)
-        lineNumberView.bookmarkedLines = bookmarkedLines
-        lineNumberView.onToggleBookmark = onToggleBookmark
-        scrollView.verticalRulerView = lineNumberView
-        scrollView.hasVerticalRuler = true
-        scrollView.rulersVisible = settings.rendering.showLineNumbers
-
         // Accessibility
         textView.setAccessibilityElement(true)
         textView.setAccessibilityLabel("Markdown document viewer")
@@ -709,6 +848,44 @@ struct MarkdownEditor: NSViewRepresentable {
 
         // Delegate
         textView.delegate = context.coordinator
+
+        // --- Gutter (sibling of scroll view) ---
+        let gutterView = GutterOverlayView()
+        gutterView.textView = textView
+        gutterView.gutterBackground = textView.backgroundColor
+        gutterView.lineNumberColor = NSColor(hex: palette.comment) ?? NSColor(hex: palette.lineNumber) ?? .secondaryLabelColor
+        gutterView.bookmarkedLines = bookmarkedLines
+        gutterView.onToggleBookmark = onToggleBookmark
+        let lineNumFontSize = max(9, round(fontSize * 0.78))
+        gutterView.lineNumberFont = .monospacedDigitSystemFont(ofSize: lineNumFontSize, weight: .regular)
+
+        // --- Layout: [gutter | scrollView] ---
+        gutterView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(gutterView)
+        container.addSubview(scrollView)
+
+        let showGutter = settings.rendering.showLineNumbers
+        let gutterWidthConstraint = gutterView.widthAnchor.constraint(
+            equalToConstant: showGutter ? MarkdownNSTextView.gutterWidth : 0
+        )
+
+        NSLayoutConstraint.activate([
+            gutterView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            gutterView.topAnchor.constraint(equalTo: container.topAnchor),
+            gutterView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            gutterWidthConstraint,
+
+            scrollView.leadingAnchor.constraint(equalTo: gutterView.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+
+        // Store references in coordinator
+        context.coordinator.scrollView = scrollView
+        context.coordinator.gutterView = gutterView
+        context.coordinator.gutterWidthConstraint = gutterWidthConstraint
 
         // Scroll position tracking
         context.coordinator.onScrollPositionChanged = onScrollPositionChanged
@@ -733,15 +910,16 @@ struct MarkdownEditor: NSViewRepresentable {
             coordinator.parent.onInputSubmitted?(element, optionIndex, fieldName, value)
         }
 
-        // Initial content (set interactive mode before first highlight)
+        // Initial content
         context.coordinator.interactiveMode = settings.behavior.interactiveMode
         context.coordinator.applyHighlighting(to: textView, text: text)
 
-        return scrollView
+        return container
     }
 
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
+    func updateNSView(_ container: NSView, context: Context) {
+        guard let scrollView = context.coordinator.scrollView,
+              let textView = scrollView.documentView as? NSTextView else { return }
 
         let currentFontSize = settings.rendering.fontSize
         let currentTheme = settings.rendering.syntaxTheme
@@ -759,17 +937,14 @@ struct MarkdownEditor: NSViewRepresentable {
         let interactiveModeChanged = context.coordinator.interactiveMode != currentInteractiveMode
 
         if fontChanged || themeChanged || fontFamilyChanged || headingScaleChanged || appearanceChanged || interactiveModeChanged {
-            // Update settings and recreate highlighter
             context.coordinator.interactiveMode = currentInteractiveMode
             context.coordinator.updateSettings(fontSize: currentFontSize, theme: currentTheme, fontFamily: currentFontFamily, headingScale: currentHeadingScale, colorScheme: currentColorScheme)
 
-            // Update text view colors
             let palette = currentTheme.rendererTheme(for: currentColorScheme).palette
             textView.textColor = NSColor(hex: palette.foreground) ?? .labelColor
             textView.backgroundColor = NSColor(hex: palette.background) ?? .textBackgroundColor
             textView.insertionPointColor = NSColor(hex: palette.foreground) ?? .labelColor
 
-            // Update link appearance
             var linkAttrs: [NSAttributedString.Key: Any] = [
                 .foregroundColor: NSColor(hex: palette.function) ?? .systemTeal,
                 .cursor: NSCursor.pointingHand
@@ -779,17 +954,13 @@ struct MarkdownEditor: NSViewRepresentable {
             }
             textView.linkTextAttributes = linkAttrs
 
-            // Re-apply highlighting with new settings
             context.coordinator.applyHighlighting(to: textView, text: text)
         }
 
-        // Re-apply highlighting if text changed externally (but settings didn't).
-        // Compare against lastAppliedText (not textView.string) because native indicator
-        // replacements (SF Symbol attachments) mutate the displayed string.
+        // Re-apply highlighting if text changed externally
         else if context.coordinator.lastAppliedText != text {
             context.coordinator.applyHighlighting(to: textView, text: text)
 
-            // Restore scroll position after content loads
             if let position = restoreScrollPosition {
                 context.coordinator.restoreScrollPosition(position, in: scrollView)
             }
@@ -810,20 +981,36 @@ struct MarkdownEditor: NSViewRepresentable {
             }
         }
 
-        // Toggle line numbers + update bookmarks
-        scrollView.rulersVisible = settings.rendering.showLineNumbers
-        if let ruler = scrollView.verticalRulerView as? LineNumberRulerView {
-            ruler.bookmarkedLines = bookmarkedLines
-            ruler.onToggleBookmark = onToggleBookmark
-            ruler.needsDisplay = true
+        // Update text view inset (uniform — gutter is separate)
+        let insetScale = max(1.0, currentFontSize / 14.0)
+        let scaledInset = round(16.0 * insetScale)
+        textView.textContainerInset = NSSize(width: scaledInset, height: scaledInset)
+
+        // Update gutter
+        if let gutterView = context.coordinator.gutterView {
+            let palette = currentTheme.rendererTheme(for: currentColorScheme).palette
+            gutterView.gutterBackground = NSColor(hex: palette.background) ?? .textBackgroundColor
+            gutterView.lineNumberColor = NSColor(hex: palette.comment) ?? NSColor(hex: palette.lineNumber) ?? .secondaryLabelColor
+            gutterView.bookmarkedLines = bookmarkedLines
+            gutterView.onToggleBookmark = onToggleBookmark
+            let lineNumFontSize = max(9, round(currentFontSize * 0.78))
+            gutterView.lineNumberFont = .monospacedDigitSystemFont(ofSize: lineNumFontSize, weight: .regular)
+
+            // Toggle gutter visibility via constraint
+            let showGutter = settings.rendering.showLineNumbers
+            context.coordinator.gutterWidthConstraint?.constant = showGutter ? MarkdownNSTextView.gutterWidth : 0
+            gutterView.needsDisplay = true
         }
     }
 
-    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
-        if let textView = scrollView.documentView as? NSTextView {
+    static func dismantleNSView(_ container: NSView, coordinator: Coordinator) {
+        if let scrollView = coordinator.scrollView,
+           let textView = scrollView.documentView as? NSTextView {
             textView.delegate = nil
         }
         NotificationCenter.default.removeObserver(coordinator)
+        coordinator.scrollView = nil
+        coordinator.gutterView = nil
     }
 
     func makeCoordinator() -> Coordinator {
@@ -841,6 +1028,9 @@ struct MarkdownEditor: NSViewRepresentable {
         private var debouncedHighlighter: DebouncedHighlighter
         private var isUpdating = false
         var onScrollPositionChanged: ((Double) -> Void)?
+        weak var scrollView: NSScrollView?
+        weak var gutterView: GutterOverlayView?
+        var gutterWidthConstraint: NSLayoutConstraint?
         var fontSize: CGFloat
         var syntaxTheme: SyntaxThemeSetting
         var fontFamily: String?
@@ -934,6 +1124,8 @@ struct MarkdownEditor: NSViewRepresentable {
             
             // Reset cursor rects so interactive elements get pointing hand
             textView.window?.invalidateCursorRects(for: textView)
+            // Redraw gutter after content change
+            gutterView?.needsDisplay = true
             isUpdating = false
         }
 
@@ -1047,8 +1239,12 @@ struct MarkdownEditor: NSViewRepresentable {
                 let position = clipView.bounds.origin.y / scrollableHeight
                 let clamped = min(max(position, 0.0), 1.0)
                 onScrollPositionChanged?(clamped)
+
+                // Redraw gutter line numbers for new scroll position
+                gutterView?.needsDisplay = true
             }
         }
+
 
         func restoreScrollPosition(_ position: Double, in scrollView: NSScrollView) {
             guard let documentView = scrollView.documentView else { return }
