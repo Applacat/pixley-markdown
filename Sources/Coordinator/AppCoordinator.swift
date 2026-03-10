@@ -362,20 +362,19 @@ public final class AppCoordinator {
             let oldPaths = Self.collectFilePaths(from: oldItems)
             let newPaths = Self.collectFilePaths(from: newDisplay)
 
+            // Skip update if tree hasn't actually changed (avoids unnecessary SwiftUI re-renders
+            // that can dismiss transient popovers or cause sidebar flicker)
+            guard oldPaths != newPaths else { return }
+
             // New files = paths in new that weren't in old
             let addedPaths = newPaths.subtracting(oldPaths)
-            // Modified files = files in changed directories (exclude currently open file)
-            var modifiedPaths = Set<String>()
-            for dir in changedDirs {
-                Self.collectFilePathsUnder(dir, from: newDisplay, into: &modifiedPaths)
-            }
 
             // Don't mark the currently open file (user is already seeing it)
             if let selected = self.navigation.selectedFile {
-                modifiedPaths.remove(selected.path)
+                self.navigation.markPathsChanged(addedPaths.subtracting([selected.path]))
+            } else {
+                self.navigation.markPathsChanged(addedPaths)
             }
-
-            self.navigation.markPathsChanged(addedPaths.union(modifiedPaths))
             self.navigation.displayItems = newDisplay
         }
     }
