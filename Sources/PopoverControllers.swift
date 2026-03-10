@@ -172,8 +172,9 @@ final class InputPopoverController: NSViewController {
             let tf = NSTextField(string: config.initialValue)
             tf.placeholderString = config.placeholder
             tf.font = .systemFont(ofSize: 13)
-            tf.target = self
-            tf.action = #selector(submitTapped)
+            // No target/action on the text field — the Submit button's keyEquivalent "\r"
+            // handles Enter. Setting action here causes auto-submit when the field becomes
+            // first responder with a pre-filled value (re-edit scenario).
             textField = tf
             views.append(tf)
         }
@@ -248,6 +249,7 @@ final class InputPopoverController: NSViewController {
 final class DatePickerPopoverController: NSViewController {
     private let onSubmit: (String) -> Void
     private let onCancel: () -> Void
+    private let initialDate: String?
     private var datePicker: NSDatePicker!
 
     private static let outputFormatter: DateFormatter = {
@@ -256,7 +258,8 @@ final class DatePickerPopoverController: NSViewController {
         return f
     }()
 
-    init(onSubmit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+    init(initialDate: String? = nil, onSubmit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        self.initialDate = initialDate
         self.onSubmit = onSubmit
         self.onCancel = onCancel
         super.init(nibName: nil, bundle: nil)
@@ -274,7 +277,12 @@ final class DatePickerPopoverController: NSViewController {
         datePicker = NSDatePicker()
         datePicker.datePickerStyle = .clockAndCalendar
         datePicker.datePickerElements = .yearMonthDay
-        datePicker.dateValue = Date()
+        // Pre-populate with existing date if re-editing
+        if let initialDate, let parsed = Self.outputFormatter.date(from: initialDate) {
+            datePicker.dateValue = parsed
+        } else {
+            datePicker.dateValue = Date()
+        }
 
         let cancelButton = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
         cancelButton.keyEquivalent = "\u{1b}"
@@ -310,6 +318,113 @@ final class DatePickerPopoverController: NSViewController {
 
     @objc private func submitTapped() {
         onSubmit(Self.outputFormatter.string(from: datePicker.dateValue))
+    }
+
+    @objc private func cancelTapped() {
+        onCancel()
+    }
+}
+
+// MARK: - Gutter Comment Popover Controller
+
+/// NSViewController hosting a unified bookmark + comment popover for the gutter.
+/// Shows a bookmark toggle checkbox and a multi-line text field for writing `<!-- feedback -->` comments.
+final class GutterCommentPopoverController: NSViewController {
+    private let isBookmarked: Bool
+    private let existingComment: String
+    private let onSubmit: (Bool, String) -> Void
+    private let onCancel: () -> Void
+    private var bookmarkCheckbox: NSButton!
+    private var scrolledTextView: NSScrollView!
+
+    init(isBookmarked: Bool, existingComment: String,
+         onSubmit: @escaping (Bool, String) -> Void, onCancel: @escaping () -> Void) {
+        self.isBookmarked = isBookmarked
+        self.existingComment = existingComment
+        self.onSubmit = onSubmit
+        self.onCancel = onCancel
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        let width: CGFloat = 300
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 10))
+
+        let title = NSTextField(labelWithString: "Line Note")
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+
+        // Bookmark checkbox
+        bookmarkCheckbox = NSButton(checkboxWithTitle: "Bookmark this line", target: nil, action: nil)
+        bookmarkCheckbox.state = isBookmarked ? .on : .off
+
+        // Comment text view
+        let sv = NSScrollView(frame: NSRect(x: 0, y: 0, width: width - 32, height: 60))
+        let tv = NSTextView(frame: sv.contentView.bounds)
+        tv.isRichText = false
+        tv.font = .systemFont(ofSize: 12)
+        tv.string = existingComment
+        tv.isVerticallyResizable = true
+        tv.autoresizingMask = [.width]
+        tv.textContainer?.widthTracksTextView = true
+        sv.documentView = tv
+        sv.hasVerticalScroller = true
+        sv.borderType = .bezelBorder
+        sv.translatesAutoresizingMaskIntoConstraints = false
+        sv.heightAnchor.constraint(equalToConstant: 60).isActive = true
+        scrolledTextView = sv
+
+        let commentLabel = NSTextField(labelWithString: "Comment")
+        commentLabel.font = .systemFont(ofSize: 11)
+        commentLabel.textColor = .secondaryLabelColor
+
+        // Buttons
+        let cancelButton = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
+        cancelButton.keyEquivalent = "\u{1b}"
+
+        let submitButton = NSButton(title: "Save", target: self, action: #selector(submitTapped))
+        submitButton.keyEquivalent = "\r"
+        submitButton.bezelStyle = .rounded
+
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let buttonStack = NSStackView(views: [cancelButton, spacer, submitButton])
+        buttonStack.orientation = .horizontal
+
+        let stack = NSStackView(views: [title, bookmarkCheckbox, commentLabel, sv, buttonStack])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            stack.widthAnchor.constraint(equalToConstant: width),
+        ])
+
+        self.view = container
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        if let tv = scrolledTextView.documentView as? NSTextView {
+            view.window?.makeFirstResponder(tv)
+        }
+    }
+
+    @objc private func submitTapped() {
+        let shouldBookmark = bookmarkCheckbox.state == .on
+        let text = (scrolledTextView.documentView as? NSTextView)?.string ?? ""
+        onSubmit(shouldBookmark, text)
     }
 
     @objc private func cancelTapped() {

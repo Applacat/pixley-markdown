@@ -109,7 +109,7 @@ final class LiveStoreBackend: StoreBackend {
  * - MarkdownNSTextView.mouseDown: checks isUnlocked before non-checkbox interactions
  * - EditInteractiveElementsTool: checks isUnlocked before AI field edits
  * - SettingsView Pro tab: shows purchase/status based on isUnlocked
- * - AIMDReaderApp menu: "Upgrade to Pro" visibility
+ * - PixleyMarkdownApp menu: "Upgrade to Pro" visibility
  *
  * REVISION HISTORY:
  * - 2026-03-07: Initial implementation following DockPops StoreService pattern

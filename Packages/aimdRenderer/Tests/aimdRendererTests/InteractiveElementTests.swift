@@ -184,6 +184,52 @@ final class InteractiveElementDetectorTests: XCTestCase {
         XCTAssertEqual(fillIns.count, 2)
     }
 
+    func testFilledFillInReDetection() {
+        // Simulate the full fill-in cycle: placeholder → filled → re-detected
+        let original = "Name: [[enter your name]]"
+        let originalElements = InteractiveElementDetector.detect(in: original)
+        guard case .fillIn(let origFi) = originalElements.first else {
+            XCTFail("Expected fillIn in original"); return
+        }
+        XCTAssertNil(origFi.value, "Unfilled should have nil value")
+        XCTAssertEqual(origFi.type, .text)
+
+        // Simulate fill-in write-back: wraps value in [[ ]]
+        var modified = original
+        modified.replaceSubrange(origFi.range, with: "[[John Smith]]")
+        XCTAssertEqual(modified, "Name: [[John Smith]]")
+
+        // Re-detect: should find filled fill-in with value
+        let reElements = InteractiveElementDetector.detect(in: modified)
+        guard case .fillIn(let reFi) = reElements.first else {
+            XCTFail("Expected fillIn after re-edit"); return
+        }
+        XCTAssertEqual(reFi.value, "John Smith", "Should detect filled value")
+        XCTAssertEqual(reFi.type, .text, "Filled value type should be .text")
+        XCTAssertEqual(reFi.hint, "John Smith", "Hint should equal the filled value")
+    }
+
+    func testFilledFillInFromExtendedSyntax() {
+        // Extended syntax from smoke test: [[fill-in: name | Your name]]
+        let original = "**Tester:** [[fill-in: name | Your name]]"
+        let originalElements = InteractiveElementDetector.detect(in: original)
+        guard case .fillIn(let origFi) = originalElements.first else {
+            XCTFail("Expected fillIn"); return
+        }
+        XCTAssertNil(origFi.value, "Extended syntax should be unfilled")
+
+        // After fill-in write-back
+        var modified = original
+        modified.replaceSubrange(origFi.range, with: "[[John]]")
+
+        let reElements = InteractiveElementDetector.detect(in: modified)
+        guard case .fillIn(let reFi) = reElements.first else {
+            XCTFail("Expected fillIn after fill"); return
+        }
+        XCTAssertEqual(reFi.value, "John")
+        XCTAssertEqual(reFi.type, .text)
+    }
+
     // MARK: - Feedback Detection
 
     func testDetectsEmptyFeedback() {

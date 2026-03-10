@@ -24,6 +24,7 @@ struct MarkdownView: View {
     @State private var fileWatcher: FileWatcher? = nil
     @State private var readingProgress: Double = 0
     @State private var bookmarkedLines: Set<Int> = []
+    @State private var commentedLines: Set<Int> = []
     @State private var interactionHandler = InteractionHandler()
 
     // MARK: - Body
@@ -147,6 +148,10 @@ struct MarkdownView: View {
             onToggleBookmark: { lineNumber in
                 toggleBookmark(at: lineNumber)
             },
+            commentedLines: commentedLines,
+            onGutterAction: { lineNumber, shouldBookmark, commentText in
+                handleGutterAction(lineNumber: lineNumber, shouldBookmark: shouldBookmark, commentText: commentText)
+            },
             onInteractiveElementClicked: { element, optionIndex, point in
                 handleInteractiveClick(element, optionIndex: optionIndex)
             },
@@ -200,6 +205,7 @@ struct MarkdownView: View {
         if coordinator.document.errorMessage == nil {
             pendingScrollPosition = savedPosition > 0 ? savedPosition : nil
             refreshBookmarks()
+            refreshCommentedLines(in: coordinator.document.content)
             startWatching(fileURL)
             
             // Clear pending scroll position after a brief delay to prevent it from
@@ -231,6 +237,93 @@ struct MarkdownView: View {
     private func refreshBookmarks() {
         let bookmarks = coordinator.getBookmarks()
         bookmarkedLines = Set(bookmarks.map(\.lineNumber))
+    }
+
+    // MARK: - Gutter Comments
+
+    /// Handles gutter popover submissions: bookmark toggle + comment write/remove.
+    private func handleGutterAction(lineNumber: Int, shouldBookmark: Bool, commentText: String?) {
+        guard let fileURL = coordinator.navigation.selectedFile else { return }
+
+        Task {
+            do {
+                let content = coordinator.document.content
+                let lines = content.components(separatedBy: "\n")
+                // lineNumber is 1-based; the "next line" index is lineNumber (0-based)
+                let nextLineIndex = lineNumber
+
+                if let text = commentText {
+                    // Insert or update a comment
+                    let commentTag = "<!-- feedback: \(text) -->"
+
+                    if nextLineIndex < lines.count,
+                       lines[nextLineIndex].trimmingCharacters(in: .whitespaces).hasPrefix("<!-- feedback") {
+                        // Replace existing comment line
+                        let lineStart = lines[0..<nextLineIndex].joined(separator: "\n").count + 1 // +1 for newline
+                        let lineEnd = lineStart + lines[nextLineIndex].count
+                        let startIdx = content.index(content.startIndex, offsetBy: lineStart)
+                        let endIdx = content.index(content.startIndex, offsetBy: lineEnd)
+
+                        try await interactionHandler.apply(
+                            edit: .replace(range: startIdx..<endIdx, newText: commentTag),
+                            to: fileURL,
+                            fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                            refreshCommentedLines(in: newContent)
+                        }
+                    } else {
+                        // Insert new comment after the line
+                        let insertionOffset = lines[0..<lineNumber].joined(separator: "\n").count
+                        let insertIdx = content.index(content.startIndex, offsetBy: insertionOffset)
+                        let insertion = "\n\(commentTag)"
+
+                        try await interactionHandler.apply(
+                            edit: .replace(range: insertIdx..<insertIdx, newText: insertion),
+                            to: fileURL,
+                            fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                            refreshCommentedLines(in: newContent)
+                        }
+                    }
+                } else {
+                    // Remove existing comment (commentText is nil = remove)
+                    if nextLineIndex < lines.count,
+                       lines[nextLineIndex].trimmingCharacters(in: .whitespaces).hasPrefix("<!-- feedback") {
+                        // Remove the comment line (including preceding newline)
+                        let lineStart = lines[0..<nextLineIndex].joined(separator: "\n").count // offset before newline
+                        let lineEnd = lineStart + 1 + lines[nextLineIndex].count // +1 for newline itself
+                        let startIdx = content.index(content.startIndex, offsetBy: lineStart)
+                        let endIdx = content.index(content.startIndex, offsetBy: min(lineEnd, content.count))
+
+                        try await interactionHandler.apply(
+                            edit: .replace(range: startIdx..<endIdx, newText: ""),
+                            to: fileURL,
+                            fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                            refreshCommentedLines(in: newContent)
+                        }
+                    }
+                }
+            } catch {
+                coordinator.showError(.error(message: error.localizedDescription))
+            }
+        }
+    }
+
+    /// Scans content for `<!-- feedback -->` tags and maps them to the preceding line numbers.
+    private func refreshCommentedLines(in content: String) {
+        var result: Set<Int> = []
+        let lines = content.components(separatedBy: "\n")
+        for (index, line) in lines.enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("<!-- feedback") && trimmed.hasSuffix("-->") && index > 0 {
+                result.insert(index) // 1-based line number of the line BEFORE the comment
+            }
+        }
+        commentedLines = result
     }
 
     // MARK: - Interactive Element Handling (Direct Actions)

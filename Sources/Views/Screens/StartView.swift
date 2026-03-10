@@ -58,10 +58,10 @@ struct StartView: View {
     // MARK: - Launch Logic
 
     private func determineLaunchRequest() -> BrowserOpenRequest? {
-        let hasLaunchedBefore = UserDefaults.standard.bool(forKey: AIMDReaderApp.hasLaunchedBeforeKey)
+        let hasLaunchedBefore = UserDefaults.standard.bool(forKey: PixleyMarkdownApp.hasLaunchedBeforeKey)
 
         if !hasLaunchedBefore {
-            UserDefaults.standard.set(true, forKey: AIMDReaderApp.hasLaunchedBeforeKey)
+            UserDefaults.standard.set(true, forKey: PixleyMarkdownApp.hasLaunchedBeforeKey)
             guard let welcomeURL = WelcomeManager.ensureWelcomeFolder() else { return nil }
             return BrowserOpenRequest(folderURL: welcomeURL, isFirstLaunchWelcome: true)
         }
@@ -125,7 +125,7 @@ struct StartView: View {
     private var mascotHeader: some View {
         Button(action: openWelcomeFolder) {
             VStack(spacing: 16) {
-                Image("AIMD")
+                Image("Pixley")
                     .resizable()
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fit)

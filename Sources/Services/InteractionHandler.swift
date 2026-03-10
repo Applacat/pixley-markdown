@@ -174,8 +174,10 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
+        // Wrap value in [[ ]] so it stays detectable as a fill-in for re-editing
+        let wrapped = "[[\(value)]]"
         try await apply(
-            edit: .replace(range: element.range, newText: value),
+            edit: .replace(range: element.range, newText: wrapped),
             to: url,
             fileWatcher: fileWatcher,
             onContentUpdated: onContentUpdated

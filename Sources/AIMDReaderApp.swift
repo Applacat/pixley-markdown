@@ -81,7 +81,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - App Entry Point
 
 @main
-struct AIMDReaderApp: App {
+struct PixleyMarkdownApp: App {
 
     // MARK: - Constants
 

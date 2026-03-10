@@ -4,7 +4,7 @@ import aimdRenderer
 
 // MARK: - Native Control View
 
-/// Maps an AIMD `InteractiveElement` to a native macOS SwiftUI control.
+/// Maps a Pixley `InteractiveElement` to a native macOS SwiftUI control.
 struct NativeControlView: View {
 
     let element: InteractiveElement

@@ -282,8 +282,19 @@ public enum InteractiveElementDetector: Sendable {
                   let hintRange = Range(match.range(at: 1), in: text) else { return nil }
 
             let hint = String(text[hintRange])
-            let type = classifyFillInType(hint)
 
+            // Check if this is a filled value (not a placeholder)
+            if isFilledValue(hint) {
+                // Filled: hint IS the value, type is always .text for re-edit
+                return .fillIn(FillInElement(
+                    range: fullRange,
+                    hint: hint,
+                    type: .text,
+                    value: hint
+                ))
+            }
+
+            let type = classifyFillInType(hint)
             return .fillIn(FillInElement(
                 range: fullRange,
                 hint: hint,
@@ -291,6 +302,21 @@ public enum InteractiveElementDetector: Sendable {
                 value: nil
             ))
         }
+    }
+
+    /// Returns true if the text inside [[ ]] is a user-filled value rather than a placeholder hint.
+    /// Placeholder hints contain directive words like "enter", "fill-in", "choose", "pick", "select".
+    private static func isFilledValue(_ hint: String) -> Bool {
+        let lower = hint.lowercased().trimmingCharacters(in: .whitespaces)
+        let placeholderKeywords = ["enter", "fill-in", "fill in", "choose", "pick", "select", "type", "your "]
+        // If hint contains a placeholder keyword followed by content description, it's a placeholder
+        // Also check for pipe separator (used in [[fill-in: type | hint]] extended syntax)
+        if lower.contains("|") { return false }
+        if lower.contains(":") { return false }
+        for keyword in placeholderKeywords {
+            if lower.contains(keyword) { return false }
+        }
+        return true
     }
 
     private static func classifyFillInType(_ hint: String) -> FillInType {
