@@ -22,8 +22,8 @@ public enum InteractiveElementDetector: Sendable {
             } else if let choice = detectChoice(in: text, blockquoteRange: bqRange, blockquoteText: bqText) {
                 elements.append(.choice(choice))
             }
-            // Confidence indicators inside blockquotes
-            elements.append(contentsOf: detectConfidence(in: text, searchRange: bqRange))
+            // Confidence indicators disabled for v3.0 — revisit in a future version
+            // elements.append(contentsOf: detectConfidence(in: text, searchRange: bqRange))
         }
 
         // Standalone checkboxes (outside blockquotes)
@@ -239,8 +239,8 @@ public enum InteractiveElementDetector: Sendable {
     }
 
     private static let bqOptionPattern = try! NSRegularExpression(
-        pattern: #"\[([ xX])\][\t ]+(.+?)(?=(?:\s*\[[ xX]\])|$)"#,
-        options: [.anchorsMatchLines, .dotMatchesLineSeparators]
+        pattern: #"\[([ xX])\][\t ]+(.+?)(?=\n|$)"#,
+        options: [.anchorsMatchLines]
     )
 
     private static func parseBlockquoteOptions(in text: String, blockquoteRange: Range<String.Index>) -> [ParsedOption] {
@@ -460,7 +460,9 @@ public enum InteractiveElementDetector: Sendable {
                   let statesRange = Range(commentMatch.range(at: 1), in: text) else { return nil }
 
             let statesStr = String(text[statesRange])
-            let states = statesStr.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+            // Support both / and | as separators (/ preferred — doesn't conflict with markdown tables)
+            let separator: String = statesStr.contains("/") ? "/" : "|"
+            let states = statesStr.components(separatedBy: separator).map { $0.trimmingCharacters(in: .whitespaces) }
 
             // Look for the status label immediately after the comment
             let searchStart = commentRange.upperBound

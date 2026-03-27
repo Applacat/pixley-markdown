@@ -417,24 +417,20 @@ struct NavigateUpButton: View {
 
 // MARK: - View Mode Picker
 
-/// Toolbar menu for switching rendering mode: Plain / Enhanced / Hybrid / Liquid Glass.
+/// Toolbar menu for switching rendering mode: Plain / Enhanced.
 struct ViewModePicker: View {
     @Environment(\.settings) private var settings
-    @Environment(\.storeService) private var store
-    @State private var purchaseError: String?
+
+    /// Modes available in the picker. Hybrid and Liquid Glass hidden pending polish.
+    private static let availableModes: [InteractiveMode] = [.plain, .enhanced]
 
     var body: some View {
         Menu {
-            ForEach(InteractiveMode.allCases) { mode in
+            ForEach(Self.availableModes) { mode in
                 Button {
-                    selectMode(mode)
+                    settings.behavior.interactiveMode = mode
                 } label: {
-                    HStack {
-                        Label(mode.shortName, systemImage: mode.systemImage)
-                        if mode.requiresPro && !store.isUnlocked {
-                            Text("PRO")
-                        }
-                    }
+                    Label(mode.shortName, systemImage: mode.systemImage)
                 }
                 .disabled(mode == settings.behavior.interactiveMode)
             }
@@ -447,30 +443,6 @@ struct ViewModePicker: View {
         .help("Switch document rendering mode")
         .accessibilityLabel("Document view mode")
         .accessibilityValue(settings.behavior.interactiveMode.shortName)
-        .alert("Purchase Failed", isPresented: Binding(
-            get: { purchaseError != nil },
-            set: { if !$0 { purchaseError = nil } }
-        )) {
-            Button("OK") { purchaseError = nil }
-        } message: {
-            Text(purchaseError ?? "")
-        }
-    }
-
-    private func selectMode(_ mode: InteractiveMode) {
-        if mode.requiresPro && !store.isUnlocked {
-            guard store.purchaseState != .purchasing else { return }
-            Task {
-                await store.purchase()
-                if store.isUnlocked {
-                    settings.behavior.interactiveMode = mode
-                } else if case .failed(let msg) = store.purchaseState {
-                    purchaseError = msg
-                }
-            }
-        } else {
-            settings.behavior.interactiveMode = mode
-        }
     }
 }
 
@@ -513,9 +485,9 @@ struct FontSizeControls: View {
     }
 }
 
-// MARK: - AI Chat Modifier
+// MARK: - Pixley Chat Modifier
 
-/// Wraps AI Chat inspector and toolbar button behind macOS 26 availability.
+/// Wraps Pixley Chat inspector and toolbar button behind macOS 26 availability.
 /// On macOS <26, this modifier is a no-op — no chat UI is shown.
 struct AIChatModifier: ViewModifier {
     let coordinator: AppCoordinator
@@ -542,14 +514,14 @@ struct AIChatModifier: ViewModifier {
                             }
                         } label: {
                             Label(
-                                coordinator.ui.isAIChatVisible ? "Hide AI Chat" : "Show AI Chat",
+                                coordinator.ui.isAIChatVisible ? "Hide Pixley Chat" : "Show Pixley Chat",
                                 systemImage: coordinator.ui.isAIChatVisible
                                     ? "bubble.left.and.bubble.right.fill"
                                     : "bubble.left.and.bubble.right"
                             )
                         }
-                        .help(coordinator.ui.isAIChatVisible ? "Hide AI Chat" : "Show AI Chat")
-                        .accessibilityLabel(coordinator.ui.isAIChatVisible ? "Hide AI Chat" : "Show AI Chat")
+                        .help(coordinator.ui.isAIChatVisible ? "Hide Pixley Chat" : "Show Pixley Chat")
+                        .accessibilityLabel(coordinator.ui.isAIChatVisible ? "Hide Pixley Chat" : "Show Pixley Chat")
                     }
                 }
         } else {

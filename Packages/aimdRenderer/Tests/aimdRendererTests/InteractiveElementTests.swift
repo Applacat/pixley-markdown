@@ -541,7 +541,7 @@ final class InteractiveElementDetectorTests: XCTestCase {
 
         // Verify progress on Setup Checklist section
         if let setup = structure.sections.first?.children.first {
-            let progress = setup.progress
+            let progress = setup.checkboxProgress
             XCTAssertNotNil(progress, "setup checklist should have progress")
             XCTAssertEqual(progress?.total, 2, "setup checklist has 2 checkboxes")
             XCTAssertEqual(progress?.completed, 0, "none checked yet")
@@ -671,13 +671,13 @@ final class MarkdownStructureParserTests: XCTestCase {
         - [ ] Not done
         """
         let structure = MarkdownStructureParser.parse(text: text)
-        let progress = structure.sections[0].progress
+        let progress = structure.sections[0].checkboxProgress
         XCTAssertNotNil(progress)
         XCTAssertEqual(progress?.completed, 2)
         XCTAssertEqual(progress?.total, 3)
     }
 
-    func testProgressIncludesReviews() {
+    func testProgressIgnoresReviews() {
         let text = """
         # QA Section
         - [x] Pre-check
@@ -691,14 +691,14 @@ final class MarkdownStructureParserTests: XCTestCase {
         > [ ] FAIL
         """
         let structure = MarkdownStructureParser.parse(text: text)
-        let progress = structure.sections[0].progress
+        let progress = structure.sections[0].checkboxProgress
         XCTAssertNotNil(progress)
-        // 1 checkbox checked + 1 review completed = 2 completed out of 3 trackable (1 cb + 2 reviews)
-        XCTAssertEqual(progress?.completed, 2)
-        XCTAssertEqual(progress?.total, 3)
+        // Only 1 standalone checkbox counted (reviews excluded)
+        XCTAssertEqual(progress?.completed, 1)
+        XCTAssertEqual(progress?.total, 1)
     }
 
-    func testProgressIncludesChoices() {
+    func testProgressIgnoresChoices() {
         let text = """
         # Setup
         - [x] Install
@@ -708,11 +708,11 @@ final class MarkdownStructureParserTests: XCTestCase {
         > [ ] MySQL
         """
         let structure = MarkdownStructureParser.parse(text: text)
-        let progress = structure.sections[0].progress
+        let progress = structure.sections[0].checkboxProgress
         XCTAssertNotNil(progress)
-        // 1 checkbox checked + 1 choice selected = 2 completed out of 2
-        XCTAssertEqual(progress?.completed, 2)
-        XCTAssertEqual(progress?.total, 2)
+        // Only 1 standalone checkbox counted (choices excluded)
+        XCTAssertEqual(progress?.completed, 1)
+        XCTAssertEqual(progress?.total, 1)
     }
 
     func testProgressNilWhenNoTrackableElements() {
@@ -721,7 +721,7 @@ final class MarkdownStructureParserTests: XCTestCase {
         Just some text here.
         """
         let structure = MarkdownStructureParser.parse(text: text)
-        XCTAssertNil(structure.sections[0].progress)
+        XCTAssertNil(structure.sections[0].checkboxProgress)
     }
 
     func testHeadingWithNoContent() {

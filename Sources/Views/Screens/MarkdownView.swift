@@ -26,6 +26,7 @@ struct MarkdownView: View {
     @State private var bookmarkedLines: Set<Int> = []
     @State private var commentedLines: Set<Int> = []
     @State private var interactionHandler = InteractionHandler()
+    @State private var interactionTask: Task<Void, Never>?
 
     // MARK: - Body
 
@@ -62,10 +63,6 @@ struct MarkdownView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: FileLoadTrigger(file: coordinator.navigation.selectedFile, reload: coordinator.document.reloadTrigger)) {
             await loadFile()
-        }
-        .onChange(of: StoreService.shared.isUnlocked) {
-            // Re-highlight after Pro purchase so elements become interactive immediately
-            coordinator.reloadDocument()
         }
     }
 
@@ -160,6 +157,9 @@ struct MarkdownView: View {
             },
             onInputSubmitted: { element, optionIndex, fieldName, value in
                 handleInputSubmitted(element, optionIndex: optionIndex, fieldName: fieldName, value: value)
+            },
+            onAddComment: { selectedText, nsRange in
+                handleAddComment(selectedText: selectedText, nsRange: nsRange)
             }
         )
         .overlay(alignment: .topTrailing) {
@@ -313,14 +313,20 @@ struct MarkdownView: View {
         }
     }
 
-    /// Scans content for `<!-- feedback -->` tags and maps them to the preceding line numbers.
+    /// Scans content for `<!-- feedback -->` tags and CriticMarkup highlight comments,
+    /// mapping them to line numbers for gutter indicators.
     private func refreshCommentedLines(in content: String) {
         var result: Set<Int> = []
         let lines = content.components(separatedBy: "\n")
         for (index, line) in lines.enumerated() {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
+            // HTML feedback comments: indicate the preceding line
             if trimmed.hasPrefix("<!-- feedback") && trimmed.hasSuffix("-->") && index > 0 {
                 result.insert(index) // 1-based line number of the line BEFORE the comment
+            }
+            // CriticMarkup highlight comments: {==text==}{>>comment<<}
+            if line.contains("{==") && line.contains("{>>") {
+                result.insert(index + 1) // 1-based line number
             }
         }
         commentedLines = result
@@ -334,7 +340,8 @@ struct MarkdownView: View {
     private func handleInteractiveClick(_ element: InteractiveElement, optionIndex: Int? = nil) {
         guard let fileURL = coordinator.navigation.selectedFile else { return }
 
-        Task {
+        interactionTask?.cancel()
+        interactionTask = Task {
             do {
                 switch element {
                 case .checkbox(let cb):
@@ -394,10 +401,107 @@ struct MarkdownView: View {
         }
     }
 
+    // MARK: - Add Comment
+
+    /// Handles the "Add Comment" action from context menu, Cmd+Shift+C, or selection popover.
+    /// Triggers an inline input popover via the text view's existing popover system.
+    private func handleAddComment(selectedText: String, nsRange: NSRange) {
+        guard let fileURL = coordinator.navigation.selectedFile else { return }
+        let content = coordinator.document.content
+
+        // Convert NSRange to String.Index range
+        guard let swiftRange = Range(nsRange, in: content) else { return }
+
+        // Check for overlap with existing highlights off the main thread
+        Task.detached(priority: .userInitiated) {
+            let elements = InteractiveElementDetector.detect(in: content)
+            let hasOverlap = elements.contains { element in
+                if case .suggestion(let s) = element, s.type == .highlight {
+                    return s.range.overlaps(swiftRange)
+                }
+                return false
+            }
+            await MainActor.run {
+                if hasOverlap {
+                    coordinator.showError(.error(message: "This text already has a comment."))
+                    return
+                }
+                showAddCommentPopover(selectedText: selectedText, swiftRange: swiftRange, nsRange: nsRange, fileURL: fileURL)
+            }
+        }
+    }
+
+    private func showAddCommentPopover(selectedText: String, swiftRange: Range<String.Index>, nsRange: NSRange, fileURL: URL) {
+        // Store context for the comment submission
+        pendingCommentRange = swiftRange
+        pendingCommentText = selectedText
+        pendingCommentFileURL = fileURL
+
+        // Show inline input popover at the selection (reuses existing InputPopoverController pattern)
+        if let textView = findMarkdownTextView() {
+            textView.showInputPopover(
+                for: .feedback(FeedbackElement(range: swiftRange, existingText: nil)),
+                at: nsRange,
+                config: InputPopoverConfig(
+                    title: "Add Comment",
+                    subtitle: "on: \"\(selectedText.prefix(40))\(selectedText.count > 40 ? "..." : "")\"",
+                    fieldName: "addComment",
+                    placeholder: "Type your comment..."
+                )
+            )
+        }
+    }
+
+    /// State for pending comment (between popover show and submit)
+    @State private var pendingCommentRange: Range<String.Index>?
+    @State private var pendingCommentText: String?
+    @State private var pendingCommentFileURL: URL?
+
+    /// Finds the MarkdownNSTextView in the view hierarchy
+    private func findMarkdownTextView() -> MarkdownNSTextView? {
+        guard let window = NSApp.keyWindow else { return nil }
+        return findTextView(in: window.contentView)
+    }
+
+    private func findTextView(in view: NSView?) -> MarkdownNSTextView? {
+        guard let view else { return nil }
+        if let tv = view as? MarkdownNSTextView { return tv }
+        for sub in view.subviews {
+            if let found = findTextView(in: sub) { return found }
+        }
+        return nil
+    }
+
     // MARK: - Popover Input Handling
 
     /// Handles submissions from inline NSPopovers (fill-in, feedback, suggestion, review notes, challenge).
     private func handleInputSubmitted(_ element: InteractiveElement, optionIndex: Int?, fieldName: String, value: String) {
+        // Intercept "addComment" submissions from the Add Comment popover
+        if fieldName == "addComment",
+           let range = pendingCommentRange,
+           let selectedText = pendingCommentText,
+           let url = pendingCommentFileURL {
+            pendingCommentRange = nil
+            pendingCommentText = nil
+            pendingCommentFileURL = nil
+            Task {
+                do {
+                    try await interactionHandler.addComment(
+                        selectedText: selectedText,
+                        comment: value,
+                        range: range,
+                        in: url,
+                        fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+                } catch {
+                    coordinator.showError(.error(message: error.localizedDescription))
+                }
+            }
+            return
+        }
+
         guard let fileURL = coordinator.navigation.selectedFile else { return }
 
         Task {
@@ -418,7 +522,13 @@ struct MarkdownView: View {
                     }
 
                 case .suggestion(let s):
-                    if value == "accept" {
+                    if fieldName == "editComment" {
+                        try await interactionHandler.editComment(
+                            s, newComment: value, in: fileURL, fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                        }
+                    } else if value == "accept" {
                         try await interactionHandler.acceptSuggestion(
                             s, in: fileURL, fileWatcher: fileWatcher
                         ) { newContent in

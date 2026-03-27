@@ -264,7 +264,15 @@ final class FolderService {
         }
     }
 
-    private nonisolated static func loadTreeSync(at url: URL) -> [FolderItem] {
+    /// Maximum folder depth to prevent hangs on huge directory trees (e.g., entire hard drive)
+    private nonisolated static let maxTreeDepth = 10
+    /// Maximum total items to enumerate before stopping
+    private nonisolated static let maxTreeItems = 5_000
+
+    private nonisolated static func loadTreeSync(at url: URL, depth: Int = 0, itemCount: UnsafeMutablePointer<Int>? = nil) -> [FolderItem] {
+        // Guard against extremely deep or large trees
+        guard depth < maxTreeDepth else { return [] }
+
         let fm = FileManager.default
 
         guard let contents = try? fm.contentsOfDirectory(
@@ -274,9 +282,18 @@ final class FolderService {
             return []
         }
 
+        // Track total item count across recursion via shared pointer
+        let counter = itemCount ?? UnsafeMutablePointer<Int>.allocate(capacity: 1)
+        if itemCount == nil { counter.initialize(to: 0) }
+        defer { if itemCount == nil { counter.deallocate() } }
+
         var items: [FolderItem] = []
 
         for itemURL in contents {
+            // Bail if we've hit the item limit
+            guard counter.pointee < maxTreeItems else { break }
+            counter.pointee += 1
+
             // Skip hidden files
             let resourceValues = try? itemURL.resourceValues(forKeys: [.isHiddenKey])
             if resourceValues?.isHidden == true { continue }
@@ -288,9 +305,7 @@ final class FolderService {
 
             if isFolder {
                 // Recursively load children first
-                let children = Self.loadTreeSync(at: itemURL)
-                // OOD: FolderItem structure naturally aggregates children's markdown counts
-                // The tree hierarchy makes this computation self-evident
+                let children = Self.loadTreeSync(at: itemURL, depth: depth + 1, itemCount: counter)
                 let mdCount = children.reduce(0) { $0 + $1.markdownCount }
                 let item = FolderItem(url: itemURL, isFolder: true, markdownCount: mdCount, children: children)
                 items.append(item)

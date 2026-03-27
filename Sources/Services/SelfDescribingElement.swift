@@ -160,7 +160,7 @@ extension FillInElement: SelfDescribingElement {
 
     func apply(field: String, value: String) -> InteractiveEdit? {
         guard field == "value" else { return nil }
-        return .replace(range: range, newText: value)
+        return .replace(range: range, newText: "[[\(value)]]")
     }
 }
 

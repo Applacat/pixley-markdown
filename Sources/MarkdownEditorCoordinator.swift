@@ -92,21 +92,19 @@ final class MarkdownEditorCoordinator: NSObject, NSTextViewDelegate {
         // would require unsafe transfers. Highlighting is fast enough on-main-actor.
         let attributed = debouncedHighlighter.highlighter.highlight(text)
 
-        // Detect and annotate interactive elements + progress bars
+        // Detect and annotate interactive elements
         let elements = InteractiveElementDetector.detect(in: text)
         let mutable = NSMutableAttributedString(attributedString: attributed)
         if !elements.isEmpty {
             let isEnhanced = interactiveMode == .enhanced || interactiveMode == .hybrid
             let annotator = debouncedHighlighter.highlighter.makeAnnotator()
             annotator.annotateInteractiveElements(mutable, elements: elements, text: text, enhanced: isEnhanced)
-
-            // Add progress bars to section headings (only in enhanced mode)
-            if isEnhanced {
-                let structure = MarkdownStructureParser.parse(text: text)
-                annotator.annotateProgressBars(mutable, structure: structure, text: text)
-            }
         }
+        MarkdownHighlighter.padTableColumns(in: mutable)
         textView.textStorage?.setAttributedString(mutable)
+
+        // Update gutter line offset cache for O(log N) line number lookup
+        gutterView?.updateLineOffsets(for: text)
 
         textView.selectedRanges = selectedRanges
 

@@ -44,9 +44,25 @@ HStack(spacing: 0)
 ## Design Principles (Emerging)
 
 1. **Apple Happy Path** - Use native patterns, don't fight the framework
-2. **iOS Files App as model** - Sidebar should feel like iOS Files
-3. **Liquid Glass aesthetic** - Visual warmth, not clinical
-4. **No persistence** - Open folder each session (simplicity)
+2. **Just Pipes** - Expose native controls, drop opinions. AI and user decide what to do with them.
+3. **Incomplete items only** - FM contract: only send actionable/incomplete items to the AI, grouped by section heading
+4. **Two rendering modes** - Plain and Enhanced only. Hybrid/LG shelved.
+
+---
+
+## 2026-03-26 DECISION — v3.0 Relay MVP Direction
+
+**All features free.** StoreKit removed entirely. Open source ready.
+
+**MVP Relay = 4 interaction types:** Checkbox, Fill-in, Choice, Range Comments. Ship these solid before adding more.
+
+**StartView redesign:** Split layout (left: icon + actions, right: recents). Kill sidebar shortcuts (permission issues).
+
+**Dock drop UX:** Explanatory sheet before NSOpenPanel. App icon, factual copy, "Continue" button. Saved bookmarks skip it.
+
+**FM element index:** Section-grouped, incomplete items only, heading context. Completed items shown as count only.
+
+**Progress bars:** Deferred. Attributed string position corruption when combined with SF Symbol checkbox replacements. NSTextAttachment is correct direction but needs position rework. Backlog #25.
 
 ---
 

@@ -1,0 +1,37 @@
+{
+  "feature": "Progress Bar Fix",
+  "slug": "the-progress-bar-fix",
+  "status": "PENDING",
+  "created": "2026-03-24",
+  "github_issue": 25,
+  "approach": "NSTextAttachment with dynamically drawn NSImage",
+  "user_stories": [
+    {
+      "id": "US-1",
+      "title": "NSTextAttachment progress bar rendering",
+      "status": "PENDING"
+    },
+    {
+      "id": "US-2",
+      "title": "Section filtering and completion state",
+      "status": "PENDING"
+    },
+    {
+      "id": "US-3",
+      "title": "Immediate update and mode gating",
+      "status": "PENDING"
+    }
+  ],
+  "phases": [
+    {
+      "name": "Attachment renderer",
+      "stories": ["US-1"],
+      "status": "PENDING"
+    },
+    {
+      "name": "Filtering and polish",
+      "stories": ["US-2", "US-3"],
+      "status": "PENDING"
+    }
+  ]
+}

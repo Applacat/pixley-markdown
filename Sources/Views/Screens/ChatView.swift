@@ -7,7 +7,7 @@ import aimdRenderer
 
 // MARK: - Chat View
 
-/// The right panel containing AI Chat functionality.
+/// The right panel containing Pixley Chat functionality.
 /// Uses Apple Foundation Models for on-device AI inference.
 /// Shows "Thinking..." while awaiting, then full response at once
 /// (plain text respond(to:) doesn't support token streaming).
@@ -25,6 +25,7 @@ struct ChatView: View {
 
     // Service for business logic — @State ensures single instance per view identity
     @State private var chatService = ChatService()
+    @State private var cachedPrompts: [SuggestedPrompt] = []
 
     // MARK: - Body
 
@@ -58,7 +59,11 @@ struct ChatView: View {
                     documentPath: newFile.path
                 )
                 configureEditTool()
+                cachedPrompts = suggestedPrompts(for: coordinator.document.content)
             }
+        }
+        .onChange(of: coordinator.document.content) { _, newContent in
+            cachedPrompts = suggestedPrompts(for: newContent)
         }
         .onDisappear {
             cancelAllTasks()
@@ -78,7 +83,7 @@ struct ChatView: View {
     private var chatHeader: some View {
         VStack(spacing: 0) {
             HStack {
-                Label("AI Chat", systemImage: "bubble.left.and.bubble.right")
+                Label("Pixley Chat", systemImage: "bubble.left.and.bubble.right")
                     .font(.headline)
                     .foregroundStyle(.primary)
 
@@ -136,7 +141,7 @@ struct ChatView: View {
             Text("Apple Intelligence Required")
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            Text("Enable Apple Intelligence in System Settings > Apple Intelligence & Siri to use AI Chat.")
+            Text("Enable Apple Intelligence in System Settings > Apple Intelligence & Siri to use Pixley Chat.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -155,10 +160,10 @@ struct ChatView: View {
                 .imageScale(.large)
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
-            Text("AI Chat")
+            Text("Pixley Chat")
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            Text("Select a file to ask questions about it")
+            Text("Select a file to ask Pixley about it")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -246,22 +251,89 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - Empty Chat
+    // MARK: - Empty Chat (Suggested Prompts)
 
     private var emptyChat: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             Image(systemName: "sparkles")
                 .font(.title.weight(.light))
                 .imageScale(.large)
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
 
-            Text("Ask about this document")
+            Text("Ask Pixley about this document")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+
+            // Context-aware suggested prompt chips (cached, not computed in body)
+            if !cachedPrompts.isEmpty {
+                let prompts = cachedPrompts
+                VStack(spacing: 8) {
+                    ForEach(prompts) { prompt in
+                        Button {
+                            sendPrompt(prompt.text)
+                        } label: {
+                            Label(prompt.text, systemImage: prompt.icon)
+                                .font(.caption)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(prompt.text)
+                    }
+                }
+                .padding(.horizontal, 8)
+            }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .padding(.vertical, 24)
+    }
+
+    // MARK: - Suggested Prompts
+
+    private struct SuggestedPrompt: Identifiable {
+        let id = UUID()
+        let text: String
+        let icon: String
+    }
+
+    private func suggestedPrompts(for content: String) -> [SuggestedPrompt] {
+        guard !content.isEmpty else { return [] }
+
+        let elements = InteractiveElementDetector.detect(in: content)
+        var prompts: [SuggestedPrompt] = []
+
+        let hasCheckboxes = elements.contains { if case .checkbox = $0 { return true } else { return false } }
+        let hasFillIns = elements.contains { if case .fillIn = $0 { return true } else { return false } }
+        let hasChoices = elements.contains { if case .choice = $0 { return true } else { return false } }
+
+        if hasCheckboxes {
+            prompts.append(.init(text: "What's left to do?", icon: "list.bullet"))
+            prompts.append(.init(text: "Mark all tasks complete", icon: "checkmark.circle"))
+        }
+        if hasFillIns { prompts.append(.init(text: "Fill in the blanks", icon: "pencil.line")) }
+        if hasChoices { prompts.append(.init(text: "Help me decide", icon: "arrow.triangle.branch")) }
+
+        let universal: [SuggestedPrompt] = [
+            .init(text: "Summarize this document", icon: "doc.text.magnifyingglass"),
+        ]
+        for u in universal where prompts.count < 4 {
+            prompts.append(u)
+        }
+
+        return Array(prompts.prefix(4))
+    }
+
+    /// Sends a suggested prompt directly (auto-send, no text field population).
+    private func sendPrompt(_ text: String) {
+        let userMessage = ChatMessage(role: .user, content: text)
+        messages.append(userMessage)
+        askTask?.cancel()
+        askTask = Task {
+            await askAI(text)
+        }
     }
 
     // MARK: - Input Area

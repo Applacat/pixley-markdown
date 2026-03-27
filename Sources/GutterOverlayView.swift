@@ -26,6 +26,30 @@ final class GutterOverlayView: NSView {
         didSet { needsDisplay = true }
     }
 
+    /// Precomputed character offsets of each line start. Index i = char offset of line i+1.
+    /// Updated when content changes, enables O(log N) line number lookup during draw.
+    private var lineStartOffsets: [Int] = [0]
+
+    /// Call after content changes to rebuild the line offset cache.
+    func updateLineOffsets(for text: String) {
+        var offsets = [0]
+        for (i, char) in text.utf16.enumerated() {
+            if char == 0x0A { offsets.append(i + 1) }
+        }
+        lineStartOffsets = offsets
+        needsDisplay = true
+    }
+
+    /// Binary search for the line number at a given character offset.
+    private func lineNumber(forCharOffset offset: Int) -> Int {
+        var lo = 0, hi = lineStartOffsets.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if lineStartOffsets[mid] <= offset { lo = mid + 1 } else { hi = mid }
+        }
+        return lo // 1-based line number
+    }
+
     /// Active gutter popover (retained to prevent premature dealloc)
     private var gutterPopover: NSPopover?
 
@@ -37,15 +61,27 @@ final class GutterOverlayView: NSView {
               let textContainer = textView.textContainer,
               let textStorage = textView.textStorage else { return }
 
-        // Fill gutter background
+        // Only draw below the toolbar — the scroll view's content insets
+        // account for the unified toolbar height; match that in the gutter.
+        let topInset = textView.enclosingScrollView?.contentInsets.top ?? 0
+        let visibleRect = NSRect(
+            x: bounds.origin.x,
+            y: topInset,
+            width: bounds.width,
+            height: bounds.height - topInset
+        )
+        let drawRect = dirtyRect.intersection(visibleRect)
+        guard !drawRect.isNull else { return }
+
+        // Fill gutter background (only in visible area)
         gutterBackground.setFill()
-        dirtyRect.fill()
+        drawRect.fill()
 
         // Separator line on right edge
         NSColor.separatorColor.withAlphaComponent(0.2).setStroke()
         let sep = NSBezierPath()
-        sep.move(to: NSPoint(x: bounds.width - 0.5, y: dirtyRect.origin.y))
-        sep.line(to: NSPoint(x: bounds.width - 0.5, y: NSMaxY(dirtyRect)))
+        sep.move(to: NSPoint(x: bounds.width - 0.5, y: drawRect.origin.y))
+        sep.line(to: NSPoint(x: bounds.width - 0.5, y: NSMaxY(drawRect)))
         sep.lineWidth = 1
         sep.stroke()
 
@@ -60,12 +96,8 @@ final class GutterOverlayView: NSView {
         let nsText = textStorage.string as NSString
         guard nsText.length > 0, visibleCharRange.location < nsText.length else { return }
 
-        // Count lines before visible range to get starting line number
-        var lineNumber = 1
-        let scanEnd = min(visibleCharRange.location, nsText.length)
-        for i in 0..<scanEnd {
-            if nsText.character(at: i) == 0x0A { lineNumber += 1 }
-        }
+        // O(log N) line number lookup using precomputed offsets
+        var lineNumber = lineNumber(forCharOffset: visibleCharRange.location)
 
         let textContainerOrigin = textView.textContainerOrigin
         let gutterContentWidth = bounds.width - 8 // right padding before separator
@@ -176,16 +208,16 @@ final class GutterOverlayView: NSView {
     // MARK: - Comment Detection
 
     /// Checks if the line after `lineNumber` contains a `<!-- feedback -->` tag and returns its text.
+    private static let feedbackCommentRegex = try! NSRegularExpression(
+        pattern: #"^<!--\s*feedback\s*(?::\s*(.*?))?\s*-->$"#
+    )
+
     private func findExistingComment(afterLine lineNumber: Int, in text: String) -> String? {
         let lines = text.components(separatedBy: "\n")
-        // lineNumber is 1-based, so the next line index is lineNumber (0-based = lineNumber - 1, next = lineNumber)
         guard lineNumber < lines.count else { return nil }
         let nextLine = lines[lineNumber].trimmingCharacters(in: .whitespaces)
 
-        // Match <!-- feedback --> or <!-- feedback: text -->
-        let pattern = #"^<!--\s*feedback\s*(?::\s*(.*?))?\s*-->$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: nextLine, range: NSRange(nextLine.startIndex..., in: nextLine)) else {
+        guard let match = Self.feedbackCommentRegex.firstMatch(in: nextLine, range: NSRange(nextLine.startIndex..., in: nextLine)) else {
             return nil
         }
 

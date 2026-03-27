@@ -1,0 +1,37 @@
+Word-Style Range Comments (#32)
+=================================
+
+Phase 1: Comment Popover + Highlight Rendering [DONE]
+- [x] Create CommentPopoverController (read-only display + Edit + Remove buttons)
+- [x] Route .highlight SuggestionElement to CommentPopoverController
+- [x] Add commentHighlight color to SyntaxPalette + all 10 themes
+- [x] Apply comment highlight background in InteractiveAnnotator
+- [x] Gutter dot for comment lines in MarkdownView.refreshCommentedLines
+Verify: BUILD SUCCEEDED
+
+Phase 2: Add Comment Flow [DONE]
+- [x] Add "Add Comment" to NSTextView context menu (menu(for:) override)
+- [x] Add Cmd+Shift+C keyboard shortcut (keyDown override)
+- [x] Add comment input via NSAlert with text field
+- [x] Implement addComment(selectedText:comment:range:) in InteractionHandler
+- [x] Overlap prevention (check existing highlights before writing)
+- [x] Multi-line selection support (works naturally with range-based approach)
+Verify: BUILD SUCCEEDED
+
+Phase 3: Edit Comment + Polish [DONE]
+- [x] Edit mode in CommentPopoverController (inline text view swap)
+- [x] Implement editComment in InteractionHandler
+- [x] Remove uses acceptSuggestion (strips markup, keeps text) — already existed
+- [x] Handle bare {==text==} without comment via tooltip change
+- [x] All 10 themes have comment highlight colors (light: warm yellow, dark: muted amber)
+Verify: BUILD SUCCEEDED + 13 tests pass
+
+Files modified:
+- Packages/aimdRenderer/.../SyntaxTheme.swift — commentHighlight on SyntaxPalette + all 10 palettes
+- Sources/PopoverControllers.swift — New CommentPopoverController
+- Sources/MarkdownTextViewPopovers.swift — showCommentPopover, route .highlight to comment view
+- Sources/InteractiveAnnotator.swift — commentHighlightColor property, highlight background
+- Sources/MarkdownHighlighter.swift — commentHighlight on Theme, pass to annotator
+- Sources/InteractionHandler.swift — addComment, editComment methods
+- Sources/MarkdownEditor.swift — onAddComment callback, context menu, Cmd+Shift+C
+- Sources/Views/Screens/MarkdownView.swift — handleAddComment, editComment routing, CriticMarkup gutter detection

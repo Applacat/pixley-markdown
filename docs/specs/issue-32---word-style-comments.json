@@ -1,0 +1,111 @@
+{
+  "feature": "Word-Style Range Comments",
+  "issue": 32,
+  "milestone": "v3.0 — Relay MVP",
+  "status": "pending",
+  "created": "2026-03-27",
+  "scope": {
+    "in_scope": [
+      "Select text → Add Comment flow (context menu, Cmd+Shift+C)",
+      "Inline popover for typing comment text",
+      "CriticMarkup write-back: {==text==}{>>comment<<}",
+      "Theme-specific highlight background color",
+      "Gutter dot indicator (clickable, opens popover)",
+      "Comment popover: read, edit, remove",
+      "Replace highlight accept/reject with comment popover",
+      "Multi-line selection support",
+      "Overlap prevention",
+      "Free tier"
+    ],
+    "out_of_scope": [
+      "CriticMarkup additions/deletions accept/reject (unchanged)",
+      "Margin bubble sidebar pane",
+      "Comment threads/replies",
+      "Comment author tracking",
+      "Toolbar button"
+    ]
+  },
+  "user_stories": [
+    {
+      "id": "US-1",
+      "title": "Add Comment to Selected Text",
+      "acceptance_criteria": [
+        "Right-click → 'Add Comment' menu item",
+        "Cmd+Shift+C keyboard shortcut",
+        "Inline popover with text field",
+        "Writes {==text==}{>>comment<<} to file",
+        "Overlap prevention with alert",
+        "Multi-line selections work"
+      ]
+    },
+    {
+      "id": "US-2",
+      "title": "Render Comment Highlights",
+      "acceptance_criteria": [
+        "Theme-specific background color on highlighted text",
+        "Gutter dot on comment lines",
+        "Works in all bundled themes (light + dark)"
+      ]
+    },
+    {
+      "id": "US-3",
+      "title": "Read, Edit, and Remove Comments",
+      "acceptance_criteria": [
+        "Click highlight → popover with comment",
+        "Click gutter dot → same popover",
+        "Edit button makes text editable",
+        "Remove strips markup, keeps text"
+      ]
+    },
+    {
+      "id": "US-4",
+      "title": "Replace Highlight Accept/Reject with Comment View",
+      "acceptance_criteria": [
+        "Highlights show comment popover (not accept/reject)",
+        "Additions/deletions/substitutions unchanged",
+        "Bare highlights show 'Add Comment' prompt"
+      ]
+    }
+  ],
+  "phases": [
+    {
+      "id": 1,
+      "name": "Comment Popover + Highlight Rendering",
+      "status": "pending",
+      "tasks": [
+        "Create CommentPopoverController",
+        "Route .highlight to comment popover",
+        "Add commentHighlight color to themes",
+        "Apply highlight background in InteractiveAnnotator",
+        "Gutter dot for comment lines"
+      ],
+      "verification": "xcodebuild build"
+    },
+    {
+      "id": 2,
+      "name": "Add Comment Flow",
+      "status": "pending",
+      "tasks": [
+        "Context menu 'Add Comment'",
+        "Cmd+Shift+C shortcut",
+        "Inline input popover",
+        "InteractionHandler.addComment",
+        "Overlap prevention",
+        "Multi-line support"
+      ],
+      "verification": "xcodebuild build"
+    },
+    {
+      "id": 3,
+      "name": "Edit Comment + Polish",
+      "status": "pending",
+      "tasks": [
+        "Edit mode in CommentPopoverController",
+        "InteractionHandler.editComment/removeComment",
+        "Bare highlight handling",
+        "Theme color verification"
+      ],
+      "verification": "xcodebuild build + swift test"
+    }
+  ]
+}

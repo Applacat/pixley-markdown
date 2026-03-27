@@ -47,15 +47,6 @@ public enum InteractiveElement: Sendable, Identifiable {
         }
     }
 
-    /// Whether this element type requires Pro to interact with.
-    /// Checkboxes, collapsibles, and progress bars are always free.
-    public var requiresPro: Bool {
-        switch self {
-        case .checkbox, .collapsible: return false
-        default: return true
-        }
-    }
-
     /// The range of this element in the source text.
     public var range: Range<String.Index> {
         switch self {
@@ -230,12 +221,9 @@ public struct StatusElement: Sendable {
         self.currentState = currentState
     }
 
-    /// Returns the valid next states (forward only).
+    /// Returns all states except the current one (allows forward and backward transitions).
     public var nextStates: [String] {
-        guard let currentIndex = states.firstIndex(of: currentState) else { return [] }
-        let nextIndex = states.index(after: currentIndex)
-        guard nextIndex < states.endIndex else { return [] }
-        return Array(states[nextIndex...])
+        states.filter { $0 != currentState }
     }
 }
 

@@ -1,0 +1,15 @@
+Premium Gate + Self-Describing Protocol — Progress Tracker
+==========================================================
+Updated: 2026-03-10
+
+SPEC 1: Premium Gate + Self-Describing Protocol [COMPLETE]
+  Phase 1: StoreService + .storekit Config ........... [COMPLETE]
+  Phase 2: Interaction Gate + NSPopover ............... [COMPLETE]
+  Phase 3: Purchase UI (Settings, Menu, Animation) ... [COMPLETE]
+  Phase 4: Self-Describing Protocol + SectionResolver  [COMPLETE]
+  Phase 5: AI Tool Gate .............................. [COMPLETE]
+
+Note: Specs 2-4 from the original "Pixley 3.0" tracker were split into
+separate specs. Classic Rendering → archived (superseded by Liquid Glass).
+Pixley Modal → archived (superseded by direct AI tool interaction).
+.pixley Bundle → still open, separate spec.

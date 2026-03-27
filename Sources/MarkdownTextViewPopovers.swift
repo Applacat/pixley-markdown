@@ -58,7 +58,11 @@ extension MarkdownNSTextView {
             return true
 
         case .suggestion(let s):
-            showSuggestionPopover(for: element, suggestion: s, at: charRange)
+            if s.type == .highlight {
+                showCommentPopover(for: element, suggestion: s, at: charRange)
+            } else {
+                showSuggestionPopover(for: element, suggestion: s, at: charRange)
+            }
             return true
 
         case .review(let rv):
@@ -136,6 +140,43 @@ extension MarkdownNSTextView {
                 self?.inputPopover?.close()
                 self?.inputPopover = nil
                 self?.onInputSubmitted?(element, nil, "value", dateString)
+            },
+            onCancel: { [weak self] in
+                self?.inputPopover?.close()
+                self?.inputPopover = nil
+            }
+        )
+        popover.contentViewController = controller
+
+        guard let positionRect = glyphRect(for: charRange) else { return }
+        inputPopover = popover
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.inputPopover === popover else { return }
+            popover.show(relativeTo: positionRect, of: self, preferredEdge: .maxY)
+        }
+    }
+
+    // MARK: - Comment Popover
+
+    /// Shows a read/edit/remove popover for CriticMarkup highlight comments.
+    func showCommentPopover(for element: InteractiveElement, suggestion: SuggestionElement, at charRange: NSRange) {
+        inputPopover?.close()
+
+        let commentText = suggestion.comment ?? ""
+        let popover = NSPopover()
+        popover.behavior = .transient
+
+        let controller = CommentPopoverController(
+            commentText: commentText,
+            onEdit: { [weak self] newComment in
+                self?.inputPopover?.close()
+                self?.inputPopover = nil
+                self?.onInputSubmitted?(element, nil, "editComment", newComment)
+            },
+            onRemove: { [weak self] in
+                self?.inputPopover?.close()
+                self?.inputPopover = nil
+                self?.onInputSubmitted?(element, nil, "action", "accept")
             },
             onCancel: { [weak self] in
                 self?.inputPopover?.close()

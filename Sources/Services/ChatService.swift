@@ -332,38 +332,85 @@ final class ChatService {
         return "Outline:\n\(outline1)\n\nElements:\n\(truncatedIndex)"
     }
 
-    /// Builds a compact element state index showing current values.
+    /// Builds a section-grouped element index showing only incomplete/actionable items.
+    /// Completed items are summarized as a count per section.
     private func buildElementIndex(structure: DocumentStructure) -> String {
-        var lines: [String] = []
-        for (i, element) in structure.elements.enumerated() {
-            let line: String
-            switch element {
-            case .checkbox(let cb):
-                line = "\(i): checkbox [\(cb.isChecked ? "x" : " ")] \(cb.label)"
-            case .choice(let ch):
-                let selected = ch.selectedIndex.map { "option \($0)" } ?? "none"
-                line = "\(i): choice (selected: \(selected))"
-            case .review(let rv):
-                let status = rv.selectedStatus?.rawValue ?? "pending"
-                line = "\(i): review (\(status))"
-            case .fillIn(let fi):
-                let value = fi.value ?? fi.hint
-                line = "\(i): fill-in [\(value)]"
-            case .feedback(let fb):
-                let text = fb.existingText ?? "empty"
-                line = "\(i): feedback (\(text))"
-            case .status(let st):
-                line = "\(i): status (\(st.currentState))"
-            case .confidence(let c):
-                line = "\(i): confidence (\(c.level.rawValue))"
-            case .suggestion(let s):
-                line = "\(i): suggestion (\(s.type))"
-            default:
-                continue
-            }
-            lines.append(line)
+        var sections: [(title: String, remaining: [(index: Int, description: String)], completed: Int, total: Int)] = []
+        collectSectionElements(structure.sections, allElements: structure.elements, content: structure.content, into: &sections)
+
+        let totalCompleted = sections.reduce(0) { $0 + $1.completed }
+        let totalAll = sections.reduce(0) { $0 + $1.total }
+
+        var result = "Completion: \(totalCompleted)/\(totalAll)"
+        if totalCompleted == totalAll && totalAll > 0 {
+            result += " — all done!"
+            return result
         }
-        return lines.joined(separator: "\n")
+
+        for section in sections where !section.remaining.isEmpty || section.total > 0 {
+            let prefix = section.completed == section.total ? "✓" : " "
+            result += "\n\n\(prefix) \(section.title) (\(section.completed)/\(section.total))"
+            for item in section.remaining {
+                result += "\n  \(item.index): \(item.description)"
+            }
+        }
+
+        return result
+    }
+
+    /// Recursively collects element state grouped by section headings.
+    private func collectSectionElements(_ sections: [Section], allElements: [InteractiveElement], content: String, into result: inout [(title: String, remaining: [(index: Int, description: String)], completed: Int, total: Int)]) {
+        for section in sections {
+            var remaining: [(index: Int, description: String)] = []
+            var completed = 0
+            var total = 0
+
+            // Only count elements directly in this section (not children)
+            for element in section.elements {
+                guard let i = allElements.firstIndex(where: { $0.id == element.id }) else { continue }
+                switch element {
+                case .checkbox(let cb):
+                    total += 1
+                    if cb.isChecked { completed += 1 }
+                    else { remaining.append((i, "checkbox [ ] \(cb.label)")) }
+                case .choice(let ch):
+                    total += 1
+                    if ch.selectedIndex != nil { completed += 1 }
+                    else {
+                        let options = ch.options.map(\.label).joined(separator: ", ")
+                        remaining.append((i, "choice (no selection) options: \(options)"))
+                    }
+                case .review(let rv):
+                    total += 1
+                    if rv.selectedStatus != nil { completed += 1 }
+                    else { remaining.append((i, "review (pending)")) }
+                case .fillIn(let fi):
+                    total += 1
+                    if fi.value != nil { completed += 1 }
+                    else { remaining.append((i, "fill-in [\(fi.hint)]")) }
+                case .feedback(let fb):
+                    total += 1
+                    if fb.existingText != nil { completed += 1 }
+                    else { remaining.append((i, "feedback (empty)")) }
+                case .status(let st):
+                    remaining.append((i, "status (\(st.currentState))"))
+                case .confidence(let c):
+                    remaining.append((i, "confidence (\(c.level.rawValue))"))
+                case .suggestion(let s):
+                    remaining.append((i, "suggestion (\(s.type))"))
+                default:
+                    break
+                }
+            }
+
+            if total > 0 || !remaining.isEmpty {
+                let heading = String(repeating: "#", count: section.level)
+                result.append((title: "\(heading) \(section.title)", remaining: remaining, completed: completed, total: total))
+            }
+
+            // Recurse into children
+            collectSectionElements(section.children, allElements: allElements, content: content, into: &result)
+        }
     }
 
     // MARK: - Error Handling

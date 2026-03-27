@@ -18,6 +18,9 @@ final class InteractiveAnnotator {
     /// The theme foreground color for filled elements
     let foregroundColor: NSColor
 
+    /// Background color for CriticMarkup comment highlights
+    let commentHighlightColor: NSColor?
+
     // MARK: - Initialization
 
     /// Creates an annotator with injected font and color dependencies.
@@ -25,9 +28,11 @@ final class InteractiveAnnotator {
     /// - Parameters:
     ///   - baseFont: The base font from the highlighter (used for point size and italic derivation)
     ///   - foregroundColor: The theme foreground color (used for filled fill-in elements)
-    init(baseFont: NSFont, foregroundColor: NSColor) {
+    ///   - commentHighlightColor: Theme-specific background for comment highlights (nil falls back to system yellow)
+    init(baseFont: NSFont, foregroundColor: NSColor, commentHighlightColor: NSColor? = nil) {
         self.baseFont = baseFont
         self.foregroundColor = foregroundColor
+        self.commentHighlightColor = commentHighlightColor
     }
 
     // MARK: - Interactive Element Annotation
@@ -149,10 +154,28 @@ final class InteractiveAnnotator {
                 case .substitution:
                     (.systemOrange, "Suggested change — click to review", .none)
                 case .highlight:
-                    (.systemYellow, "Highlighted — click to review", .none)
+                    (.systemYellow, s.comment != nil ? "Comment — click to read" : "Highlighted — click to add comment", .none)
                 }
-                attributed.addAttribute(.foregroundColor, value: color, range: nsRange)
-                attributed.addAttribute(.backgroundColor, value: color.withAlphaComponent(0.10), range: nsRange)
+                if s.type == .highlight {
+                    let bgColor = commentHighlightColor ?? NSColor.systemYellow.withAlphaComponent(0.15)
+                    attributed.addAttribute(.backgroundColor, value: bgColor, range: nsRange)
+                    // Hide the {>>comment<<} portion — only show the highlighted text
+                    if s.comment != nil {
+                        let fullText = String(text[swiftRange])
+                        if let commentStart = fullText.range(of: "==}{>>") {
+                            let hideStart = text.index(swiftRange.lowerBound, offsetBy: fullText.distance(from: fullText.startIndex, to: commentStart.lowerBound) + 2) // after "=="
+                            let hideRange = hideStart..<swiftRange.upperBound
+                            let hideNS = NSRange(hideRange, in: text)
+                            if hideNS.location + hideNS.length <= attributed.length {
+                                attributed.addAttribute(.foregroundColor, value: NSColor.clear, range: hideNS)
+                                attributed.addAttribute(.font, value: NSFont.systemFont(ofSize: 0.1), range: hideNS)
+                            }
+                        }
+                    }
+                } else {
+                    attributed.addAttribute(.foregroundColor, value: color, range: nsRange)
+                    attributed.addAttribute(.backgroundColor, value: color.withAlphaComponent(0.10), range: nsRange)
+                }
                 if decoration == .strikethrough {
                     attributed.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
                     attributed.addAttribute(.strikethroughColor, value: color.withAlphaComponent(0.6), range: nsRange)
@@ -165,10 +188,11 @@ final class InteractiveAnnotator {
                 if labelNS.location + labelNS.length <= attributed.length {
                     attributed.addAttribute(.interactiveElement, value: wrapper, range: labelNS)
                     let isTerminal = st.nextStates.isEmpty
-                    let badgeColor: NSColor = isTerminal ? .systemGreen : .systemIndigo
-                    attributed.addAttribute(.backgroundColor, value: badgeColor.withAlphaComponent(0.15), range: labelNS)
-                    attributed.addAttribute(.foregroundColor, value: badgeColor, range: labelNS)
-                    let tooltip = isTerminal ? "Status complete" : "Click to advance status"
+                    let badgeColor: NSColor = isTerminal ? .systemGreen : .controlAccentColor
+                    // Stronger background to look more button-like
+                    attributed.addAttribute(.backgroundColor, value: badgeColor.withAlphaComponent(isTerminal ? 0.15 : 0.12), range: labelNS)
+                    attributed.addAttribute(.foregroundColor, value: isTerminal ? badgeColor : .labelColor, range: labelNS)
+                    let tooltip = isTerminal ? "Status complete" : "Click to change status"
                     attributed.addAttribute(.toolTip, value: tooltip, range: labelNS)
                 }
                 let commentNS = NSRange(st.commentRange, in: text)
@@ -244,10 +268,14 @@ final class InteractiveAnnotator {
         for element in elements.reversed() {
             switch element {
             case .checkbox(let cb):
-                let symbol = cb.isChecked ? "checkmark.square.fill" : "square"
-                let color: NSColor = cb.isChecked ? .controlAccentColor : .tertiaryLabelColor
-                replaceBracketArea(checkRange: cb.checkRange, in: attributed, text: text,
-                                   symbol: symbol, color: color, fontSize: fontSize)
+                if cb.isChecked {
+                    replaceBracketArea(checkRange: cb.checkRange, in: attributed, text: text,
+                                       symbol: "checkmark.square.fill", color: .controlAccentColor, fontSize: fontSize,
+                                       paletteColors: [.white, .controlAccentColor])
+                } else {
+                    replaceBracketArea(checkRange: cb.checkRange, in: attributed, text: text,
+                                       symbol: "square", color: .tertiaryLabelColor, fontSize: fontSize)
+                }
 
             case .choice(let ch):
                 for option in ch.options.reversed() {
@@ -267,11 +295,11 @@ final class InteractiveAnnotator {
                 }
 
             case .status(let st) where !st.nextStates.isEmpty:
-                // Append dropdown chevron to the status label (looks like NSPopUpButton)
+                // Append dropdown chevron to the status label
                 let labelNS = NSRange(st.labelRange, in: text)
                 guard labelNS.location + labelNS.length <= attributed.length else { continue }
-                let chevron = makeSFSymbolAttachment("chevron.up.chevron.down",
-                                                     color: .secondaryLabelColor, size: fontSize * 0.55)
+                let chevron = makeSFSymbolAttachment("chevron.down",
+                                                     color: .secondaryLabelColor, size: fontSize * 0.5)
                 let spacedChevron = NSMutableAttributedString(string: " ")
                 spacedChevron.append(chevron)
                 // Preserve interactive attributes on the chevron
@@ -296,7 +324,7 @@ final class InteractiveAnnotator {
 
     /// Replaces a `[x]`/`[ ]` bracket area with an SF Symbol attachment (checkbox or radio image).
     private func replaceBracketArea(checkRange: Range<String.Index>, in attributed: NSMutableAttributedString,
-                                    text: String, symbol: String, color: NSColor, fontSize: CGFloat) {
+                                    text: String, symbol: String, color: NSColor, fontSize: CGFloat, paletteColors: [NSColor]? = nil) {
         let checkNS = NSRange(checkRange, in: text)
         // Bracket area: `[` before check char, `]` after -> 3 characters total
         guard checkNS.location > 0, checkNS.location + checkNS.length + 1 <= attributed.length else { return }
@@ -304,16 +332,16 @@ final class InteractiveAnnotator {
 
         // Preserve existing attributes (interactive element, tooltip, etc.)
         let existingAttrs = attributed.attributes(at: bracketRange.location, effectiveRange: nil)
-        let symbolStr = makeSFSymbolAttachment(symbol, color: color, size: fontSize)
+        let symbolStr = makeSFSymbolAttachment(symbol, color: color, size: fontSize, paletteColors: paletteColors)
         let mutable = NSMutableAttributedString(attributedString: symbolStr)
         mutable.addAttributes(existingAttrs, range: NSRange(location: 0, length: mutable.length))
         attributed.replaceCharacters(in: bracketRange, with: mutable)
     }
 
     /// Creates an NSAttributedString containing a colored SF Symbol as an inline text attachment.
-    private func makeSFSymbolAttachment(_ name: String, color: NSColor, size: CGFloat) -> NSAttributedString {
+    private func makeSFSymbolAttachment(_ name: String, color: NSColor, size: CGFloat, paletteColors: [NSColor]? = nil) -> NSAttributedString {
         let sizeConfig = NSImage.SymbolConfiguration(pointSize: size, weight: .medium)
-        let colorConfig = NSImage.SymbolConfiguration(paletteColors: [color])
+        let colorConfig = NSImage.SymbolConfiguration(paletteColors: paletteColors ?? [color])
         let config = sizeConfig.applying(colorConfig)
         guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else {
@@ -322,54 +350,6 @@ final class InteractiveAnnotator {
         let attachment = NSTextAttachment()
         attachment.image = image
         return NSAttributedString(attachment: attachment)
-    }
-
-    // MARK: - Progress Bars
-
-    /// Annotates section headings with progress bars based on interactive element completion.
-    /// Progress bars are rendered-only -- not written back to the source markdown.
-    func annotateProgressBars(_ attributed: NSMutableAttributedString, structure: DocumentStructure, text: String) {
-        for section in structure.sections {
-            annotateSectionProgress(section, attributed: attributed, text: text)
-        }
-    }
-
-    private func annotateSectionProgress(_ section: Section, attributed: NSMutableAttributedString, text: String) {
-        if let progress = section.progress {
-            // Find the end of the heading line to insert progress text
-            let headingNS = NSRange(section.range, in: text)
-            guard headingNS.location + headingNS.length <= attributed.length else { return }
-
-            // Find the first newline in the section range to locate end of heading
-            let headingText = text[section.range]
-            if let newlineIndex = headingText.firstIndex(of: "\n") {
-                let insertPosition = NSRange(newlineIndex..<newlineIndex, in: text).location
-
-                let filled = Int(progress.completed)
-                let total = Int(progress.total)
-                let pct = total > 0 ? Int(Double(filled) / Double(total) * 100) : 0
-
-                // Build progress bar: filled/empty blocks + percentage
-                let barLength = 6
-                let filledCount = total > 0 ? Int(round(Double(filled) / Double(total) * Double(barLength))) : 0
-                let emptyCount = barLength - filledCount
-                let bar = String(repeating: "\u{2588}", count: filledCount) + String(repeating: "\u{2591}", count: emptyCount)
-                let progressText = "  \(bar) \(pct)% (\(filled)/\(total))"
-
-                let progressAttr = NSMutableAttributedString(string: progressText)
-                let progressRange = NSRange(location: 0, length: progressAttr.length)
-                let progressColor: NSColor = pct == 100 ? .systemGreen : .secondaryLabelColor
-                progressAttr.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: baseFont.pointSize * 0.75, weight: .regular), range: progressRange)
-                progressAttr.addAttribute(.foregroundColor, value: progressColor, range: progressRange)
-
-                attributed.insert(progressAttr, at: insertPosition)
-            }
-        }
-
-        // Recurse into children (process in reverse order since insertions shift positions)
-        for child in section.children.reversed() {
-            annotateSectionProgress(child, attributed: attributed, text: text)
-        }
     }
 
     // MARK: - Plain Mode Annotation
@@ -456,20 +436,19 @@ final class InteractiveAnnotator {
     /// CriticMarkup decoration type for unified styling
     private enum CriticDecoration { case none, strikethrough }
 
+    /// Cached compiled regexes for CriticMarkup delimiters
+    private static let criticMarkupDelimiterRegexes: [NSRegularExpression] = [
+        #"\{\+\+"#, #"\+\+\}"#,
+        #"\{--"#, #"--\}"#,
+        #"\{~~"#, #"~>"#, #"~~\}"#,
+        #"\{=="#, #"==\}"#, #"\{>>"#, #"<<\}"#,
+    ].compactMap { try? NSRegularExpression(pattern: $0) }
+
     /// Dims CriticMarkup delimiters to make the content stand out over the syntax.
     private static func dimCriticMarkupDelimiters(in attributed: NSMutableAttributedString, range: NSRange, text: String) {
         let delimiterColor = NSColor.tertiaryLabelColor
 
-        // Patterns: {++...++}  {--...--}  {~~...~>...~~}  {==...==}{>>...<<}
-        let delimiterPatterns = [
-            #"\{\+\+"#, #"\+\+\}"#,
-            #"\{--"#, #"--\}"#,
-            #"\{~~"#, #"~>"#, #"~~\}"#,
-            #"\{=="#, #"==\}"#, #"\{>>"#, #"<<\}"#,
-        ]
-
-        for pattern in delimiterPatterns {
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+        for regex in criticMarkupDelimiterRegexes {
             for match in regex.matches(in: text, range: range) {
                 attributed.addAttribute(.foregroundColor, value: delimiterColor, range: match.range)
             }

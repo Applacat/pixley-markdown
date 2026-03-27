@@ -137,10 +137,6 @@ public enum InteractiveMode: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Whether this mode requires a Pro purchase
-    public var requiresPro: Bool {
-        self == .hybrid || self == .liquidGlass
-    }
 }
 
 // MARK: - Setting Types
@@ -179,9 +175,17 @@ public enum SyntaxThemeSetting: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Convenience: resolve from a ColorScheme (nil = dark default)
+    /// Convenience: resolve from a ColorScheme (nil = follow system appearance).
+    /// Must be called from MainActor when colorScheme is nil (system detection requires NSApp).
+    @MainActor
     public func rendererTheme(for colorScheme: ColorScheme?) -> SyntaxTheme {
-        rendererTheme(isDark: colorScheme != .light)
+        let isDark: Bool
+        if let scheme = colorScheme {
+            isDark = scheme == .dark
+        } else {
+            isDark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        }
+        return rendererTheme(isDark: isDark)
     }
 
     // MARK: - Migration from old per-variant raw values
@@ -293,7 +297,9 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
             behavior.underlineLinks = defaults.bool(forKey: "underlineLinks")
         }
         let modeRaw = defaults.string(forKey: "interactiveMode") ?? InteractiveMode.enhanced.rawValue
-        behavior.interactiveMode = InteractiveMode(rawValue: modeRaw) ?? .enhanced
+        let loadedMode = InteractiveMode(rawValue: modeRaw) ?? .enhanced
+        // Fall back to Enhanced if user had Hybrid or Liquid Glass (removed from UI)
+        behavior.interactiveMode = (loadedMode == .hybrid || loadedMode == .liquidGlass) ? .enhanced : loadedMode
 
         self.appearance = appearance
         self.rendering = rendering
@@ -421,16 +427,3 @@ extension EnvironmentValues {
     }
 }
 
-// MARK: - StoreService Environment Key
-
-private struct StoreServiceKey: @preconcurrency EnvironmentKey {
-    @MainActor static var defaultValue = StoreService.shared
-}
-
-extension EnvironmentValues {
-    @MainActor
-    var storeService: StoreService {
-        get { self[StoreServiceKey.self] }
-        set { self[StoreServiceKey.self] = newValue }
-    }
-}

@@ -14,10 +14,10 @@ Phase 2: Core Patterns [COMPLETE]
   US-7: Feedback [COMPLETE]
 
 Phase 3: Advanced Patterns [COMPLETE]
-  US-8: Reviews (Approvals + QA) [COMPLETE]
+  US-8: Reviews (Approvals + QA) [COMPLETE] → superseded by v4 Auditable Checkbox
   US-9: CriticMarkup [COMPLETE]
   US-10: Status State Machines [COMPLETE]
-  US-11: Confidence Indicators [COMPLETE]
+  US-11: Confidence Indicators [COMPLETE] → superseded by v4 Slider control
   US-12: Conditional / Collapsible Sections [DEFERRED]
   US-13: Progress Bars [COMPLETE]
   US-14: Gutter Refactor [DEFERRED]

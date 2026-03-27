@@ -1,0 +1,58 @@
+{
+  "name": "2 Fixes Before Smoke Test",
+  "slug": "2-fixes-before-smoke-test",
+  "date": "2026-03-09",
+  "status": "READY",
+  "stories": [
+    {
+      "id": "US-1",
+      "title": "Fill-In Re-Edit",
+      "description": "Allow changing already-submitted fill-in values by re-opening the popover with the current value pre-populated",
+      "acceptance_criteria": [
+        "Clicking a filled [[value]] opens popover with current value pre-filled",
+        "Submitting replaces the old value in the file",
+        "Date fill-ins pre-populate with existing date",
+        "File/folder fill-ins show current path and allow re-picking",
+        "Same Submit button label for edit and new",
+        "Build succeeds"
+      ]
+    },
+    {
+      "id": "US-2",
+      "title": "Gutter Comments via Feedback Insertion",
+      "description": "Unified bookmark + comment popover from the line number gutter, writing <!-- feedback: text --> into the file",
+      "acceptance_criteria": [
+        "Clicking gutter opens popover with bookmark toggle + comment field",
+        "Submitting inserts <!-- feedback: text --> after clicked line",
+        "Existing <!-- feedback --> pre-fills the comment field",
+        "Empty comment submission removes the <!-- feedback --> line",
+        "Gutter shows text.bubble SF Symbol for commented lines",
+        "Gutter shows orange dot for bookmark-only lines",
+        "Bookmark toggle works independently of comment",
+        "File watcher suppressed during write-back",
+        "Comment persists after reload",
+        "Build succeeds"
+      ]
+    }
+  ],
+  "phases": [
+    {
+      "id": 1,
+      "name": "Fill-In Re-Edit",
+      "stories": ["US-1"],
+      "verification": "Fill a value, click again, popover shows current value"
+    },
+    {
+      "id": 2,
+      "name": "Gutter Comment Popover",
+      "stories": ["US-2"],
+      "verification": "Click gutter, submit comment, feedback tag appears in file"
+    },
+    {
+      "id": 3,
+      "name": "Gutter Visual Indicators",
+      "stories": ["US-2"],
+      "verification": "Lines with feedback tags show speech bubble in gutter"
+    }
+  ]
+}

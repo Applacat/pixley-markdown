@@ -25,6 +25,7 @@ final class MarkdownHighlighter {
         let separator: NSColor
         let foreground: NSColor
         let background: NSColor
+        let commentHighlight: NSColor
 
         /// Creates a Theme from an aimdRenderer SyntaxPalette
         init(from palette: SyntaxPalette) {
@@ -41,6 +42,7 @@ final class MarkdownHighlighter {
             self.separator = NSColor(hex: palette.lineNumber) ?? .separatorColor
             self.foreground = NSColor(hex: palette.foreground) ?? .labelColor
             self.background = NSColor(hex: palette.background) ?? .textBackgroundColor
+            self.commentHighlight = NSColor(hex: palette.commentHighlight) ?? NSColor.systemYellow.withAlphaComponent(0.15)
         }
 
         /// Default theme using Xcode Dark palette
@@ -181,12 +183,113 @@ final class MarkdownHighlighter {
         return attributed
     }
 
+    // MARK: - Table Column Padding
+
+    /// Pads markdown table cells with spaces so columns align in monospace font.
+    /// Operates on the display attributed string — does not modify the source file.
+    /// Processes tables from bottom to top so insertions don't shift earlier positions.
+    static func padTableColumns(in attributed: NSMutableAttributedString) {
+        let text = attributed.string
+        let lines = text.components(separatedBy: "\n")
+
+        // Find table blocks (consecutive lines starting with |)
+        var tableBlocks: [(startLine: Int, endLine: Int)] = []
+        var blockStart: Int?
+        for (i, line) in lines.enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("|") {
+                if blockStart == nil { blockStart = i }
+            } else {
+                if let start = blockStart {
+                    tableBlocks.append((start, i - 1))
+                    blockStart = nil
+                }
+            }
+        }
+        if let start = blockStart {
+            tableBlocks.append((start, lines.count - 1))
+        }
+
+        guard !tableBlocks.isEmpty else { return }
+
+        // Process from last table to first (bottom-up) so character insertions don't shift earlier tables
+        for block in tableBlocks.reversed() {
+            // Parse cells for each row
+            var rows: [[String]] = []
+            for lineIdx in block.startLine...block.endLine {
+                let line = lines[lineIdx]
+                let cells = parseCells(from: line)
+                rows.append(cells)
+            }
+
+            guard !rows.isEmpty else { continue }
+
+            // Skip separator rows (like |---|---|) for column width calculation
+            let dataRows = rows.filter { row in
+                !row.allSatisfy { $0.trimmingCharacters(in: .whitespaces).allSatisfy { $0 == "-" || $0 == ":" } }
+            }
+            guard !dataRows.isEmpty else { continue }
+
+            // Calculate max width per column
+            let colCount = rows.map(\.count).max() ?? 0
+            guard colCount > 0 else { continue }
+            var maxWidths = [Int](repeating: 0, count: colCount)
+            for row in dataRows {
+                for (col, cell) in row.enumerated() where col < colCount {
+                    maxWidths[col] = max(maxWidths[col], cell.count)
+                }
+            }
+
+            // Rebuild each table line with padded cells, from bottom to top
+            for lineIdx in (block.startLine...block.endLine).reversed() {
+                let line = lines[lineIdx]
+                let cells = rows[lineIdx - block.startLine]
+
+                // Build padded line
+                var padded = "|"
+                for (col, cell) in cells.enumerated() {
+                    let targetWidth = col < maxWidths.count ? maxWidths[col] : cell.count
+                    let isSeparator = cell.trimmingCharacters(in: .whitespaces).allSatisfy { $0 == "-" || $0 == ":" }
+                    if isSeparator {
+                        padded += " " + String(repeating: "-", count: targetWidth) + " |"
+                    } else {
+                        padded += " " + cell.padding(toLength: targetWidth, withPad: " ", startingAt: 0) + " |"
+                    }
+                }
+
+                // Find the NSRange of this line in the attributed string
+                let lineStart = lines[0..<lineIdx].reduce(0) { $0 + $1.count + 1 } // +1 for \n
+                let lineRange = NSRange(location: lineStart, length: line.count)
+                guard lineRange.location + lineRange.length <= attributed.length else { continue }
+
+                // Preserve attributes from the first character of the line
+                let attrs = attributed.attributes(at: lineRange.location, effectiveRange: nil)
+                let replacement = NSAttributedString(string: padded, attributes: attrs)
+                attributed.replaceCharacters(in: lineRange, with: replacement)
+            }
+        }
+    }
+
+    /// Parses a markdown table row into trimmed cell contents (without leading/trailing |).
+    private static func parseCells(from line: String) -> [String] {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("|") else { return [] }
+        // Split by |, drop first empty and last empty
+        let parts = trimmed.split(separator: "|", omittingEmptySubsequences: false)
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+        // Drop leading empty from first | and trailing empty from last |
+        if parts.count >= 2 {
+            return Array(parts.dropFirst().dropLast())
+        }
+        return parts
+    }
+
     // MARK: - Interactive Annotator
 
     /// Creates an InteractiveAnnotator configured with this highlighter's font and theme.
     /// The annotator handles interactive element styling as a separate concern from syntax highlighting.
     func makeAnnotator() -> InteractiveAnnotator {
-        InteractiveAnnotator(baseFont: baseFont, foregroundColor: theme.foreground)
+        InteractiveAnnotator(baseFont: baseFont, foregroundColor: theme.foreground, commentHighlightColor: theme.commentHighlight)
     }
 
     private func applyRule(_ rule: HighlightRule, to str: NSMutableAttributedString, match: NSTextCheckingResult) {

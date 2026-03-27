@@ -2,17 +2,17 @@ Liquid Glass Line Indicators — Progress Tracker
 ================================================
 
 Phase 1: Foundation
-  [PENDING] US-1: Infinite Canvas Foundation
-  [PENDING] US-2: Line Layout Bridge
+  [DONE] US-1: Infinite Canvas Foundation
+  [DONE] US-2: Line Layout Bridge
 
 Phase 2: Line Numbers + Toggle
-  [PENDING] US-3: Floating Line Numbers
-  [PENDING] US-4: Corner Badge Toggle
+  [DONE] US-3: Floating Line Numbers
+  [DONE] US-4: Corner Badge Toggle
 
 Phase 3: Range Bookmarks
-  [PENDING] US-5: Range Bookmark Data Model
-  [PENDING] US-6: Bookmark Bubble Visualization
-  [PENDING] US-7: Bookmark Interaction
+  [DONE] US-5: Range Bookmark Data Model
+  [DONE] US-6: Bookmark Bubble Visualization
+  [DONE] US-7: Bookmark Interaction
 
 Phase 4: AI Integration
-  [PENDING] US-8: AI Bookmark Context
+  [DONE] US-8: AI Bookmark Context

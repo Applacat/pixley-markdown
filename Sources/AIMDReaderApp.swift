@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 // MARK: - App Delegate
 
@@ -95,9 +96,6 @@ struct PixleyMarkdownApp: App {
     /// Settings repository — injected into Environment for all views
     private let settings = UserDefaultsSettingsRepository.shared
 
-    /// Store service for Pro purchase management
-    private let storeService = StoreService.shared
-
     /// SwiftData container for file metadata persistence
     private let modelContainer: ModelContainer
 
@@ -116,10 +114,8 @@ struct PixleyMarkdownApp: App {
         Window("Pixley Markdown", id: "start") {
             StartView()
                 .environment(\.settings, settings)
-                .environment(\.storeService, storeService)
                 .modelContainer(modelContainer)
                 .preferredColorScheme(settings.appearance.colorScheme)
-                .task { await storeService.verifyOnLaunch() }
         }
         #if os(macOS)
         .defaultLaunchBehavior(.presented)
@@ -132,7 +128,6 @@ struct PixleyMarkdownApp: App {
         WindowGroup("Pixley Markdown", id: "browser", for: BrowserOpenRequest.self) { $request in
             BrowserWindowRoot(request: request)
                 .environment(\.settings, settings)
-                .environment(\.storeService, storeService)
                 .modelContainer(modelContainer)
                 .preferredColorScheme(settings.appearance.colorScheme)
         }
@@ -146,6 +141,11 @@ struct PixleyMarkdownApp: App {
                     openStartWindow()
                 }
                 .keyboardShortcut("n", modifiers: [.command])
+
+                Button("Open File...") {
+                    openFilePanelForNewWindow()
+                }
+                .keyboardShortcut("o", modifiers: [.command])
 
                 Button("Open Folder...") {
                     openFolderPanelForNewWindow()
@@ -230,10 +230,10 @@ struct PixleyMarkdownApp: App {
                 .disabled(activeCoordinator?.navigation.selectedFile == nil)
             }
 
-            // View menu — font size + AI Chat toggle
+            // View menu — font size + Pixley Chat toggle
             CommandGroup(after: .toolbar) {
                 if #available(macOS 26, *) {
-                    Button(activeCoordinator?.ui.isAIChatVisible == true ? "Hide AI Chat" : "Show AI Chat") {
+                    Button(activeCoordinator?.ui.isAIChatVisible == true ? "Hide Pixley Chat" : "Show Pixley Chat") {
                         withAnimation {
                             activeCoordinator?.toggleAIChat()
                         }
@@ -262,36 +262,27 @@ struct PixleyMarkdownApp: App {
                 }
                 .keyboardShortcut("/", modifiers: [.command])
 
-                Button("Reading Documents") {
-                    openWelcomeToPage("02-Reading.md")
+                Button("Reading & Browsing") {
+                    openWelcomeToPage("02-Reading-and-Browsing.md")
                 }
 
-                Button("Navigating Files") {
-                    openWelcomeToPage("03-Navigating.md")
+                Button("Interactive Controls") {
+                    openWelcomeToPage("03-Interactive-Controls.md")
                 }
 
                 if #available(macOS 26, *) {
                     Button("AI Chat") {
-                        openWelcomeToPage("Tips and Tricks/04-AI-Chat.md")
+                        openWelcomeToPage("04-AI-Chat.md")
                     }
                 }
 
                 Button("Quick Reference") {
-                    openWelcomeToPage("Tips and Tricks/05-Quick-Reference.md")
+                    openWelcomeToPage("05-Quick-Reference.md")
                 }
 
                 Divider()
 
                 Link("Report a Bug", destination: URL(string: "https://github.com")!)
-            }
-
-            // Pro upgrade menu
-            CommandGroup(after: .appSettings) {
-                if !storeService.isUnlocked {
-                    Button("Upgrade to Pro...") {
-                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                    }
-                }
             }
 
             // About menu
@@ -307,7 +298,6 @@ struct PixleyMarkdownApp: App {
         Settings {
             SettingsView()
                 .environment(\.settings, settings)
-                .environment(\.storeService, storeService)
         }
     }
 
@@ -349,34 +339,8 @@ struct PixleyMarkdownApp: App {
     // MARK: - Open Recent Item
 
     private func openRecentItem(_ item: RecentItem) {
-        if item.isFolder {
-            let folders = RecentFoldersManager.shared.getRecentFolders()
-            guard let folder = folders.first(where: { $0.path == item.path }),
-                  let resolvedURL = RecentFoldersManager.shared.resolveBookmark(folder) else {
-                RecentFoldersManager.shared.removeFolderByPath(item.path)
-                return
-            }
-            RecentFoldersManager.shared.addFolder(resolvedURL)
-            WindowRouter.shared.openBrowser(BrowserOpenRequest(folderURL: resolvedURL))
-        } else {
-            guard let parentPath = item.parentPath else { return }
-            let folders = RecentFoldersManager.shared.getRecentFolders()
-            guard let parentFolder = folders.first(where: { $0.path == parentPath }),
-                  let resolvedURL = RecentFoldersManager.shared.resolveBookmark(parentFolder) else {
-                RecentFoldersManager.shared.removeRecentFile(item)
-                return
-            }
-            let fileURL = URL(fileURLWithPath: item.path)
-            guard FileManager.default.fileExists(atPath: fileURL.path) else {
-                RecentFoldersManager.shared.removeRecentFile(item)
-                return
-            }
-            WindowRouter.shared.openBrowser(BrowserOpenRequest(
-                folderURL: resolvedURL,
-                fileURL: fileURL,
-                preferSidebarCollapsed: true
-            ))
-        }
+        guard let request = RecentFoldersManager.shared.resolveRecentItem(item) else { return }
+        WindowRouter.shared.openBrowser(request)
     }
 
     // MARK: - Window Management
@@ -391,6 +355,27 @@ struct PixleyMarkdownApp: App {
             WindowRouter.shared.openWindowAction?(id: "start")
         }
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func openFilePanelForNewWindow() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = ["md", "markdown"].compactMap { UTType(filenameExtension: $0) }
+        panel.message = "Choose a markdown file"
+        panel.prompt = "Open"
+
+        panel.begin { @MainActor response in
+            guard response == .OK, let fileURL = panel.url else { return }
+            let folderURL = fileURL.deletingLastPathComponent()
+            RecentFoldersManager.shared.addFolder(folderURL)
+            WindowRouter.shared.openBrowser(BrowserOpenRequest(
+                folderURL: folderURL,
+                fileURL: fileURL,
+                preferSidebarCollapsed: true
+            ))
+        }
     }
 
     private func openFolderPanelForNewWindow() {

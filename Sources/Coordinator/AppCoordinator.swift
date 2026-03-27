@@ -498,7 +498,7 @@ public final class NavigationState {
 @Observable
 public final class UIState {
 
-    /// Whether the AI Chat panel is visible
+    /// Whether the Pixley Chat panel is visible
     public internal(set) var isAIChatVisible: Bool = false
 
     /// Flag to trigger browser window opening (consumed by views)

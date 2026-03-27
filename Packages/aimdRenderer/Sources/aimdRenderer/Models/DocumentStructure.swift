@@ -149,26 +149,17 @@ public struct Section: Sendable, Identifiable {
 
     // MARK: - Progress Calculation
 
-    /// Completion progress for this section (checkboxes + reviews).
-    /// Returns (completed, total) or nil if no trackable elements exist.
-    public var progress: (completed: Int, total: Int)? {
+    /// Checkbox completion progress for this section (including children).
+    /// Returns (completed, total) or nil if no checkboxes exist.
+    public var checkboxProgress: (completed: Int, total: Int)? {
         let allElements = allElementsRecursive
         var total = 0
         var completed = 0
 
         for element in allElements {
-            switch element {
-            case .checkbox(let e):
+            if case .checkbox(let e) = element {
                 total += 1
                 if e.isChecked { completed += 1 }
-            case .review(let e):
-                total += 1
-                if e.selectedStatus != nil { completed += 1 }
-            case .choice(let e):
-                total += 1
-                if e.selectedIndex != nil { completed += 1 }
-            default:
-                break
             }
         }
 

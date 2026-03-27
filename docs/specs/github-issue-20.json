@@ -1,0 +1,111 @@
+{
+  "feature": "StartView Redesign — 3 Entry Points",
+  "issue": 20,
+  "milestone": "v3.0 — Relay MVP",
+  "status": "pending",
+  "created": "2026-03-27",
+  "scope": {
+    "in_scope": [
+      "Replace Desktop/Documents/Downloads shortcuts with Open File, Open Folder, Sample Files",
+      "Prominent full-width button layout with visual hierarchy",
+      "Time-grouped recents (Today, This Week, Older) with parent folder breadcrumbs",
+      "Launch behavior: always show StartView (no auto-restore)",
+      "Add Open File... (Cmd+O) to File menu",
+      "Full keyboard navigation in StartView",
+      "New tagline: Read and Collaborate with your AI's Markdown"
+    ],
+    "out_of_scope": [
+      "Create a Project entry point (.pixley format, #19, shelved)",
+      "Project root detection for single-file opens",
+      "SecurityScopedBookmarkManager changes",
+      "Auto-reappear StartView when last browser closes"
+    ]
+  },
+  "user_stories": [
+    {
+      "id": "US-1",
+      "title": "New StartView Layout with Entry Points",
+      "acceptance_criteria": [
+        "Three full-width rounded buttons: Open File (primary), Open Folder (primary), Sample Files (tertiary)",
+        "Mascot header with new tagline",
+        "Desktop/Documents/Downloads removed",
+        "Drag-and-drop unchanged",
+        "Mascot clickable easter egg preserved"
+      ]
+    },
+    {
+      "id": "US-2",
+      "title": "Time-Grouped Recents with Path Breadcrumbs",
+      "acceptance_criteria": [
+        "Recents grouped by Today/This Week/Older",
+        "Empty groups hidden",
+        "Each item shows name + parent folder name",
+        "Adaptive sizing (480 compact, 720 wide)",
+        "Clear Recents and Remove from Recents preserved"
+      ]
+    },
+    {
+      "id": "US-3",
+      "title": "Launch Behavior — Always Show StartView",
+      "acceptance_criteria": [
+        "App launch always shows StartView",
+        "First launch still bypasses to welcome tour",
+        "No pre-selection in recents",
+        "Cmd+N shows StartView",
+        "No auto-reappear on last window close"
+      ]
+    },
+    {
+      "id": "US-4",
+      "title": "File Menu — Open File + Keyboard Navigation",
+      "acceptance_criteria": [
+        "Open File... (Cmd+O) in File menu",
+        ".pixley UTI in filter (future-ready)",
+        "Tab between buttons, arrows in recents, Return to open",
+        "Open Folder... (Cmd+Shift+O) unchanged"
+      ]
+    }
+  ],
+  "phases": [
+    {
+      "id": 1,
+      "name": "Layout Rewrite + Launch Behavior",
+      "status": "pending",
+      "tasks": [
+        "Create EntryPointButton component",
+        "Rewrite shortcutsColumn with 3 entry points",
+        "Add Open File NSOpenPanel handler",
+        "Update tagline",
+        "Remove Desktop/Documents/Downloads code",
+        "Change determineLaunchRequest (no auto-restore)",
+        "Add Open File to File menu",
+        "Confirm Cmd+N behavior"
+      ],
+      "verification": "xcodebuild -project AIMDReader.xcodeproj -scheme AIMDReader -destination 'platform=macOS' build"
+    },
+    {
+      "id": 2,
+      "name": "Time-Grouped Recents + Keyboard Navigation",
+      "status": "pending",
+      "tasks": [
+        "Add RecentTimeGroup enum and groupedRecents helper",
+        "Rewrite recentsColumn with grouped sections",
+        "Add parent folder breadcrumb text",
+        "Hide empty time groups",
+        "Add keyboard shortcuts (Cmd+O, Cmd+Shift+O)",
+        "Add arrow key navigation in recents",
+        "Add Return/Enter to open focused item",
+        "Add Tab cycling between buttons"
+      ],
+      "verification": "xcodebuild -project AIMDReader.xcodeproj -scheme AIMDReader -destination 'platform=macOS' build"
+    }
+  ],
+  "verification": {
+    "build": "xcodebuild -project AIMDReader.xcodeproj -scheme AIMDReader -destination 'platform=macOS' build",
+    "smoke_tests": [
+      "Launch app → see StartView → open file → close browser → Cmd+N → see StartView again",
+      "Recents show time groups with parent folder breadcrumbs",
+      "Cmd+O opens file picker, Cmd+Shift+O opens folder picker"
+    ]
+  }
+}

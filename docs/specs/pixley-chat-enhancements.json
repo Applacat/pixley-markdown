@@ -1,0 +1,31 @@
+{
+  "feature": "Pixley Chat Enhancements",
+  "slug": "pixley-chat-enhancements",
+  "status": "PENDING",
+  "created": "2026-03-24",
+  "github_issue": 27,
+  "user_stories": [
+    {
+      "id": "US-1",
+      "title": "Rebrand to Pixley Chat",
+      "status": "PENDING"
+    },
+    {
+      "id": "US-2",
+      "title": "Context-aware suggested prompt chips",
+      "status": "PENDING"
+    }
+  ],
+  "phases": [
+    {
+      "name": "Rebrand",
+      "stories": ["US-1"],
+      "status": "PENDING"
+    },
+    {
+      "name": "Prompt chips",
+      "stories": ["US-2"],
+      "status": "PENDING"
+    }
+  ]
+}

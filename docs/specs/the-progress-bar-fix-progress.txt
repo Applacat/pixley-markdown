@@ -1,0 +1,14 @@
+## Phase 1: Attachment renderer (US-1)
+- [PENDING] Create makeProgressAttachment(filled:total:fontSize:) function
+- [PENDING] Rewrite annotateProgressBars to use NSTextAttachment
+- [PENDING] Process sections in reverse document order
+- [PENDING] Verify no text corruption with checkbox annotations
+
+## Phase 2: Filtering and polish (US-2, US-3)
+- [PENDING] Filter to H1/H2 headings only
+- [PENDING] Green bar + checkmark at 100%
+- [PENDING] Skip headings with zero checkboxes
+- [PENDING] Enhanced mode only (no progress bars in Plain)
+- [PENDING] Immediate update on checkbox toggle
+- [PENDING] Scale bar height with heading font size
+- [PENDING] Test across font sizes 10-32pt

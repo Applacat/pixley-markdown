@@ -1,12 +1,19 @@
-# Pixley Markdown Reader
+# Pixley Markdown
 
-A native macOS markdown reader for AI-generated files. Watch what AI writes, ask questions about it, stay in flow.
+An AI-to-human collaboration tool. AI writes markdown, you relay your intent back through the document.
 
 ## Vision
 
-Read markdown files elegantly. Browse folder hierarchies, view with syntax highlighting, ask questions via on-device AI. Liquid glass aesthetic. System/Light/Dark appearance.
+Pixley is the native macOS app for **working with** AI-generated markdown — not just reading it. Browse folder hierarchies, view with syntax highlighting, and interact directly with the document through checkboxes, fill-ins, status machines, approvals, and more. Ask questions via on-device AI. The AI writes, you respond inline. Back and forth on the same file.
 
-**Not** an editor. **Not** feature-heavy. Simple and focused.
+**Free tier:** Read beautifully. Toggle checkboxes and radio buttons. Ask AI questions about the document.
+
+**Relay Pro ($9.99):** The full collaboration layer. Fill-ins, status machines, CriticMarkup, feedback, reviews, AI field editing, Liquid Glass rendering, Hybrid mode. Everything that lets you *relay* your intent back to the AI through the document.
+
+**Not** an editor. **Not** a note-taking app. A relay between humans and AI, with markdown as the shared medium.
+
+### Design philosophy: "Just pipes"
+Expose native controls. Drop opinions. AI and user decide what to do with them. Pixley is the pipe — it renders what AI wrote into interactive controls, and writes the user's responses back to the file. Nothing more.
 
 ## Stack
 
@@ -140,16 +147,36 @@ cd PixleyWriter && xcodegen generate
 open AIMDReader.xcodeproj
 ```
 
-## v1.1 Roadmap
+## Current State: v3.0 (App Store: v2.2)
 
-See `docs/specs/aimd-reader-v1.1-revised.md` for current spec.
+See `docs/whats-new-since-2.2.md` for full changelog since last App Store release.
 
-**Phase 1 - Fix + Foundation:**
-- Story 1: Fix Drill-Down Bug [COMPLETE]
-- Story 2: State Architecture + DI [COMPLETE] — AppCoordinator pattern
+**Shipped since v2.2:**
+- Per-turn transcript condensation (AI chat memory)
+- Multi-window support (per-window AppCoordinator)
+- Interactive Markdown Protocol (9 patterns, Phases 1–4)
+- Prose Mode UX deep pass (hover states, tooltips, visual affordances)
+- Interactive mode toggle (Enhanced/Plain/Hybrid)
+- Premium Gate (Pixley Pro $9.99 — StoreKit 2)
+- Liquid Glass rendering engine (SwiftUI)
+- Code extractions (PopoverControllers, InteractiveAnnotator)
+- Line number gutter (sibling view)
+- Fill-in re-edit popover + MarkdownEditor extraction
+- App renamed to Pixley
 
-**Phase 2 - Native UI:**
-- Story 3: Native Sidebar + Cross-Platform (iOS Files app style)
+**Open (v4.0):**
+- Native rendering blocks: tables, images, code blocks, collapsible sections
+- New controls: slider, color picker, stepper, toggle, auditable checkbox, file picker re-pick
+- Line indicators (gutter annotations) — attempted & reverted, GutterOverlayView exists
+- .pixley bundle format — not started
+- Multiplatform (iOS/visionOS) — not started
 
-**Out of Scope (v1.x):**
-- Search, editing
+**Active specs:** `docs/specs/pixley-markdown-v4-native-rendering-and-missing-controls.md`, `docs/specs/this-refactor.md` (line indicators), `docs/specs/pixley-project-format-v2.md`
+
+## Task Tracking
+
+Open tasks live in GitHub Issues. At session start, check what's open:
+- All open: `gh issue list --state open`
+- By milestone: `gh issue list --milestone "v4 Phase 1: Native Rendering"`
+- When completing work, close its issue: `gh issue close <number> -c "Done in <commit>"`
+- When discovering new work: `gh issue create --title "..." --label "..."`

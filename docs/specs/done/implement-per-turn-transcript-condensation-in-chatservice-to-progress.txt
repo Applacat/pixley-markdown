@@ -1,0 +1,12 @@
+Per-Turn Transcript Condensation — Progress Tracker
+====================================================
+Updated: 2026-03-10
+
+Implementation [COMPLETE]
+  - AI summarizer with heuristic fallback [COMPLETE]
+  - Fresh session per turn with condensed summary [COMPLETE]
+  - SwiftData persistence (ChatSummary, LRU cap 50) [COMPLETE]
+  - Multi-document context via FM tool-calling [COMPLETE]
+  - Tests [COMPLETE]
+
+Completed: 2026-03-03

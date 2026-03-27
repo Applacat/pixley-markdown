@@ -1,97 +1,6 @@
 import AppKit
 import aimdRenderer
 
-// MARK: - Upgrade Popover Controller
-
-/// NSViewController that hosts the Pro upgrade prompt shown when a free user clicks a locked element.
-final class UpgradePopoverController: NSViewController {
-    private let elementName: String
-    private let price: String
-    private let onDismiss: () -> Void
-
-    init(elementName: String, price: String, onDismiss: @escaping () -> Void) {
-        self.elementName = elementName
-        self.price = price
-        self.onDismiss = onDismiss
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func loadView() {
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 150))
-
-        // Icon
-        let iconView = NSImageView(frame: .zero)
-        iconView.image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: "Locked")
-        iconView.symbolConfiguration = .init(pointSize: 20, weight: .medium)
-        iconView.contentTintColor = .controlAccentColor
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-
-        // Title
-        let title = NSTextField(labelWithString: "Unlock \(elementName)")
-        title.font = .systemFont(ofSize: 13, weight: .semibold)
-        title.translatesAutoresizingMaskIntoConstraints = false
-
-        // Subtitle
-        let subtitle = NSTextField(labelWithString: "Pixley Pro unlocks all interactive elements.")
-        subtitle.font = .systemFont(ofSize: 11)
-        subtitle.textColor = .secondaryLabelColor
-        subtitle.translatesAutoresizingMaskIntoConstraints = false
-
-        // Purchase button
-        let purchaseButton = NSButton(title: "Upgrade — \(price)", target: self, action: #selector(purchaseTapped))
-        purchaseButton.bezelStyle = .rounded
-        purchaseButton.controlSize = .large
-        purchaseButton.keyEquivalent = "\r"
-        purchaseButton.translatesAutoresizingMaskIntoConstraints = false
-
-        // Restore link
-        let restoreButton = NSButton(title: "Restore Purchase", target: self, action: #selector(restoreTapped))
-        restoreButton.bezelStyle = .inline
-        restoreButton.isBordered = false
-        restoreButton.contentTintColor = .controlAccentColor
-        restoreButton.font = .systemFont(ofSize: 11)
-        restoreButton.translatesAutoresizingMaskIntoConstraints = false
-
-        let stack = NSStackView(views: [iconView, title, subtitle, purchaseButton, restoreButton])
-        stack.orientation = .vertical
-        stack.alignment = .centerX
-        stack.spacing = 6
-        stack.edgeInsets = NSEdgeInsets(top: 16, left: 20, bottom: 16, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-        ])
-
-        self.view = container
-    }
-
-    @objc private func purchaseTapped() {
-        Task { @MainActor in
-            await StoreService.shared.purchase()
-            if StoreService.shared.isUnlocked {
-                onDismiss()
-            }
-        }
-    }
-
-    @objc private func restoreTapped() {
-        Task { @MainActor in
-            await StoreService.shared.restore()
-            if StoreService.shared.isUnlocked {
-                onDismiss()
-            }
-        }
-    }
-}
-
 // MARK: - Input Popover Configuration
 
 /// Configuration for inline input popovers shown at interactive element positions.
@@ -458,60 +367,58 @@ final class SuggestionPopoverController: NSViewController {
         let title = NSTextField(labelWithString: "Suggested Edit")
         title.font = .systemFont(ofSize: 13, weight: .semibold)
 
-        var contentViews: [NSView] = []
+        // Build change rows as grid for proper column alignment and sizing
+        var gridRows: [[NSView]] = []
+        let labelMaxWidth: CGFloat = 240
 
         if let oldText = suggestion.oldText, !oldText.isEmpty {
             let icon = NSImageView(image: NSImage(systemSymbolName: "minus.circle.fill", accessibilityDescription: "Remove")!)
             icon.contentTintColor = .systemRed
-            let label = NSTextField(wrappingLabelWithString: oldText)
-            label.font = .systemFont(ofSize: 12)
-            let attrStr = NSMutableAttributedString(string: oldText, attributes: [
+            icon.setContentHuggingPriority(.required, for: .horizontal)
+
+            let label = NSTextField(labelWithString: "")
+            label.lineBreakMode = .byWordWrapping
+            label.maximumNumberOfLines = 0
+            label.preferredMaxLayoutWidth = labelMaxWidth
+            label.attributedStringValue = NSAttributedString(string: oldText, attributes: [
                 .strikethroughStyle: NSUnderlineStyle.single.rawValue,
                 .foregroundColor: NSColor.secondaryLabelColor,
                 .font: NSFont.systemFont(ofSize: 12),
             ])
-            label.attributedStringValue = attrStr
-            let row = NSStackView(views: [icon, label])
-            row.orientation = .horizontal
-            row.spacing = 4
-            contentViews.append(row)
+            gridRows.append([icon, label])
         }
 
         if let newText = suggestion.newText, !newText.isEmpty {
             let icon = NSImageView(image: NSImage(systemSymbolName: "plus.circle.fill", accessibilityDescription: "Add")!)
             icon.contentTintColor = .systemGreen
-            let label = NSTextField(wrappingLabelWithString: newText)
+            icon.setContentHuggingPriority(.required, for: .horizontal)
+
+            let label = NSTextField(labelWithString: newText)
             label.font = .systemFont(ofSize: 12)
-            let row = NSStackView(views: [icon, label])
-            row.orientation = .horizontal
-            row.spacing = 4
-            contentViews.append(row)
+            label.lineBreakMode = .byWordWrapping
+            label.maximumNumberOfLines = 0
+            label.preferredMaxLayoutWidth = labelMaxWidth
+            gridRows.append([icon, label])
         }
 
         if let comment = suggestion.comment {
             let icon = NSImageView(image: NSImage(systemSymbolName: "text.bubble", accessibilityDescription: "Comment")!)
             icon.contentTintColor = .systemYellow
-            let label = NSTextField(wrappingLabelWithString: comment)
+            icon.setContentHuggingPriority(.required, for: .horizontal)
+
+            let label = NSTextField(labelWithString: comment)
             label.font = .systemFont(ofSize: 12)
             label.textColor = .secondaryLabelColor
-            let row = NSStackView(views: [icon, label])
-            row.orientation = .horizontal
-            row.spacing = 4
-            contentViews.append(row)
+            label.lineBreakMode = .byWordWrapping
+            label.maximumNumberOfLines = 0
+            label.preferredMaxLayoutWidth = labelMaxWidth
+            gridRows.append([icon, label])
         }
 
-        let contentStack = NSStackView(views: contentViews)
-        contentStack.orientation = .vertical
-        contentStack.alignment = .leading
-        contentStack.spacing = 6
-
-        let box = NSBox()
-        box.boxType = .custom
-        box.cornerRadius = 6
-        box.fillColor = .quaternaryLabelColor
-        box.borderColor = .clear
-        box.contentView = contentStack
-        box.contentViewMargins = NSSize(width: 8, height: 8)
+        let grid = NSGridView(views: gridRows)
+        grid.rowSpacing = 6
+        grid.columnSpacing = 8
+        grid.column(at: 0).width = 20  // icon column fixed width
 
         let cancelButton = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
         cancelButton.keyEquivalent = "\u{1b}"
@@ -530,7 +437,7 @@ final class SuggestionPopoverController: NSViewController {
         let buttonStack = NSStackView(views: [cancelButton, spacer, rejectButton, acceptButton])
         buttonStack.orientation = .horizontal
 
-        let stack = NSStackView(views: [title, box, buttonStack])
+        let stack = NSStackView(views: [title, grid, buttonStack])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -543,6 +450,7 @@ final class SuggestionPopoverController: NSViewController {
             stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            stack.widthAnchor.constraint(equalToConstant: 320),
         ])
 
         self.view = container
@@ -551,4 +459,128 @@ final class SuggestionPopoverController: NSViewController {
     @objc private func acceptTapped() { onAccept() }
     @objc private func rejectTapped() { onReject() }
     @objc private func cancelTapped() { onCancel() }
+}
+
+// MARK: - Comment Popover Controller
+
+/// NSViewController hosting a read/edit/remove popover for CriticMarkup highlight comments.
+/// Shows the comment text with Edit and Remove actions.
+final class CommentPopoverController: NSViewController {
+    private let commentText: String
+    private let onEdit: (String) -> Void
+    private let onRemove: () -> Void
+    private let onCancel: () -> Void
+    private var isEditing = false
+    private var commentLabel: NSTextField!
+    private var editTextView: NSScrollView?
+    private var editButton: NSButton!
+    private var saveButton: NSButton!
+
+    init(commentText: String,
+         onEdit: @escaping (String) -> Void,
+         onRemove: @escaping () -> Void,
+         onCancel: @escaping () -> Void) {
+        self.commentText = commentText
+        self.onEdit = onEdit
+        self.onRemove = onRemove
+        self.onCancel = onCancel
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        let width: CGFloat = 300
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 10))
+
+        let title = NSTextField(labelWithString: "Comment")
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+
+        // Comment text (read-only label)
+        commentLabel = NSTextField(wrappingLabelWithString: commentText)
+        commentLabel.font = .systemFont(ofSize: 12)
+        commentLabel.textColor = .secondaryLabelColor
+        commentLabel.maximumNumberOfLines = 10
+        commentLabel.preferredMaxLayoutWidth = width - 32 // account for edge insets
+
+        // Buttons
+        let removeButton = NSButton(title: "Remove", target: self, action: #selector(removeTapped))
+        removeButton.contentTintColor = .systemRed
+
+        editButton = NSButton(title: "Edit", target: self, action: #selector(editTapped))
+
+        saveButton = NSButton(title: "Save", target: self, action: #selector(saveTapped))
+        saveButton.keyEquivalent = "\r"
+        saveButton.bezelStyle = .rounded
+        saveButton.isHidden = true
+
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let buttonStack = NSStackView(views: [removeButton, spacer, editButton, saveButton])
+        buttonStack.orientation = .horizontal
+
+        let stack = NSStackView(views: [title, commentLabel, buttonStack])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            stack.widthAnchor.constraint(equalToConstant: width),
+        ])
+
+        self.view = container
+    }
+
+    @objc private func editTapped() {
+        guard !isEditing else { return }
+        isEditing = true
+
+        // Replace label with editable text view
+        let sv = NSScrollView(frame: NSRect(x: 0, y: 0, width: 268, height: 60))
+        let tv = NSTextView(frame: sv.contentView.bounds)
+        tv.isRichText = false
+        tv.font = .systemFont(ofSize: 12)
+        tv.string = commentText
+        tv.isVerticallyResizable = true
+        tv.autoresizingMask = [.width]
+        tv.textContainer?.widthTracksTextView = true
+        sv.documentView = tv
+        sv.hasVerticalScroller = true
+        sv.borderType = .bezelBorder
+        sv.translatesAutoresizingMaskIntoConstraints = false
+        sv.heightAnchor.constraint(equalToConstant: 60).isActive = true
+
+        if let stack = commentLabel.superview as? NSStackView,
+           let index = stack.arrangedSubviews.firstIndex(of: commentLabel) {
+            stack.removeArrangedSubview(commentLabel)
+            commentLabel.removeFromSuperview()
+            stack.insertArrangedSubview(sv, at: index)
+            editTextView = sv
+        }
+
+        editButton.isHidden = true
+        saveButton.isHidden = false
+        view.window?.makeFirstResponder(tv)
+    }
+
+    @objc private func saveTapped() {
+        guard let tv = editTextView?.documentView as? NSTextView else { return }
+        let newComment = tv.string
+        guard !newComment.isEmpty else { return }
+        onEdit(newComment)
+    }
+
+    @objc private func removeTapped() {
+        onRemove()
+    }
 }

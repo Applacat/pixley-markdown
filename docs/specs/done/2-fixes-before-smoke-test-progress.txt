@@ -1,0 +1,3 @@
+Phase 1: Fill-In Re-Edit [COMPLETE]
+Phase 2: Gutter Comment Popover [COMPLETE]
+Phase 3: Gutter Visual Indicators [COMPLETE]

@@ -108,6 +108,9 @@ public struct SyntaxPalette: Sendable, Equatable {
     /// Preprocessor / directives (#if, @main)
     public let preprocessor: String
 
+    /// Background tint for CriticMarkup comment highlights ({==text==}{>>comment<<})
+    public let commentHighlight: String
+
     public init(
         background: String,
         foreground: String,
@@ -121,7 +124,8 @@ public struct SyntaxPalette: Sendable, Equatable {
         function: String,
         property: String,
         `operator`: String,
-        preprocessor: String
+        preprocessor: String,
+        commentHighlight: String = "#FFEEBA"
     ) {
         self.background = background
         self.foreground = foreground
@@ -136,6 +140,7 @@ public struct SyntaxPalette: Sendable, Equatable {
         self.property = property
         self.operator = `operator`
         self.preprocessor = preprocessor
+        self.commentHighlight = commentHighlight
     }
 }
 
@@ -158,7 +163,8 @@ extension SyntaxPalette {
         function: "#0F68A0",
         property: "#326D74",
         operator: "#000000",
-        preprocessor: "#78492A"
+        preprocessor: "#78492A",
+        commentHighlight: "#FFF3CD"
     )
 
     // MARK: - Xcode Dark
@@ -176,7 +182,8 @@ extension SyntaxPalette {
         function: "#67B7A4",
         property: "#5DD8FF",
         operator: "#FFFFFF",
-        preprocessor: "#FFA14F"
+        preprocessor: "#FFA14F",
+        commentHighlight: "#3D3520"
     )
 
     // MARK: - GitHub Light
@@ -194,7 +201,8 @@ extension SyntaxPalette {
         function: "#6F42C1",
         property: "#005CC5",
         operator: "#D73A49",
-        preprocessor: "#D73A49"
+        preprocessor: "#D73A49",
+        commentHighlight: "#FFF8E1"
     )
 
     // MARK: - GitHub Dark
@@ -212,7 +220,8 @@ extension SyntaxPalette {
         function: "#D2A8FF",
         property: "#79C0FF",
         operator: "#FF7B72",
-        preprocessor: "#FF7B72"
+        preprocessor: "#FF7B72",
+        commentHighlight: "#2D2A1E"
     )
 
     // MARK: - One Dark
@@ -230,7 +239,8 @@ extension SyntaxPalette {
         function: "#61AFEF",
         property: "#E06C75",
         operator: "#56B6C2",
-        preprocessor: "#C678DD"
+        preprocessor: "#C678DD",
+        commentHighlight: "#3A3525"
     )
 
     // MARK: - Dracula
@@ -248,7 +258,8 @@ extension SyntaxPalette {
         function: "#50FA7B",
         property: "#FFB86C",
         operator: "#FF79C6",
-        preprocessor: "#FF79C6"
+        preprocessor: "#FF79C6",
+        commentHighlight: "#3D3A2A"
     )
 
     // MARK: - Solarized Light
@@ -266,7 +277,8 @@ extension SyntaxPalette {
         function: "#268BD2",
         property: "#CB4B16",
         operator: "#657B83",
-        preprocessor: "#CB4B16"
+        preprocessor: "#CB4B16",
+        commentHighlight: "#F5E6B8"
     )
 
     // MARK: - Solarized Dark
@@ -284,7 +296,8 @@ extension SyntaxPalette {
         function: "#268BD2",
         property: "#CB4B16",
         operator: "#839496",
-        preprocessor: "#CB4B16"
+        preprocessor: "#CB4B16",
+        commentHighlight: "#1A3A2A"
     )
 
     // MARK: - Monokai
@@ -302,7 +315,8 @@ extension SyntaxPalette {
         function: "#A6E22E",
         property: "#FD971F",
         operator: "#F92672",
-        preprocessor: "#F92672"
+        preprocessor: "#F92672",
+        commentHighlight: "#3D3820"
     )
 
     // MARK: - Nord
@@ -320,6 +334,7 @@ extension SyntaxPalette {
         function: "#88C0D0",
         property: "#D8DEE9",
         operator: "#81A1C1",
-        preprocessor: "#5E81AC"
+        preprocessor: "#5E81AC",
+        commentHighlight: "#3B4252"
     )
 }

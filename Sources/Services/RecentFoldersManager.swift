@@ -3,6 +3,15 @@ import os.log
 
 private let log = Logger(subsystem: "com.aimd.reader", category: "RecentFoldersManager")
 
+// MARK: - Recent Time Group
+
+/// Time-based grouping for the StartView recents column.
+enum RecentTimeGroup: String, CaseIterable {
+    case today = "Today"
+    case thisWeek = "This Week"
+    case older = "Older"
+}
+
 // MARK: - Recent Item
 
 /// A recently opened item (folder or file) with its security-scoped bookmark
@@ -15,14 +24,24 @@ struct RecentItem: Identifiable, Codable {
     let isFolder: Bool
     let parentPath: String?  // For files, the folder they're in
 
-    init(url: URL, bookmarkData: Data, isFolder: Bool, parentPath: String? = nil) {
+    init(url: URL, bookmarkData: Data, isFolder: Bool, parentPath: String? = nil, dateOpened: Date = Date()) {
         self.id = UUID()
         self.name = url.lastPathComponent
         self.path = url.path
         self.bookmarkData = bookmarkData
-        self.dateOpened = Date()
+        self.dateOpened = dateOpened
         self.isFolder = isFolder
         self.parentPath = parentPath
+    }
+
+    /// The name of the parent folder for display (e.g., "project" for ~/Documents/project/file.md)
+    var parentFolderName: String? {
+        if isFolder {
+            let parent = URL(fileURLWithPath: path).deletingLastPathComponent().lastPathComponent
+            return parent.isEmpty ? nil : parent
+        } else {
+            return parentPath.map { URL(fileURLWithPath: $0).lastPathComponent }
+        }
     }
 }
 
@@ -408,13 +427,81 @@ final class RecentFoldersManager {
                 url: URL(fileURLWithPath: folder.path),
                 bookmarkData: folder.bookmarkData,
                 isFolder: true,
-                parentPath: nil
+                parentPath: nil,
+                dateOpened: folder.dateOpened
             )
         }
         let files = getRecentFiles()
 
         // Combine and sort by date
         return (folders + files).sorted { $0.dateOpened > $1.dateOpened }
+    }
+
+    // MARK: - Time Grouping
+
+    /// Groups recent items by time period for display in the StartView.
+    /// Empty groups are excluded.
+    static func groupedRecents(_ items: [RecentItem]) -> [(RecentTimeGroup, [RecentItem])] {
+        let calendar = Calendar.current
+        let now = Date()
+
+        var groups: [RecentTimeGroup: [RecentItem]] = [:]
+
+        for item in items {
+            let group: RecentTimeGroup
+            if calendar.isDateInToday(item.dateOpened) {
+                group = .today
+            } else if calendar.isDate(item.dateOpened, equalTo: now, toGranularity: .weekOfYear) {
+                group = .thisWeek
+            } else {
+                group = .older
+            }
+            groups[group, default: []].append(item)
+        }
+
+        // Return in display order, filtering out empty groups
+        return RecentTimeGroup.allCases.compactMap { group in
+            guard let items = groups[group], !items.isEmpty else { return nil }
+            return (group, items)
+        }
+    }
+
+    // MARK: - Resolve Recent Item
+
+    /// Resolves a recent item to a BrowserOpenRequest, or returns nil if the item is stale.
+    /// Removes stale items automatically. Used by both StartView and File menu.
+    func resolveRecentItem(_ item: RecentItem) -> BrowserOpenRequest? {
+        if item.isFolder {
+            let folders = getRecentFolders()
+            guard let folder = folders.first(where: { $0.path == item.path }),
+                  let resolvedURL = resolveBookmark(folder) else {
+                removeFolderByPath(item.path)
+                return nil
+            }
+            addFolder(resolvedURL)
+            return BrowserOpenRequest(folderURL: resolvedURL)
+        } else {
+            guard let parentPath = item.parentPath else {
+                removeRecentFile(item)
+                return nil
+            }
+            let folders = getRecentFolders()
+            guard let parentFolder = folders.first(where: { $0.path == parentPath }),
+                  let resolvedURL = resolveBookmark(parentFolder) else {
+                removeRecentFile(item)
+                return nil
+            }
+            let fileURL = URL(fileURLWithPath: item.path)
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                removeRecentFile(item)
+                return nil
+            }
+            return BrowserOpenRequest(
+                folderURL: resolvedURL,
+                fileURL: fileURL,
+                preferSidebarCollapsed: true
+            )
+        }
     }
 
     // MARK: - Private Storage

@@ -45,6 +45,18 @@ final class InteractionHandler {
         }
     }
 
+    /// Writes content to a file with security-scoped access on the parent directory.
+    /// Ensures write permission for files in subfolders of the sandbox-granted directory.
+    private func secureWrite(_ content: String, to url: URL) async throws {
+        let parentDir = url.deletingLastPathComponent()
+        let hasAccess = parentDir.startAccessingSecurityScopedResource()
+        defer { if hasAccess { parentDir.stopAccessingSecurityScopedResource() } }
+
+        try await Task.detached(priority: .userInitiated) {
+            try content.write(to: url, atomically: true, encoding: .utf8)
+        }.value
+    }
+
     /// Applies an edit to a file on disk.
     ///
     /// - Parameters:
@@ -107,14 +119,12 @@ final class InteractionHandler {
             return newContent
         }.value
 
-        // Step 3: Write atomically off main thread
-        try await Task.detached(priority: .userInitiated) {
-            do {
-                try newContent.write(to: url, atomically: true, encoding: .utf8)
-            } catch {
-                throw WriteError.writeFailed(url, error)
-            }
-        }.value
+        // Step 3: Write atomically with security-scoped access
+        do {
+            try await secureWrite(newContent, to: url)
+        } catch {
+            throw WriteError.writeFailed(url, error)
+        }
 
         // Step 4: Update in-memory state (main actor)
         onContentUpdated?(newContent)
@@ -146,24 +156,42 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        var replacements: [(range: Range<String.Index>, newText: String)] = []
+        // Re-detect from fresh file content to avoid stale range corruption
+        fileWatcher?.suppressChanges(for: 1.0)
 
-        for (i, option) in choice.options.enumerated() {
-            let newChar = (i == optionIndex) ? "x" : " "
-            let currentChar = option.isSelected ? "x" : " "
-            if String(newChar) != String(currentChar) {
-                replacements.append((range: option.checkRange, newText: String(newChar)))
+        let newContent = try await Task.detached(priority: .userInitiated) {
+            let data = try Data(contentsOf: url)
+            guard let currentContent = String(data: data, encoding: .utf8) else {
+                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1))
             }
+
+            // Re-detect elements from fresh content
+            let elements = InteractiveElementDetector.detect(in: currentContent)
+            guard let freshChoice = elements.compactMap({ element -> ChoiceElement? in
+                if case .choice(let ch) = element { return ch }
+                return nil
+            }).first(where: { $0.options.count == choice.options.count }) else {
+                throw WriteError.rangeMismatch
+            }
+
+            var modified = currentContent
+            // Process in reverse to preserve indices
+            for i in (0..<freshChoice.options.count).reversed() {
+                let option = freshChoice.options[i]
+                let newChar = (i == optionIndex) ? "x" : " "
+                let currentChar = option.isSelected ? "x" : " "
+                if String(newChar) != String(currentChar) {
+                    modified.replaceSubrange(option.checkRange, with: String(newChar))
+                }
+            }
+            return modified
+        }.value
+
+        try await secureWrite(newContent, to: url)
+
+        await MainActor.run {
+            onContentUpdated?(newContent)
         }
-
-        guard !replacements.isEmpty else { return }
-
-        try await apply(
-            edit: .replaceMultiple(replacements),
-            to: url,
-            fileWatcher: fileWatcher,
-            onContentUpdated: onContentUpdated
-        )
     }
 
     /// Replaces a fill-in placeholder with a value.
@@ -216,33 +244,54 @@ final class InteractionHandler {
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         let dateString = Self.todayString()
-        var replacements: [(range: Range<String.Index>, newText: String)] = []
 
-        for (i, option) in review.options.enumerated() {
-            if i == optionIndex {
-                // Build the selected line: `[x] STATUS — YYYY-MM-DD` or `[x] STATUS — YYYY-MM-DD: notes`
-                var suffix = " \(option.status.rawValue) — \(dateString)"
-                if let notes, !notes.isEmpty {
-                    suffix += ": \(notes)"
-                }
-                let newLine = "[x]\(suffix)"
-                // Replace from check bracket through end of option
-                replacements.append((range: option.range, newText: newLine))
-            } else if option.isSelected {
-                // Deselect: strip date and notes, keep just `[ ] STATUS`
-                let newLine = "[ ] \(option.status.rawValue)"
-                replacements.append((range: option.range, newText: newLine))
+        // Re-detect from fresh file content to avoid stale range corruption
+        fileWatcher?.suppressChanges(for: 1.0)
+
+        let newContent = try await Task.detached(priority: .userInitiated) {
+            let data = try Data(contentsOf: url)
+            guard let currentContent = String(data: data, encoding: .utf8) else {
+                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1))
             }
+
+            // Re-detect elements from fresh content
+            let elements = InteractiveElementDetector.detect(in: currentContent)
+            guard let freshReview = elements.compactMap({ element -> ReviewElement? in
+                if case .review(let rv) = element { return rv }
+                return nil
+            }).first(where: { $0.options.count == review.options.count }) else {
+                throw WriteError.rangeMismatch
+            }
+
+            guard optionIndex < freshReview.options.count else {
+                throw WriteError.rangeMismatch
+            }
+
+            var modified = currentContent
+            // Process in reverse to preserve indices
+            // Deselect ALL other options (not just currently selected) to enforce mutual exclusivity
+            for i in (0..<freshReview.options.count).reversed() {
+                let option = freshReview.options[i]
+                if i == optionIndex {
+                    var suffix = " \(option.status.rawValue) — \(dateString)"
+                    if let notes, !notes.isEmpty {
+                        suffix += ": \(notes)"
+                    }
+                    let newLine = "[x]\(suffix)"
+                    modified.replaceSubrange(option.range, with: newLine)
+                } else {
+                    let newLine = "[ ] \(option.status.rawValue)"
+                    modified.replaceSubrange(option.range, with: newLine)
+                }
+            }
+            return modified
+        }.value
+
+        try await secureWrite(newContent, to: url)
+
+        await MainActor.run {
+            onContentUpdated?(newContent)
         }
-
-        guard !replacements.isEmpty else { return }
-
-        try await apply(
-            edit: .replaceMultiple(replacements),
-            to: url,
-            fileWatcher: fileWatcher,
-            onContentUpdated: onContentUpdated
-        )
     }
 
     /// Accepts a CriticMarkup suggestion — applies the change to the file.
@@ -307,6 +356,43 @@ final class InteractionHandler {
         )
     }
 
+    /// Adds a CriticMarkup comment to a text range. Wraps the selected text in `{==text==}{>>comment<<}`.
+    func addComment(
+        selectedText: String,
+        comment: String,
+        range: Range<String.Index>,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        let replacement = "{==\(selectedText)==}{>>\(comment)<<}"
+        try await apply(
+            edit: .replace(range: range, newText: replacement),
+            to: url,
+            fileWatcher: fileWatcher,
+            onContentUpdated: onContentUpdated
+        )
+    }
+
+    /// Edits the comment text of a CriticMarkup highlight.
+    /// Replaces the full `{==text==}{>>old comment<<}` with `{==text==}{>>new comment<<}`.
+    func editComment(
+        _ suggestion: SuggestionElement,
+        newComment: String,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        let highlightedText = suggestion.oldText ?? ""
+        let replacement = "{==\(highlightedText)==}{>>\(newComment)<<}"
+        try await apply(
+            edit: .replace(range: suggestion.range, newText: replacement),
+            to: url,
+            fileWatcher: fileWatcher,
+            onContentUpdated: onContentUpdated
+        )
+    }
+
     /// Advances a status to the next state. Appends date for terminal states.
     func advanceStatus(
         _ status: StatusElement,
@@ -315,18 +401,36 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        let isTerminal = (status.states.last == newState)
-        var label = "**Status:** \(newState)"
-        if isTerminal {
-            label += " — \(Self.todayString())"
-        }
+        // Re-detect from fresh file content to avoid stale range corruption
+        fileWatcher?.suppressChanges(for: 1.0)
 
-        try await apply(
-            edit: .replace(range: status.labelRange, newText: label),
-            to: url,
-            fileWatcher: fileWatcher,
-            onContentUpdated: onContentUpdated
-        )
+        let newContent = try await Task.detached(priority: .userInitiated) {
+            let data = try Data(contentsOf: url)
+            guard let currentContent = String(data: data, encoding: .utf8) else {
+                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1))
+            }
+
+            // Re-detect status elements from fresh content
+            let elements = InteractiveElementDetector.detect(in: currentContent)
+            guard let freshStatus = elements.compactMap({ element -> StatusElement? in
+                if case .status(let st) = element { return st }
+                return nil
+            }).first(where: { $0.states == status.states }) else {
+                throw WriteError.rangeMismatch
+            }
+
+            let label = "**Status:** \(newState)"
+
+            var modified = currentContent
+            modified.replaceSubrange(freshStatus.labelRange, with: label)
+            return modified
+        }.value
+
+        try await secureWrite(newContent, to: url)
+
+        await MainActor.run {
+            onContentUpdated?(newContent)
+        }
     }
 
     /// Confirms a confidence indicator (sets to confirmed, preserves text).

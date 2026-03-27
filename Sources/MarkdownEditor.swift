@@ -39,6 +39,21 @@ final class MarkdownNSTextView: NSTextView {
     /// Callback for input popover submissions (element, optionIndex, field name, value).
     var onInputSubmitted: ((InteractiveElement, Int?, String, String) -> Void)?
 
+    /// Callback for "Add Comment" action (selected text, selected range in text view).
+    var onAddComment: ((String, NSRange) -> Void)?
+
+    /// Tracks the selection popover work item to debounce
+    private var selectionPopoverWorkItem: DispatchWorkItem?
+
+    /// Active selection action popover
+    private var selectionPopover: NSPopover?
+
+    /// Selection length at mouseDown — used to detect drag-select vs click
+    private var selectionLengthAtMouseDown: Int = 0
+
+    /// Whether the mouse is currently down (to detect end of drag-select)
+    private var isMouseDown = false
+
     /// Tracks the currently hovered interactive element range for hover highlight
     private var hoveredRange: NSRange?
 
@@ -47,9 +62,6 @@ final class MarkdownNSTextView: NSTextView {
 
     /// Tracks the currently focused interactive element range (via Tab navigation)
     var focusedElementRange: NSRange?
-
-    /// Active upgrade popover (retained to prevent premature dealloc)
-    private var upgradePopover: NSPopover?
 
     /// The tracking area for mouse movement events
     private var hoverTrackingArea: NSTrackingArea?
@@ -179,6 +191,12 @@ final class MarkdownNSTextView: NSTextView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        selectionLengthAtMouseDown = selectedRange().length
+        isMouseDown = true
+        selectionPopoverWorkItem?.cancel()
+        selectionPopover?.close()
+        selectionPopover = nil
+
         let point = convert(event.locationInWindow, from: nil)
         let charIndex = characterIndexForInsertion(at: point)
 
@@ -196,17 +214,6 @@ final class MarkdownNSTextView: NSTextView {
             // Save scroll position before handling click to prevent unwanted scrolling
             let scrollView = enclosingScrollView
             let savedScrollOrigin = scrollView?.contentView.bounds.origin
-
-            // Gate: Pro elements require purchase
-            if wrapper.element.requiresPro && !StoreService.shared.isUnlocked {
-                flashClickFeedback(range: effectiveRange)
-                showUpgradePopover(for: wrapper.element, at: effectiveRange)
-                // Restore scroll position after popover positioning
-                if let origin = savedScrollOrigin {
-                    scrollView?.contentView.scroll(to: origin)
-                }
-                return
-            }
 
             // Status elements with multiple next states: show native dropdown menu
             if case .status(let st) = wrapper.element, st.nextStates.count > 1 {
@@ -241,6 +248,7 @@ final class MarkdownNSTextView: NSTextView {
         }
 
         super.mouseDown(with: event)
+        checkForNewSelectionPopover()
     }
 
     /// Flashes a brief accent highlight on the clicked element range for tactile feedback.
@@ -290,40 +298,100 @@ final class MarkdownNSTextView: NSTextView {
         onStatusSelected?(status, state)
     }
 
-    // MARK: - Upgrade Popover
-
-    /// Shows an NSPopover at the clicked element prompting the user to upgrade to Pro.
-    private func showUpgradePopover(for element: InteractiveElement, at charRange: NSRange) {
-        upgradePopover?.close()
-
-        let popover = NSPopover()
-        popover.behavior = .transient
-        popover.contentSize = NSSize(width: 260, height: 150)
-
-        let controller = UpgradePopoverController(
-            elementName: element.displayName,
-            price: StoreService.shared.productInfo?.displayPrice ?? "$9.99"
-        ) { [weak self] in
-            self?.upgradePopover?.close()
-        }
-        popover.contentViewController = controller
-
-        // Position popover at the element's glyph rect
-        guard let positionRect = glyphRect(for: charRange) else { return }
-        upgradePopover = popover
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.upgradePopover === popover else { return }
-            popover.show(relativeTo: positionRect, of: self, preferredEdge: .maxY)
-        }
-    }
-
     /// Active input popover (retained to prevent premature dealloc).
     /// Popover routing and show methods are in MarkdownTextViewPopovers.swift.
     var inputPopover: NSPopover?
 
+    // MARK: - Context Menu
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = super.menu(for: event) ?? NSMenu()
+
+        // Add "Add Comment" when text is selected
+        if selectedRange().length > 0 {
+            let commentItem = NSMenuItem(title: "Add Comment", action: #selector(addCommentAction), keyEquivalent: "C")
+            commentItem.keyEquivalentModifierMask = [.command, .shift]
+            menu.insertItem(.separator(), at: 0)
+            menu.insertItem(commentItem, at: 0)
+        }
+
+        return menu
+    }
+
+    @objc private func addCommentAction() {
+        let range = selectedRange()
+        guard range.length > 0,
+              let text = textStorage?.string,
+              let swiftRange = Range(range, in: text) else { return }
+        let selectedText = String(text[swiftRange])
+        onAddComment?(selectedText, range)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        isMouseDown = false
+        checkForNewSelectionPopover()
+    }
+
+    /// Checks if a text selection was created or expanded and shows the "Add Comment" popover.
+    private func checkForNewSelectionPopover() {
+        let range = selectedRange()
+        guard range.length > 0, range.length != selectionLengthAtMouseDown else { return }
+        // Avoid showing twice (mouseDown tracking loop + mouseUp both call this)
+        guard selectionPopover == nil else { return }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.showSelectionActionPopover(for: range)
+        }
+        selectionPopoverWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
+    }
+
+    // MARK: - Selection Action Popover
+
+    private func showSelectionActionPopover(for range: NSRange) {
+        guard range.length > 0, let positionRect = glyphRect(for: range) else { return }
+
+        let popover = NSPopover()
+        popover.behavior = .transient
+
+        let button = NSButton(title: "Add Comment", target: self, action: #selector(selectionPopoverAddComment))
+        button.bezelStyle = .toolbar
+        button.isBordered = false
+        button.font = .systemFont(ofSize: 12, weight: .medium)
+        button.contentTintColor = .labelColor
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 120, height: 28))
+        button.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            button.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        ])
+
+        let vc = NSViewController()
+        vc.view = container
+        popover.contentViewController = vc
+
+        selectionPopover = popover
+        popover.show(relativeTo: positionRect, of: self, preferredEdge: .minY)
+    }
+
+    @objc private func selectionPopoverAddComment() {
+        selectionPopover?.close()
+        selectionPopover = nil
+        addCommentAction()
+    }
+
     // MARK: - Keyboard Navigation
 
     override func keyDown(with event: NSEvent) {
+        // Cmd+Shift+C: Add Comment
+        if event.modifierFlags.contains([.command, .shift]),
+           event.charactersIgnoringModifiers == "c" {
+            addCommentAction()
+            return
+        }
         // Tab / Shift-Tab navigates between interactive elements
         if event.keyCode == 48 { // Tab key
             let forward = !event.modifierFlags.contains(.shift)
@@ -417,6 +485,9 @@ struct MarkdownEditor: NSViewRepresentable {
 
     /// Callback when a popover-based input is submitted (element, optionIndex, fieldName, value)
     var onInputSubmitted: ((InteractiveElement, Int?, String, String) -> Void)? = nil
+
+    /// Callback when user triggers "Add Comment" on selected text (selectedText, range)
+    var onAddComment: ((String, NSRange) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSView {
         // Container: gutter (left) + scroll view (right), side by side via Auto Layout.
@@ -551,6 +622,9 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.onInputSubmitted = { element, optionIndex, fieldName, value in
             coordinator.parent.onInputSubmitted?(element, optionIndex, fieldName, value)
         }
+        textView.onAddComment = { selectedText, range in
+            coordinator.parent.onAddComment?(selectedText, range)
+        }
 
         // Initial content
         context.coordinator.interactiveMode = settings.behavior.interactiveMode
@@ -655,8 +729,12 @@ struct MarkdownEditor: NSViewRepresentable {
 
     static func dismantleNSView(_ container: NSView, coordinator: Coordinator) {
         if let scrollView = coordinator.scrollView,
-           let textView = scrollView.documentView as? NSTextView {
+           let textView = scrollView.documentView as? MarkdownNSTextView {
             textView.delegate = nil
+            textView.onInteractiveElementClicked = nil
+            textView.onStatusSelected = nil
+            textView.onInputSubmitted = nil
+            textView.onAddComment = nil
         }
         NotificationCenter.default.removeObserver(coordinator)
         coordinator.scrollView = nil

@@ -1,34 +1,27 @@
 # Welcome to Pixley
 
-A markdown reader for your Mac. Open a folder, pick a file, read it beautifully.
+Pixley makes markdown files interactive. Click things. Make choices. Fill in blanks. Everything saves back to the `.md` file.
 
-## What You're Looking At
+**Your name:** [[your name]]
 
-This is a **Welcome folder** with a few short guides. The sidebar on the left shows them all — click any file to open it here.
+## Getting Started
 
-> Pixley doesn't edit files. It reads them. Everything you see is styled with your current color theme, font, and heading scale — all adjustable in **Settings** (`⌘,`).
+Check these off as you explore:
 
-## A Quick Example
+- [ ] Read this document
+- [ ] Browse the app in **02-Reading-and-Browsing**
+- [ ] Try every interactive control in **03-Interactive-Controls**
+- [ ] Learn about AI Chat in **04-AI-Chat**
 
-Here's a Python function, rendered with your current theme:
+## Getting Around
 
-```python
-def read_markdown(path: str) -> str:
-    """Read a markdown file and return its contents."""
-    with open(path, "r") as f:
-        return f.read()
-```
+- **Sidebar** — click any file to open it
+- **Quick Switcher** — `Cmd+P`
+- **AI Chat** — `Cmd+Shift+A` (ask questions about what you're reading)
+- **Settings** — `Cmd+,` (themes, fonts, appearance)
 
-A few shortcuts to get started:
+## How It Works
 
-- **Quick Switcher** — `⌘P`
-- **Find in document** — `⌘F`
-- **AI Chat** — `⌘⇧A`
-- **Settings** — `⌘,`
+When you click a checkbox, Pixley writes the change back to the `.md` file. If an AI tool is watching the file, it can see your response. Markdown becomes a two-way conversation.
 
-## Next Steps
-
-- **Reading** — Themes, fonts, bookmarks, and search
-- **Navigating** — Sidebar, Quick Switcher, favorites
-- **AI Chat** — Ask questions about your documents
-- **Quick Reference** — Every shortcut in one place
+See **05-Quick-Reference** for shortcuts and **06-For-AI-Agents** for instructions on teaching AI to write Pixley-compatible markdown.

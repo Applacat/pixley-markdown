@@ -1,0 +1,27 @@
+StartView Redesign — 3 Entry Points (#20)
+==========================================
+
+Phase 1: Layout Rewrite + Launch Behavior [DONE]
+- [x] Create EntryPointButton component (primary + tertiary styles)
+- [x] Rewrite shortcutsColumn → 3 entry points (Open File, Open Folder, Sample Files)
+- [x] Add Open File NSOpenPanel handler (.md/.markdown)
+- [x] Update tagline to "Read and Collaborate with your AI's Markdown"
+- [x] Remove Desktop/Documents/Downloads shortcuts and related methods
+- [x] Change determineLaunchRequest: remove last-session restore
+- [x] Add "Open File..." (Cmd+O) to File menu
+- [x] Confirm Cmd+N still shows StartView
+Verify: BUILD SUCCEEDED
+
+Phase 2: Time-Grouped Recents + Keyboard Navigation [DONE]
+- [x] Add RecentTimeGroup enum and groupedRecents() helper
+- [x] Rewrite recentsColumn with grouped sections + headers
+- [x] Add parent folder name as secondary text on each item
+- [x] Hide empty time groups
+- [x] Add Cmd+O / Cmd+Shift+O keyboard shortcuts in File menu (works from StartView)
+- [ ] Add arrow key navigation in recents list (deferred — requires List with custom selection state)
+- [ ] Add Return/Enter to open focused recent (deferred — requires List with custom selection state)
+- [x] Tab cycling between entry point buttons (native macOS focus behavior)
+Verify: BUILD SUCCEEDED
+
+Note: Arrow key + Return navigation in recents deferred as a refinement task.
+Native macOS Tab focus and menu keyboard shortcuts (Cmd+O, Cmd+Shift+O) cover primary keyboard workflows.

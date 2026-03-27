@@ -1,0 +1,14 @@
+## Phase 1: Rebrand (US-1)
+- [PENDING] Rename "AI Chat" → "Pixley Chat" in ChatView.swift header
+- [PENDING] Rename in ContentView.swift AIChatModifier tooltip/accessibility
+- [PENDING] Rename in AIMDReaderApp.swift View menu item
+- [PENDING] Rename in ChatView.swift noFileView placeholder
+- [PENDING] Update all accessibility labels
+
+## Phase 2: Prompt chips (US-2)
+- [PENDING] Implement suggestedPrompts(for:) with InteractiveElementDetector
+- [PENDING] Build chip UI in emptyChat (SF Symbol icon + text, max 4)
+- [PENDING] Wire chip tap → auto-send message
+- [PENDING] Wire document switch → recompute chips
+- [PENDING] Verify chips reappear after Forget
+- [PENDING] Test with documents containing different element types
