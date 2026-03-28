@@ -1,6 +1,8 @@
 import Foundation
 import aimdRenderer
+#if canImport(FoundationModels)
 import FoundationModels
+#endif
 
 // MARK: - Edit Interactive Elements Tool
 
