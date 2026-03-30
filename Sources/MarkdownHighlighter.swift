@@ -418,6 +418,16 @@ extension NSFont {
     }
 
     func withWeight(_ weight: NSFont.Weight) -> NSFont {
+        // For monospaced system font, use the direct constructor (descriptor approach is unreliable)
+        if fontDescriptor.symbolicTraits.contains(.monoSpace) {
+            return NSFont.monospacedSystemFont(ofSize: pointSize, weight: weight)
+        }
+        // For system fonts, try design-preserving approach
+        if let design = fontDescriptor.withDesign(.default)?.object(forKey: NSFontDescriptor.AttributeName("NSCTFontUIUsageAttribute")) {
+            // Has a system design — use direct constructor
+            return NSFont.systemFont(ofSize: pointSize, weight: weight)
+        }
+        // Fallback: descriptor approach
         let descriptor = fontDescriptor.addingAttributes([
             .traits: [NSFontDescriptor.TraitKey.weight: weight]
         ])
