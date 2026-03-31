@@ -1,16 +1,23 @@
-# Pixley Reader
+# Pixley Markdown
 
-A native macOS app for reading the markdown files your AI tools generate.
+Read and collaborate with your AI's markdown.
 
-AI coding tools dump specs, docs, and changelogs into your project folders. Pixley Reader gives you a dedicated place to browse and read them — without opening a code editor.
+AI coding tools generate specs, checklists, docs, and changelogs into your project folders. Pixley renders the interactive parts as native controls — checkboxes toggle, radio groups select, placeholders become fill-in fields, review blocks become approval buttons with timestamps. Everything writes back to the file. Next time your agent reads it, your responses are just there.
 
-![Pixley Reader — sidebar, markdown viewer, and AI chat](screenshot.png)
+Not an editor. Not a note app. Just a pipe between you and your AI, with markdown as the shared medium.
+
+![Pixley Markdown — sidebar, interactive markdown viewer with status machine, checkboxes, review blocks, and fill-in fields](screenshot.png)
+
+## Use cases
+
+Smoke test checklists, spec approvals, design reviews, sprint planning signoffs, release go/no-go decisions, feature flag configs, QA pass/fail tracking, onboarding task lists, code review action items, bug triage worksheets.
 
 ## Features
 
-- **Folder tree sidebar** — NSOutlineView-backed file browser, handles large trees without lag
-- **Live file watching** — a reload pill appears when the file changes on disk (e.g., when your AI tool writes to it)
-- **Quick Switcher (Cmd+P)** — fuzzy file search, like VS Code but native
+- **Interactive controls** — checkboxes, radio groups, fill-ins, status machines, review approvals, CriticMarkup comments — all rendered from standard markdown syntax
+- **Folder tree sidebar** — NSOutlineView-backed file browser, handles large trees
+- **Live file watching** — reload pill appears when the file changes on disk
+- **Quick Switcher (Cmd+P)** — fuzzy file search
 - **Syntax-highlighted rendering** — 7 theme families with light/dark variants
 - **On-device AI chat** — ask questions about the current document using Apple Foundation Models (no cloud, no API keys)
 - **Drag-and-drop** — drop a folder or file onto the window to open it
