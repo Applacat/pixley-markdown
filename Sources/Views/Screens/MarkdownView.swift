@@ -339,6 +339,7 @@ struct MarkdownView: View {
     /// through showElementPopover in MarkdownNSTextView → onInputSubmitted.
     private func handleInteractiveClick(_ element: InteractiveElement, optionIndex: Int? = nil) {
         guard let fileURL = coordinator.navigation.selectedFile else { return }
+        let content = coordinator.document.content
 
         interactionTask?.cancel()
         interactionTask = Task {
@@ -353,17 +354,27 @@ struct MarkdownView: View {
 
                 case .choice(let ch):
                     try await interactionHandler.selectChoice(
-                        optionIndex: optionIndex ?? 0, in: ch, url: fileURL, fileWatcher: fileWatcher
+                        optionIndex: optionIndex ?? 0, in: ch, displayedContent: content, url: fileURL, fileWatcher: fileWatcher
                     ) { newContent in
                         coordinator.updateDocumentContent(newContent)
                     }
 
                 case .review(let rv):
                     // Only non-notes options reach here (notes options are handled by popover)
-                    try await interactionHandler.selectReview(
-                        optionIndex: optionIndex ?? 0, in: rv, url: fileURL, fileWatcher: fileWatcher
-                    ) { newContent in
-                        coordinator.updateDocumentContent(newContent)
+                    let idx = optionIndex ?? 0
+                    if idx < rv.options.count && rv.options[idx].isSelected {
+                        // Already selected — deselect (clear all)
+                        try await interactionHandler.clearReview(
+                            in: rv, displayedContent: content, url: fileURL, fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                        }
+                    } else {
+                        try await interactionHandler.selectReview(
+                            optionIndex: idx, in: rv, displayedContent: content, url: fileURL, fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                        }
                     }
 
                 case .fillIn(let fi):
@@ -503,6 +514,7 @@ struct MarkdownView: View {
         }
 
         guard let fileURL = coordinator.navigation.selectedFile else { return }
+        let content = coordinator.document.content
 
         Task {
             do {
@@ -543,15 +555,27 @@ struct MarkdownView: View {
                     }
 
                 case .review(let rv):
-                    guard let optionIndex else { return }
-                    try await interactionHandler.selectReview(
-                        optionIndex: optionIndex,
-                        notes: value.isEmpty ? nil : value,
-                        in: rv,
-                        url: fileURL,
-                        fileWatcher: fileWatcher
-                    ) { newContent in
-                        coordinator.updateDocumentContent(newContent)
+                    if fieldName == "clearReview" {
+                        try await interactionHandler.clearReview(
+                            in: rv,
+                            displayedContent: content,
+                            url: fileURL,
+                            fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                        }
+                    } else {
+                        guard let optionIndex else { return }
+                        try await interactionHandler.selectReview(
+                            optionIndex: optionIndex,
+                            notes: value.isEmpty ? nil : value,
+                            in: rv,
+                            displayedContent: content,
+                            url: fileURL,
+                            fileWatcher: fileWatcher
+                        ) { newContent in
+                            coordinator.updateDocumentContent(newContent)
+                        }
                     }
 
                 case .confidence(let conf):

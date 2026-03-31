@@ -216,7 +216,7 @@ final class ChatService {
             // Fire condensation as a background task — does NOT block the response
             let allMessages = messages + [ChatMessage(role: .assistant, content: content)]
             condensationTask?.cancel()
-            condensationTask = Task { await runCondensation(messages: allMessages) }
+            condensationTask = Task { [weak self] in await self?.runCondensation(messages: allMessages) }
 
             return .success(content)
         } catch let error as LanguageModelSession.GenerationError {

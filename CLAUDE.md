@@ -134,6 +134,15 @@ AI chat uses Apple's on-device Foundation Models framework:
 - Multi-window: each browser window has independent AppCoordinator
 - Shared: ModelContainer, settings (App level); Per-window: coordinator, folder watcher, chat
 
+## CRITICAL: Do Not Touch project.pbxproj ARCHS
+
+The App Store **requires** universal macOS binaries (arm64 + x86_64).
+
+- **Release config**: `ARCHS = (arm64, x86_64)` — **NEVER remove x86_64**
+- **Debug config**: `ARCHS = arm64` — arm64 only so local SPM packages link correctly
+- **NEVER `git checkout` the pbxproj** to fix build errors — it will revert the universal ARCHS and break App Store submission
+- If you see x86_64 linker errors during development, the fix is Debug-only — do not touch Release
+
 ## Building
 
 **Swift Package Manager:**

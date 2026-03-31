@@ -57,6 +57,40 @@ final class InteractionHandler {
         }.value
     }
 
+    /// Reads fresh content from disk, re-detects elements, and returns the element
+    /// closest to the stale element's position along with the current file content.
+    /// Prevents stale-range corruption when multiple elements share the same structure.
+    private func redetectElement<T: Sendable>(
+        staleBlockquoteRange: Range<String.Index>,
+        displayedContent: String,
+        url: URL,
+        extract: @escaping @Sendable (InteractiveElement) -> T?,
+        isCompatible: @escaping @Sendable (T) -> Bool,
+        blockquoteRange: @escaping @Sendable (T) -> Range<String.Index>
+    ) async throws -> (T, String) {
+        let staleOffset = displayedContent.distance(from: displayedContent.startIndex, to: staleBlockquoteRange.lowerBound)
+
+        return try await Task.detached(priority: .userInitiated) {
+            let data = try Data(contentsOf: url)
+            guard let currentContent = String(data: data, encoding: .utf8) else {
+                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"]))
+            }
+
+            let elements = InteractiveElementDetector.detect(in: currentContent)
+            let candidates = elements.compactMap(extract).filter(isCompatible)
+
+            guard let fresh = candidates.min(by: {
+                let aOff = currentContent.distance(from: currentContent.startIndex, to: blockquoteRange($0).lowerBound)
+                let bOff = currentContent.distance(from: currentContent.startIndex, to: blockquoteRange($1).lowerBound)
+                return abs(aOff - staleOffset) < abs(bOff - staleOffset)
+            }) else {
+                throw WriteError.rangeMismatch
+            }
+
+            return (fresh, currentContent)
+        }.value
+    }
+
     /// Applies an edit to a file on disk.
     ///
     /// - Parameters:
@@ -152,46 +186,34 @@ final class InteractionHandler {
     func selectChoice(
         optionIndex: Int,
         in choice: ChoiceElement,
+        displayedContent: String,
         url: URL,
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        // Re-detect from fresh file content to avoid stale range corruption
         fileWatcher?.suppressChanges(for: 1.0)
 
-        let newContent = try await Task.detached(priority: .userInitiated) {
-            let data = try Data(contentsOf: url)
-            guard let currentContent = String(data: data, encoding: .utf8) else {
-                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1))
+        let (freshChoice, currentContent) = try await redetectElement(
+            staleBlockquoteRange: choice.blockquoteRange,
+            displayedContent: displayedContent,
+            url: url,
+            extract: { if case .choice(let ch) = $0 { return ch }; return nil },
+            isCompatible: { $0.options.count == choice.options.count },
+            blockquoteRange: { $0.blockquoteRange }
+        )
+
+        var modified = currentContent
+        for i in (0..<freshChoice.options.count).reversed() {
+            let option = freshChoice.options[i]
+            let newChar = (i == optionIndex) ? "x" : " "
+            let currentChar = option.isSelected ? "x" : " "
+            if String(newChar) != String(currentChar) {
+                modified.replaceSubrange(option.checkRange, with: String(newChar))
             }
-
-            // Re-detect elements from fresh content
-            let elements = InteractiveElementDetector.detect(in: currentContent)
-            guard let freshChoice = elements.compactMap({ element -> ChoiceElement? in
-                if case .choice(let ch) = element { return ch }
-                return nil
-            }).first(where: { $0.options.count == choice.options.count }) else {
-                throw WriteError.rangeMismatch
-            }
-
-            var modified = currentContent
-            // Process in reverse to preserve indices
-            for i in (0..<freshChoice.options.count).reversed() {
-                let option = freshChoice.options[i]
-                let newChar = (i == optionIndex) ? "x" : " "
-                let currentChar = option.isSelected ? "x" : " "
-                if String(newChar) != String(currentChar) {
-                    modified.replaceSubrange(option.checkRange, with: String(newChar))
-                }
-            }
-            return modified
-        }.value
-
-        try await secureWrite(newContent, to: url)
-
-        await MainActor.run {
-            onContentUpdated?(newContent)
         }
+
+        try await secureWrite(modified, to: url)
+        await MainActor.run { onContentUpdated?(modified) }
     }
 
     /// Replaces a fill-in placeholder with a value.
@@ -239,59 +261,75 @@ final class InteractionHandler {
         optionIndex: Int,
         notes: String? = nil,
         in review: ReviewElement,
+        displayedContent: String,
         url: URL,
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         let dateString = Self.todayString()
-
-        // Re-detect from fresh file content to avoid stale range corruption
         fileWatcher?.suppressChanges(for: 1.0)
 
-        let newContent = try await Task.detached(priority: .userInitiated) {
-            let data = try Data(contentsOf: url)
-            guard let currentContent = String(data: data, encoding: .utf8) else {
-                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1))
-            }
+        let (freshReview, currentContent) = try await redetectElement(
+            staleBlockquoteRange: review.blockquoteRange,
+            displayedContent: displayedContent,
+            url: url,
+            extract: { if case .review(let rv) = $0 { return rv }; return nil },
+            isCompatible: { $0.options.count == review.options.count },
+            blockquoteRange: { $0.blockquoteRange }
+        )
 
-            // Re-detect elements from fresh content
-            let elements = InteractiveElementDetector.detect(in: currentContent)
-            guard let freshReview = elements.compactMap({ element -> ReviewElement? in
-                if case .review(let rv) = element { return rv }
-                return nil
-            }).first(where: { $0.options.count == review.options.count }) else {
-                throw WriteError.rangeMismatch
-            }
-
-            guard optionIndex < freshReview.options.count else {
-                throw WriteError.rangeMismatch
-            }
-
-            var modified = currentContent
-            // Process in reverse to preserve indices
-            // Deselect ALL other options (not just currently selected) to enforce mutual exclusivity
-            for i in (0..<freshReview.options.count).reversed() {
-                let option = freshReview.options[i]
-                if i == optionIndex {
-                    var suffix = " \(option.status.rawValue) — \(dateString)"
-                    if let notes, !notes.isEmpty {
-                        suffix += ": \(notes)"
-                    }
-                    let newLine = "[x]\(suffix)"
-                    modified.replaceSubrange(option.range, with: newLine)
-                } else {
-                    let newLine = "[ ] \(option.status.rawValue)"
-                    modified.replaceSubrange(option.range, with: newLine)
-                }
-            }
-            return modified
-        }.value
-
-        try await secureWrite(newContent, to: url)
-
-        await MainActor.run {
-            onContentUpdated?(newContent)
+        guard optionIndex < freshReview.options.count else {
+            throw WriteError.rangeMismatch
         }
+
+        var modified = currentContent
+        for i in (0..<freshReview.options.count).reversed() {
+            let option = freshReview.options[i]
+            if i == optionIndex {
+                var suffix = " \(option.status.rawValue) — \(dateString)"
+                if let notes, !notes.isEmpty {
+                    suffix += ": \(notes)"
+                }
+                let newLine = "[x]\(suffix)"
+                modified.replaceSubrange(option.range, with: newLine)
+            } else {
+                let newLine = "[ ] \(option.status.rawValue)"
+                modified.replaceSubrange(option.range, with: newLine)
+            }
+        }
+
+        try await secureWrite(modified, to: url)
+        await MainActor.run { onContentUpdated?(modified) }
+    }
+
+    /// Clears all review selections (deselects every option, removes date/notes).
+    func clearReview(
+        in review: ReviewElement,
+        displayedContent: String,
+        url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        fileWatcher?.suppressChanges(for: 1.0)
+
+        let (freshReview, currentContent) = try await redetectElement(
+            staleBlockquoteRange: review.blockquoteRange,
+            displayedContent: displayedContent,
+            url: url,
+            extract: { if case .review(let rv) = $0 { return rv }; return nil },
+            isCompatible: { $0.options.count == review.options.count },
+            blockquoteRange: { $0.blockquoteRange }
+        )
+
+        var modified = currentContent
+        for i in (0..<freshReview.options.count).reversed() {
+            let option = freshReview.options[i]
+            let newLine = "[ ] \(option.status.rawValue)"
+            modified.replaceSubrange(option.range, with: newLine)
+        }
+
+        try await secureWrite(modified, to: url)
+        await MainActor.run { onContentUpdated?(modified) }
     }
 
     /// Accepts a CriticMarkup suggestion — applies the change to the file.
@@ -469,9 +507,13 @@ final class InteractionHandler {
 
     // MARK: - Helpers
 
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
     private static func todayString() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
+        dateFormatter.string(from: Date())
     }
 }

@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -134,7 +134,7 @@
 		7A294619650B588AAAAAB05F /* Bookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bookmark.swift; sourceTree = "<group>"; };
 		7B6BCC5252188EB88279BA7C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7CE3303CE8C9CDA35E6D110F /* QuickSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitcher.swift; sourceTree = "<group>"; };
-		7DEAC2E5FF06D13FFF9D03C3 /* AIMDReader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AIMDReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7DEAC2E5FF06D13FFF9D03C3 /* Pixley Markdown.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pixley Markdown.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		872D8BEA52B0C1733AEB87ED /* FileLoadTriggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLoadTriggerTests.swift; sourceTree = "<group>"; };
 		8A70093718A58E9919D50A1B /* PopoverControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverControllers.swift; sourceTree = "<group>"; };
 		8D3EE7A20192BD16B9BE2E7F /* InteractiveAnnotator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractiveAnnotator.swift; sourceTree = "<group>"; };
@@ -326,7 +326,7 @@
 		AD3F2C07A642096E7B63FEA9 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				7DEAC2E5FF06D13FFF9D03C3 /* AIMDReader.app */,
+				7DEAC2E5FF06D13FFF9D03C3 /* Pixley Markdown.app */,
 				FB63BCD8BAC64F2E8269083E /* AIMDReaderTests.xctest */,
 			);
 			name = Products;
@@ -425,7 +425,7 @@
 				9428077C8F61970B772022B9 /* aimdRenderer */,
 			);
 			productName = AIMDReader;
-			productReference = 7DEAC2E5FF06D13FFF9D03C3 /* AIMDReader.app */;
+			productReference = 7DEAC2E5FF06D13FFF9D03C3 /* Pixley Markdown.app */;
 			productType = "com.apple.product-type.application";
 		};
 		88722FC0EC3E2932E50BC9D5 /* AIMDReaderTests */ = {
@@ -455,7 +455,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					5F9B56D0E6C1DBEA945EF0EB = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 					88722FC0EC3E2932E50BC9D5 = {
@@ -477,7 +476,6 @@
 			packageReferences = (
 				B9CF57FA70669564CC7B6089 /* XCLocalSwiftPackageReference "Packages/aimdRenderer" */,
 			);
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -618,6 +616,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = (
 					arm64,
+					x86_64,
 				);
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -683,12 +682,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Resources/AIMDReader.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 7;
+				DEVELOPMENT_TEAM = JN6FKBBBYQ;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "PIxley Markdown";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aimd.reader;
 				PRODUCT_NAME = "Pixley Markdown";
 				SDKROOT = macosx;
@@ -716,9 +720,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = (
-					arm64,
-				);
+				ARCHS = arm64;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -789,12 +791,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Resources/AIMDReader.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 7;
+				DEVELOPMENT_TEAM = JN6FKBBBYQ;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "PIxley Markdown";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aimd.reader;
 				PRODUCT_NAME = "Pixley Markdown";
 				SDKROOT = macosx;

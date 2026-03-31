@@ -611,19 +611,19 @@ struct MarkdownEditor: NSViewRepresentable {
             object: clipView
         )
 
-        // Interactive element click handler
+        // Interactive element click handler — weak coordinator to avoid delaying deallocation
         let coordinator = context.coordinator
-        textView.onInteractiveElementClicked = { element, optionIndex, point in
-            coordinator.parent.onInteractiveElementClicked?(element, optionIndex, point)
+        textView.onInteractiveElementClicked = { [weak coordinator] element, optionIndex, point in
+            coordinator?.parent.onInteractiveElementClicked?(element, optionIndex, point)
         }
-        textView.onStatusSelected = { status, state in
-            coordinator.parent.onStatusSelected?(status, state)
+        textView.onStatusSelected = { [weak coordinator] status, state in
+            coordinator?.parent.onStatusSelected?(status, state)
         }
-        textView.onInputSubmitted = { element, optionIndex, fieldName, value in
-            coordinator.parent.onInputSubmitted?(element, optionIndex, fieldName, value)
+        textView.onInputSubmitted = { [weak coordinator] element, optionIndex, fieldName, value in
+            coordinator?.parent.onInputSubmitted?(element, optionIndex, fieldName, value)
         }
-        textView.onAddComment = { selectedText, range in
-            coordinator.parent.onAddComment?(selectedText, range)
+        textView.onAddComment = { [weak coordinator] selectedText, range in
+            coordinator?.parent.onAddComment?(selectedText, range)
         }
 
         // Initial content
@@ -688,18 +688,18 @@ struct MarkdownEditor: NSViewRepresentable {
             context.coordinator.applyHighlighting(to: textView, text: pending)
         }
 
-        // Update callback references
+        // Update callback references — weak coordinator to avoid delaying deallocation
         context.coordinator.onScrollPositionChanged = onScrollPositionChanged
         if let tv = textView as? MarkdownNSTextView {
             let coordinator = context.coordinator
-            tv.onInteractiveElementClicked = { element, optionIndex, point in
-                coordinator.parent.onInteractiveElementClicked?(element, optionIndex, point)
+            tv.onInteractiveElementClicked = { [weak coordinator] element, optionIndex, point in
+                coordinator?.parent.onInteractiveElementClicked?(element, optionIndex, point)
             }
-            tv.onStatusSelected = { status, state in
-                coordinator.parent.onStatusSelected?(status, state)
+            tv.onStatusSelected = { [weak coordinator] status, state in
+                coordinator?.parent.onStatusSelected?(status, state)
             }
-            tv.onInputSubmitted = { element, optionIndex, fieldName, value in
-                coordinator.parent.onInputSubmitted?(element, optionIndex, fieldName, value)
+            tv.onInputSubmitted = { [weak coordinator] element, optionIndex, fieldName, value in
+                coordinator?.parent.onInputSubmitted?(element, optionIndex, fieldName, value)
             }
         }
 

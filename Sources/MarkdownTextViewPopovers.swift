@@ -67,14 +67,19 @@ extension MarkdownNSTextView {
 
         case .review(let rv):
             guard let optionIndex, optionIndex < rv.options.count else { return false }
-            if rv.options[optionIndex].status.promptsForNotes {
+            let option = rv.options[optionIndex]
+            if option.status.promptsForNotes {
+                let isReselect = option.isSelected
                 showInputPopover(for: element, at: charRange, config: InputPopoverConfig(
-                    title: "Review: \(rv.options[optionIndex].status.rawValue)",
-                    subtitle: "Add notes for this review status.",
+                    title: "Review: \(option.status.rawValue)",
+                    subtitle: isReselect ? "Update notes or clear this selection." : "Add notes for this review status.",
                     fieldName: "notes",
+                    initialValue: isReselect ? (option.notes ?? "") : "",
                     multiline: true,
                     allowEmpty: true
-                ), optionIndex: optionIndex)
+                ), optionIndex: optionIndex, onClear: isReselect ? { [weak self] in
+                    self?.onInputSubmitted?(element, nil, "clearReview", "")
+                } : nil)
                 return true
             }
             return false
@@ -99,20 +104,26 @@ extension MarkdownNSTextView {
     // MARK: - Input Popover
 
     /// Shows an inline text input popover at the element's position.
-    func showInputPopover(for element: InteractiveElement, at charRange: NSRange, config: InputPopoverConfig, optionIndex: Int? = nil) {
+    func showInputPopover(for element: InteractiveElement, at charRange: NSRange, config: InputPopoverConfig, optionIndex: Int? = nil, onClear: (() -> Void)? = nil) {
         inputPopover?.close()
 
         let popover = NSPopover()
         popover.behavior = .transient
 
-        let controller = InputPopoverController(config: config) { [weak self] value in
+        let controller = InputPopoverController(config: config, onSubmit: { [weak self] value in
             self?.inputPopover?.close()
             self?.inputPopover = nil
             self?.onInputSubmitted?(element, optionIndex, config.fieldName, value)
-        } onCancel: { [weak self] in
+        }, onCancel: { [weak self] in
             self?.inputPopover?.close()
             self?.inputPopover = nil
-        }
+        }, onClear: onClear.map { clear in
+            { [weak self] in
+                self?.inputPopover?.close()
+                self?.inputPopover = nil
+                clear()
+            }
+        })
         popover.contentViewController = controller
 
         guard let positionRect = glyphRect(for: charRange) else { return }

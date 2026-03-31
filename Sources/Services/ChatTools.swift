@@ -34,6 +34,10 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
         }
     }
 
+    // SAFETY: All three properties are only written from @MainActor (ChatService)
+    // and read from call() which snapshots them via MainActor.run before use.
+    // @unchecked Sendable is safe because call() hops to MainActor to read state.
+
     /// Current document content — updated by ChatService before each session
     var documentContent: String = ""
 
@@ -44,13 +48,16 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
     var onEdit: (@Sendable @MainActor (InteractiveEdit, URL) async throws -> String)?
 
     func call(arguments: Arguments) async throws -> String {
-        let elements = InteractiveElementDetector.detect(in: documentContent)
+        // Snapshot mutable state on MainActor before doing work
+        let (content, url, editHandler) = await MainActor.run { (documentContent, fileURL, onEdit) }
+
+        let elements = InteractiveElementDetector.detect(in: content)
 
         guard arguments.elementIndex >= 0, arguments.elementIndex < elements.count else {
             return "Error: Element index \(arguments.elementIndex) out of range (document has \(elements.count) elements)"
         }
 
-        guard let url = fileURL else {
+        guard let url else {
             return "Error: No file URL available"
         }
 
@@ -65,7 +72,7 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
             if cb.isChecked != shouldCheck {
                 let newChar = shouldCheck ? "x" : " "
                 let edit = InteractiveEdit.replace(range: cb.checkRange, newText: newChar)
-                return await applyEdit(edit, to: url)
+                return await applyEdit(edit, to: url, handler: editHandler)
             } else {
                 return "Checkbox already \(shouldCheck ? "checked" : "unchecked")"
             }
@@ -88,7 +95,7 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
             }
             if !replacements.isEmpty {
                 let edit = InteractiveEdit.replaceMultiple(replacements)
-                return await applyEdit(edit, to: url)
+                return await applyEdit(edit, to: url, handler: editHandler)
             } else {
                 return "Option already selected"
             }
@@ -114,7 +121,7 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
             }
             if !replacements.isEmpty {
                 let edit = InteractiveEdit.replaceMultiple(replacements)
-                return await applyEdit(edit, to: url)
+                return await applyEdit(edit, to: url, handler: editHandler)
             } else {
                 return "Review already set"
             }
@@ -124,7 +131,7 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
                 return "Error: Element at index \(arguments.elementIndex) is not a fill-in"
             }
             let edit = InteractiveEdit.replace(range: fi.range, newText: arguments.value)
-            return await applyEdit(edit, to: url)
+            return await applyEdit(edit, to: url, handler: editHandler)
 
         case .feedback:
             guard case .feedback(let fb) = element else {
@@ -132,17 +139,17 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
             }
             let newComment = "<!-- feedback: \(arguments.value) -->"
             let edit = InteractiveEdit.replace(range: fb.range, newText: newComment)
-            return await applyEdit(edit, to: url)
+            return await applyEdit(edit, to: url, handler: editHandler)
         }
     }
 
-    private func applyEdit(_ edit: InteractiveEdit, to url: URL) async -> String {
-        guard let onEdit else {
+    private func applyEdit(_ edit: InteractiveEdit, to url: URL, handler: (@Sendable @MainActor (InteractiveEdit, URL) async throws -> String)?) async -> String {
+        guard let handler else {
             return "Error: Edit handler not configured"
         }
         do {
-            let newContent = try await onEdit(edit, url)
-            documentContent = newContent
+            let newContent = try await handler(edit, url)
+            await MainActor.run { documentContent = newContent }
             return "Edit applied successfully"
         } catch {
             return "Error applying edit: \(error.localizedDescription)"

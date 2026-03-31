@@ -39,7 +39,7 @@ struct BrowserWindowRoot: View {
             // Defer configuration to next run-loop tick to avoid
             // state mutations during the CA commit / layout pass.
             if !isConfigured {
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     configure()
                 }
             }

@@ -32,13 +32,15 @@ final class InputPopoverController: NSViewController {
     private let config: InputPopoverConfig
     private let onSubmit: (String) -> Void
     private let onCancel: () -> Void
+    private let onClear: (() -> Void)?
     private var textField: NSTextField?
     private var scrolledTextView: NSScrollView?
 
-    init(config: InputPopoverConfig, onSubmit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+    init(config: InputPopoverConfig, onSubmit: @escaping (String) -> Void, onCancel: @escaping () -> Void, onClear: (() -> Void)? = nil) {
         self.config = config
         self.onSubmit = onSubmit
         self.onCancel = onCancel
+        self.onClear = onClear
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -99,7 +101,15 @@ final class InputPopoverController: NSViewController {
         spacer.translatesAutoresizingMaskIntoConstraints = false
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        let buttonStack = NSStackView(views: [cancelButton, spacer, submitButton])
+        var buttonViews: [NSView] = [cancelButton]
+        if onClear != nil {
+            let clearButton = NSButton(title: "Clear", target: self, action: #selector(clearTapped))
+            clearButton.contentTintColor = .systemRed
+            buttonViews.append(clearButton)
+        }
+        buttonViews.append(contentsOf: [spacer, submitButton])
+
+        let buttonStack = NSStackView(views: buttonViews)
         buttonStack.orientation = .horizontal
         views.append(buttonStack)
 
@@ -145,6 +155,10 @@ final class InputPopoverController: NSViewController {
         let value = inputValue
         guard config.allowEmpty || !value.isEmpty else { return }
         onSubmit(value)
+    }
+
+    @objc private func clearTapped() {
+        onClear?()
     }
 
     @objc private func cancelTapped() {
