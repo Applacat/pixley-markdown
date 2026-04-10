@@ -8,6 +8,8 @@ import aimdRenderer
 struct NativeControlView: View {
 
     let element: InteractiveElement
+    let documentContent: String
+    let palette: SyntaxPalette
     let onChanged: (InteractiveElement, Int?, String, String) -> Void
     let onClicked: (InteractiveElement, Int?) -> Void
     let onStatusSelected: (StatusElement, String) -> Void
@@ -276,13 +278,38 @@ struct NativeControlView: View {
     // MARK: - Collapsible
 
     private func collapsibleView(_ col: CollapsibleElement) -> some View {
-        DisclosureGroup(col.title) {
-            // Render inner content as raw text for now
-            Text("(collapsible content)")
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.secondary)
+        let innerBlocks = parseCollapsibleContent(col)
+
+        return DisclosureGroup(col.title) {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(innerBlocks) { block in
+                    ContentBlockView(
+                        block: block,
+                        palette: palette,
+                        searchText: "",
+                        onInteractiveElementChanged: onChanged,
+                        onInteractiveElementClicked: onClicked,
+                        onStatusSelected: onStatusSelected
+                    )
+                }
+            }
         }
         .font(.system(.body, design: .monospaced))
+    }
+
+    private func parseCollapsibleContent(_ col: CollapsibleElement) -> [MarkdownBlock] {
+        guard col.contentRange.lowerBound < col.contentRange.upperBound,
+              col.contentRange.lowerBound >= documentContent.startIndex,
+              col.contentRange.upperBound <= documentContent.endIndex else {
+            return []
+        }
+        let innerElements = InteractiveElementDetector.detect(in: String(documentContent[col.contentRange]))
+        return MarkdownBlockParser.parse(
+            content: documentContent,
+            sectionRange: col.contentRange,
+            elements: innerElements,
+            includeHeadings: true
+        )
     }
 }
 

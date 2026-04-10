@@ -10,6 +10,7 @@ struct ContentBlockView: View {
     let block: MarkdownBlock
     let palette: SyntaxPalette
     let searchText: String
+    var documentContent: String = ""
     let onInteractiveElementChanged: (InteractiveElement, Int?, String, String) -> Void
     let onInteractiveElementClicked: (InteractiveElement, Int?) -> Void
     let onStatusSelected: (StatusElement, String) -> Void
@@ -45,6 +46,8 @@ struct ContentBlockView: View {
         case .interactiveElement(let element):
             NativeControlView(
                 element: element,
+                documentContent: documentContent,
+                palette: palette,
                 onChanged: onInteractiveElementChanged,
                 onClicked: onInteractiveElementClicked,
                 onStatusSelected: onStatusSelected
@@ -210,6 +213,7 @@ struct ContentBlockView: View {
                         block: block,
                         palette: palette,
                         searchText: searchText,
+                        documentContent: documentContent,
                         onInteractiveElementChanged: onInteractiveElementChanged,
                         onInteractiveElementClicked: onInteractiveElementClicked,
                         onStatusSelected: onStatusSelected

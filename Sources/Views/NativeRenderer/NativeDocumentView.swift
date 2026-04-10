@@ -66,6 +66,7 @@ struct NativeDocumentView: View {
                                     block: block,
                                     palette: palette,
                                     searchText: searchText,
+                                    documentContent: content,
                                     onInteractiveElementChanged: onInteractiveElementChanged,
                                     onInteractiveElementClicked: onInteractiveElementClicked,
                                     onStatusSelected: onStatusSelected
