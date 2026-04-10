@@ -97,14 +97,10 @@ public final class BehaviorSettings {
 
 /// Interactive element rendering mode
 public enum InteractiveMode: String, CaseIterable, Identifiable, Sendable {
-    /// Plain text rendering (minimal styling, for power users)
+    /// Plain text rendering with interactive click targets
     case plain = "Plain"
-    /// Enhanced text rendering with hover states, tooltips, and visual pills
+    /// Native SwiftUI renderer with palette-styled blocks and native controls
     case enhanced = "Enhanced"
-    /// Hybrid — enhanced text rendering with native macOS controls for interactive elements
-    case hybrid = "Hybrid"
-    /// Liquid Glass — full SwiftUI block renderer with glass material nesting
-    case liquidGlass = "Liquid Glass"
 
     public var id: String { rawValue }
 
@@ -113,8 +109,6 @@ public enum InteractiveMode: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .plain: return "Plain"
         case .enhanced: return "Enhanced"
-        case .hybrid: return "Hybrid"
-        case .liquidGlass: return "Liquid Glass"
         }
     }
 
@@ -123,20 +117,15 @@ public enum InteractiveMode: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .plain: return "doc.plaintext"
         case .enhanced: return "doc.richtext"
-        case .hybrid: return "slider.horizontal.3"
-        case .liquidGlass: return "cube.transparent"
         }
     }
 
     public var displayName: String {
         switch self {
         case .plain: return "Plain — minimal styling"
-        case .enhanced: return "Enhanced — colors, pills, and highlights"
-        case .hybrid: return "Hybrid — enhanced text, native controls"
-        case .liquidGlass: return "Liquid Glass — native controls, glass blocks"
+        case .enhanced: return "Enhanced — native controls, styled blocks"
         }
     }
-
 }
 
 // MARK: - Setting Types
@@ -297,9 +286,8 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
             behavior.underlineLinks = defaults.bool(forKey: "underlineLinks")
         }
         let modeRaw = defaults.string(forKey: "interactiveMode") ?? InteractiveMode.enhanced.rawValue
-        let loadedMode = InteractiveMode(rawValue: modeRaw) ?? .enhanced
-        // Fall back to Enhanced if user had Hybrid or Liquid Glass (removed from UI)
-        behavior.interactiveMode = (loadedMode == .hybrid || loadedMode == .liquidGlass) ? .enhanced : loadedMode
+        // Migration: "Hybrid" and "Liquid Glass" resolve to Enhanced
+        behavior.interactiveMode = InteractiveMode(rawValue: modeRaw) ?? .enhanced
 
         self.appearance = appearance
         self.rendering = rendering

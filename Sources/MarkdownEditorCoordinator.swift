@@ -96,9 +96,8 @@ final class MarkdownEditorCoordinator: NSObject, NSTextViewDelegate {
         let elements = InteractiveElementDetector.detect(in: text)
         let mutable = NSMutableAttributedString(attributedString: attributed)
         if !elements.isEmpty {
-            let isEnhanced = interactiveMode == .enhanced || interactiveMode == .hybrid
             let annotator = debouncedHighlighter.highlighter.makeAnnotator()
-            annotator.annotateInteractiveElements(mutable, elements: elements, text: text, enhanced: isEnhanced)
+            annotator.annotateInteractiveElements(mutable, elements: elements, text: text, enhanced: false)
         }
         MarkdownHighlighter.padTableColumns(in: mutable)
         textView.textStorage?.setAttributedString(mutable)

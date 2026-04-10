@@ -527,9 +527,9 @@ struct MarkdownEditor: NSViewRepresentable {
         let palette = syntaxTheme.palette
         let fontSize = settings.rendering.fontSize
         textView.font = MarkdownHighlighter.resolveFont(family: settings.rendering.fontFamily, size: fontSize, weight: .regular)
-        textView.textColor = NSColor(hex: palette.foreground) ?? .labelColor
-        textView.backgroundColor = NSColor(hex: palette.background) ?? .textBackgroundColor
-        textView.insertionPointColor = NSColor(hex: palette.foreground) ?? .labelColor
+        textView.textColor = palette.foregroundNSColor
+        textView.backgroundColor = palette.backgroundNSColor
+        textView.insertionPointColor = palette.foregroundNSColor
         textView.usesAdaptiveColorMappingForDarkAppearance = false
 
         // Uniform padding (no gutter space — gutter is a separate sibling view)
@@ -543,7 +543,7 @@ struct MarkdownEditor: NSViewRepresentable {
 
         // Link appearance
         var linkAttrs: [NSAttributedString.Key: Any] = [
-            .foregroundColor: NSColor(hex: palette.function) ?? .systemTeal,
+            .foregroundColor: palette.functionNSColor,
             .cursor: NSCursor.pointingHand
         ]
         if settings.behavior.underlineLinks {
@@ -564,7 +564,7 @@ struct MarkdownEditor: NSViewRepresentable {
         let gutterView = GutterOverlayView()
         gutterView.textView = textView
         gutterView.gutterBackground = textView.backgroundColor
-        gutterView.lineNumberColor = NSColor(hex: palette.comment) ?? NSColor(hex: palette.lineNumber) ?? .secondaryLabelColor
+        gutterView.lineNumberColor = palette.commentNSColor
         gutterView.bookmarkedLines = bookmarkedLines
         gutterView.commentedLines = commentedLines
         gutterView.onToggleBookmark = onToggleBookmark
@@ -657,12 +657,12 @@ struct MarkdownEditor: NSViewRepresentable {
             context.coordinator.updateSettings(fontSize: currentFontSize, theme: currentTheme, fontFamily: currentFontFamily, headingScale: currentHeadingScale, colorScheme: currentColorScheme)
 
             let palette = currentTheme.rendererTheme(for: currentColorScheme).palette
-            textView.textColor = NSColor(hex: palette.foreground) ?? .labelColor
-            textView.backgroundColor = NSColor(hex: palette.background) ?? .textBackgroundColor
-            textView.insertionPointColor = NSColor(hex: palette.foreground) ?? .labelColor
+            textView.textColor = palette.foregroundNSColor
+            textView.backgroundColor = palette.backgroundNSColor
+            textView.insertionPointColor = palette.foregroundNSColor
 
             var linkAttrs: [NSAttributedString.Key: Any] = [
-                .foregroundColor: NSColor(hex: palette.function) ?? .systemTeal,
+                .foregroundColor: palette.functionNSColor,
                 .cursor: NSCursor.pointingHand
             ]
             if settings.behavior.underlineLinks {
@@ -711,8 +711,8 @@ struct MarkdownEditor: NSViewRepresentable {
         // Update gutter
         if let gutterView = context.coordinator.gutterView {
             let palette = currentTheme.rendererTheme(for: currentColorScheme).palette
-            gutterView.gutterBackground = NSColor(hex: palette.background) ?? .textBackgroundColor
-            gutterView.lineNumberColor = NSColor(hex: palette.comment) ?? NSColor(hex: palette.lineNumber) ?? .secondaryLabelColor
+            gutterView.gutterBackground = palette.backgroundNSColor
+            gutterView.lineNumberColor = palette.commentNSColor
             gutterView.bookmarkedLines = bookmarkedLines
             gutterView.commentedLines = commentedLines
             gutterView.onToggleBookmark = onToggleBookmark

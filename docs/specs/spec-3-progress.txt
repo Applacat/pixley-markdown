@@ -1,0 +1,5 @@
+Spec 3 — Add Comment, Tab Navigation & Comment Threading
+
+Phase 1: Comment Detection + Gutter Indicator [PENDING]
+Phase 2: Comment Popover + Threading [PENDING]
+Phase 3: Tab Focus Cycling [PENDING]

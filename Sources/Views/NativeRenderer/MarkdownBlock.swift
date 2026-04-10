@@ -3,12 +3,17 @@ import aimdRenderer
 
 // MARK: - Markdown Block
 
-/// A renderable block of markdown content for the Liquid Glass renderer.
+/// A renderable block of markdown content for the native SwiftUI renderer.
 /// Produced by `MarkdownBlockParser` from raw markdown text within a section.
-/// Each block carries a stable `index` assigned during parsing for ForEach identity.
+/// Each block carries a stable `index` assigned during parsing for ForEach identity,
+/// plus its source line range for gutter line numbers.
 struct MarkdownBlock: Identifiable {
     let id: Int // sequential index assigned at parse time
     let kind: Kind
+    /// 1-based starting line number in the source markdown file
+    let startLine: Int
+    /// 1-based ending line number in the source markdown file (inclusive)
+    let endLine: Int
 
     enum Kind {
         case heading(level: Int, text: String)
@@ -58,10 +63,15 @@ struct ListItemBlock: Identifiable {
 /// Uses line-level regex parsing (not swift-markdown AST) for speed and simplicity.
 enum MarkdownBlockParser {
 
+    /// Parse the full document into a flat block array (headings included).
+    static func parseFlat(content: String, elements: [InteractiveElement]) -> [MarkdownBlock] {
+        let range = content.startIndex..<content.endIndex
+        return parse(content: content, sectionRange: range, elements: elements, includeHeadings: true, lineOffset: 0)
+    }
+
     /// Parse a section's raw text content (below its heading) into blocks.
-    /// The `content` parameter is the full document content.
-    /// The `range` is the section's content range (after the heading line).
-    static func parse(content: String, sectionRange: Range<String.Index>, elements: [InteractiveElement]) -> [MarkdownBlock] {
+    /// `lineOffset` is the 0-based line offset of the section's first line within the full document.
+    static func parse(content: String, sectionRange: Range<String.Index>, elements: [InteractiveElement], includeHeadings: Bool = false, lineOffset: Int = 0) -> [MarkdownBlock] {
         let text = String(content[sectionRange])
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
 
@@ -75,6 +85,7 @@ enum MarkdownBlockParser {
         while i < lines.count {
             let line = lines[i]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let absLine = lineOffset + i + 1 // 1-based absolute line number
 
             // Skip empty lines
             if trimmed.isEmpty {
@@ -82,31 +93,43 @@ enum MarkdownBlockParser {
                 continue
             }
 
+            // Heading (only in flat parse mode)
+            if includeHeadings, let headingLevel = parseHeadingLevel(trimmed) {
+                let headingText = String(trimmed.dropFirst(headingLevel + 1))
+                blocks.append(MarkdownBlock(id: blocks.count, kind: .heading(level: headingLevel, text: headingText), startLine: absLine, endLine: absLine))
+                i += 1
+                continue
+            }
+
             // Check if this line starts an interactive element
+            let prevI = i
             if let elementKind = matchInteractiveElement(lineIndex: i, lines: lines, sectionStart: sectionStart, content: content, elements: elements, consumed: &i) {
-                blocks.append(MarkdownBlock(id: blocks.count, kind: elementKind))
+                let endAbsLine = lineOffset + (i - 1) + 1
+                blocks.append(MarkdownBlock(id: blocks.count, kind: elementKind, startLine: absLine, endLine: endAbsLine))
                 continue
             }
 
             // Code block (fenced)
             if trimmed.hasPrefix("```") {
                 let result = parseCodeBlock(from: lines, startIndex: i)
-                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind))
+                let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
+                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
                 i = result.nextIndex
                 continue
             }
 
             // Horizontal rule
             if isHorizontalRule(trimmed) {
-                blocks.append(MarkdownBlock(id: blocks.count, kind: .horizontalRule))
+                blocks.append(MarkdownBlock(id: blocks.count, kind: .horizontalRule, startLine: absLine, endLine: absLine))
                 i += 1
                 continue
             }
 
             // Blockquote
             if trimmed.hasPrefix("> ") || trimmed == ">" {
-                let result = parseBlockquote(from: lines, startIndex: i, content: content, sectionRange: sectionRange, elements: elements)
-                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind))
+                let result = parseBlockquote(from: lines, startIndex: i, lineOffset: lineOffset, content: content, sectionRange: sectionRange, elements: elements)
+                let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
+                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
                 i = result.nextIndex
                 continue
             }
@@ -114,7 +137,8 @@ enum MarkdownBlockParser {
             // Unordered list
             if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("+ ") {
                 let result = parseUnorderedList(from: lines, startIndex: i)
-                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind))
+                let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
+                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
                 i = result.nextIndex
                 continue
             }
@@ -122,7 +146,8 @@ enum MarkdownBlockParser {
             // Ordered list
             if let _ = trimmed.range(of: #"^\d+\.\s"#, options: .regularExpression) {
                 let result = parseOrderedList(from: lines, startIndex: i)
-                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind))
+                let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
+                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
                 i = result.nextIndex
                 continue
             }
@@ -130,7 +155,8 @@ enum MarkdownBlockParser {
             // Table
             if trimmed.hasPrefix("|") {
                 let result = parseTable(from: lines, startIndex: i)
-                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind))
+                let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
+                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
                 i = result.nextIndex
                 continue
             }
@@ -140,7 +166,7 @@ enum MarkdownBlockParser {
                 let imageText = String(trimmed[imageMatch])
                 if let alt = extractGroup(from: imageText, pattern: #"!\[([^\]]*)\]"#),
                    let url = extractGroup(from: imageText, pattern: #"\(([^)]+)\)"#) {
-                    blocks.append(MarkdownBlock(id: blocks.count, kind: .image(alt: alt, url: url)))
+                    blocks.append(MarkdownBlock(id: blocks.count, kind: .image(alt: alt, url: url), startLine: absLine, endLine: absLine))
                     i += 1
                     continue
                 }
@@ -148,7 +174,8 @@ enum MarkdownBlockParser {
 
             // Default: paragraph (collect consecutive non-blank non-special lines)
             let result = parseParagraph(from: lines, startIndex: i)
-            blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind))
+            let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
+            blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
             i = result.nextIndex
         }
 
@@ -177,7 +204,7 @@ enum MarkdownBlockParser {
 
     // MARK: - Blockquote
 
-    private static func parseBlockquote(from lines: [String], startIndex: Int, content: String, sectionRange: Range<String.Index>, elements: [InteractiveElement]) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
+    private static func parseBlockquote(from lines: [String], startIndex: Int, lineOffset: Int, content: String, sectionRange: Range<String.Index>, elements: [InteractiveElement]) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
         var quoteLines: [String] = []
         var i = startIndex
 
@@ -193,9 +220,11 @@ enum MarkdownBlockParser {
             i += 1
         }
 
+        let absStart = lineOffset + startIndex + 1
+        let absEnd = lineOffset + (i - 1) + 1
         let innerText = quoteLines.joined(separator: "\n")
         let innerRuns = parseInlineRuns(innerText)
-        return (.blockquote(blocks: [MarkdownBlock(id: 0, kind: .paragraph(runs: innerRuns))]), i)
+        return (.blockquote(blocks: [MarkdownBlock(id: 0, kind: .paragraph(runs: innerRuns), startLine: absStart, endLine: absEnd)]), i)
     }
 
     // MARK: - Lists
@@ -268,7 +297,6 @@ enum MarkdownBlockParser {
             i += 1
         }
 
-        // If nothing was consumed, skip this line as raw text to prevent infinite loop
         if paraLines.isEmpty {
             return (.rawText(lines[startIndex]), startIndex + 1)
         }
@@ -281,12 +309,9 @@ enum MarkdownBlockParser {
 
     private static func parseTable(from lines: [String], startIndex: Int) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
         var i = startIndex
-
-        // Parse header row
         let headers = parseTableRow(lines[i])
         i += 1
 
-        // Skip separator row (|---|---|)
         if i < lines.count {
             let sep = lines[i].trimmingCharacters(in: .whitespaces)
             if sep.hasPrefix("|") && sep.contains("-") {
@@ -294,7 +319,6 @@ enum MarkdownBlockParser {
             }
         }
 
-        // Parse data rows
         var rows: [[String]] = []
         while i < lines.count {
             let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
@@ -310,7 +334,6 @@ enum MarkdownBlockParser {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         var cells = trimmed.split(separator: "|", omittingEmptySubsequences: false)
             .map { String($0).trimmingCharacters(in: .whitespaces) }
-        // Remove empty first/last from leading/trailing |
         if cells.first?.isEmpty == true { cells.removeFirst() }
         if cells.last?.isEmpty == true { cells.removeLast() }
         return cells
@@ -324,7 +347,6 @@ enum MarkdownBlockParser {
         var runs: [InlineRun] = []
         var remaining = text[text.startIndex...]
 
-        // Simple regex-based inline parser
         let patterns: [(pattern: String, style: (String) -> InlineRun.Style)] = [
             (#"\!\[([^\]]*)\]\(([^)]+)\)"#, { match in
                 if let url = extractGroup(from: match, pattern: #"\]\(([^)]+)\)"#) {
@@ -353,10 +375,8 @@ enum MarkdownBlockParser {
                     if earliestMatch == nil || match.lowerBound < earliestMatch!.range.lowerBound {
                         let matched = String(remaining[match])
                         let style = styleFunc(matched)
-                        // Extract inner text
                         let inner: String
                         if matched.hasPrefix("![") {
-                            // Image inline — extract alt text
                             inner = extractGroup(from: matched, pattern: #"!\[([^\]]*)\]"#) ?? matched
                         } else if matched.hasPrefix("[") {
                             inner = extractGroup(from: matched, pattern: #"\[([^\]]+)\]"#) ?? matched
@@ -379,7 +399,6 @@ enum MarkdownBlockParser {
             }
 
             if let match = earliestMatch {
-                // Add plain text before the match
                 if match.range.lowerBound > remaining.startIndex {
                     let plain = String(remaining[remaining.startIndex..<match.range.lowerBound])
                     if !plain.isEmpty {
@@ -389,7 +408,6 @@ enum MarkdownBlockParser {
                 runs.append(InlineRun(text: match.text, style: match.style))
                 remaining = remaining[match.range.upperBound...]
             } else {
-                // No more matches — rest is plain
                 runs.append(InlineRun(text: String(remaining), style: .plain))
                 break
             }
@@ -401,10 +419,9 @@ enum MarkdownBlockParser {
     // MARK: - Interactive Elements
 
     private static func matchInteractiveElement(lineIndex: Int, lines: [String], sectionStart: Int, content: String, elements: [InteractiveElement], consumed: inout Int) -> MarkdownBlock.Kind? {
-        // Calculate the offset of this line within the full document
         var offset = sectionStart
         for j in 0..<lineIndex {
-            offset += lines[j].count + 1 // +1 for newline
+            offset += lines[j].count + 1
         }
 
         for element in elements {
@@ -412,7 +429,6 @@ enum MarkdownBlockParser {
             let elemEnd = content.distance(from: content.startIndex, to: element.range.upperBound)
 
             if elemStart >= offset && elemStart < offset + lines[lineIndex].count + 1 {
-                // This element starts on this line — figure out how many lines it spans
                 var endLineIdx = lineIndex
                 var endOffset = offset
                 while endLineIdx < lines.count {
@@ -425,8 +441,6 @@ enum MarkdownBlockParser {
             }
         }
 
-        // Don't modify consumed — caller's i should stay on this line
-        // so subsequent parsers can process it
         return nil
     }
 
@@ -437,6 +451,16 @@ enum MarkdownBlockParser {
         return (stripped.allSatisfy({ $0 == "-" }) && stripped.count >= 3) ||
                (stripped.allSatisfy({ $0 == "*" }) && stripped.count >= 3) ||
                (stripped.allSatisfy({ $0 == "_" }) && stripped.count >= 3)
+    }
+
+    private static func parseHeadingLevel(_ line: String) -> Int? {
+        var level = 0
+        for ch in line {
+            if ch == "#" { level += 1 }
+            else if ch == " " && level > 0 { return min(level, 6) }
+            else { return nil }
+        }
+        return nil
     }
 }
 

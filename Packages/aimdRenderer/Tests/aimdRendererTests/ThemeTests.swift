@@ -1,4 +1,5 @@
 import Testing
+import SwiftUI
 import Foundation
 @testable import aimdRenderer
 
@@ -11,9 +12,10 @@ struct ThemeTests {
     func allThemesHavePalettes() {
         for theme in SyntaxTheme.allCases {
             let palette = theme.palette
-            #expect(!palette.background.isEmpty)
-            #expect(!palette.foreground.isEmpty)
-            #expect(!palette.keyword.isEmpty)
+            // Verify all color properties are accessible (non-optional Color)
+            _ = palette.background
+            _ = palette.foreground
+            _ = palette.keyword
         }
     }
 
@@ -108,29 +110,53 @@ struct ThemeTests {
 
     // MARK: - Palette Color Tests
 
-    @Test("Xcode Dark palette has valid hex colors")
-    func xcodeDarkPaletteColors() {
+    @Test("All palettes have distinct foreground and background")
+    func paletteForegroundBackgroundDistinct() {
+        for theme in SyntaxTheme.allCases {
+            let palette = theme.palette
+            #expect(palette.foreground != palette.background, "Theme \(theme.rawValue) has identical fg/bg")
+        }
+    }
+
+    @Test("Palettes are Equatable")
+    func paletteEquatable() {
+        let a = SyntaxPalette.xcodeDark
+        let b = SyntaxPalette.xcodeDark
+        let c = SyntaxPalette.dracula
+        #expect(a == b)
+        #expect(a != c)
+    }
+
+    @Test("Color hex initializer produces valid colors")
+    func colorHexInit() {
+        let white = Color(hex: "#FFFFFF")
+        let black = Color(hex: "#000000")
+        let red = Color(hex: "#FF0000")
+        // Colors are created without crashing — basic validity
+        #expect(white != black)
+        #expect(red != black)
+        #expect(red != white)
+    }
+
+    #if canImport(AppKit)
+    @Test("NSColor accessors produce valid colors")
+    func nsColorAccessors() {
         let palette = SyntaxPalette.xcodeDark
-        #expect(isValidHex(palette.background))
-        #expect(isValidHex(palette.foreground))
-        #expect(isValidHex(palette.keyword))
-        #expect(isValidHex(palette.string))
-        #expect(isValidHex(palette.comment))
-        #expect(isValidHex(palette.number))
-        #expect(isValidHex(palette.type))
-        #expect(isValidHex(palette.function))
-        #expect(isValidHex(palette.property))
-        #expect(isValidHex(palette.operator))
-        #expect(isValidHex(palette.preprocessor))
+        // Verify NSColor computed properties are accessible
+        _ = palette.backgroundNSColor
+        _ = palette.foregroundNSColor
+        _ = palette.keywordNSColor
+        _ = palette.stringNSColor
+        _ = palette.commentNSColor
+        _ = palette.numberNSColor
+        _ = palette.typeNSColor
+        _ = palette.functionNSColor
+        _ = palette.propertyNSColor
+        _ = palette.operatorNSColor
+        _ = palette.preprocessorNSColor
+        _ = palette.commentHighlightNSColor
     }
-
-    // MARK: - Helper
-
-    private func isValidHex(_ hex: String) -> Bool {
-        let trimmed = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
-        guard trimmed.count == 6 || trimmed.count == 8 else { return false }
-        return trimmed.allSatisfy { $0.isHexDigit }
-    }
+    #endif
 }
 
 // MARK: - SwiftUI Theme Tests
@@ -143,16 +169,14 @@ struct SwiftUIThemeTests {
     func renderHeading() async {
         let theme = SwiftUITheme()
         let heading = HeadingInfo(level: 1, text: "Test Heading")
-        let view = theme.render(heading: heading)
-        #expect(view != nil)
+        let _ = theme.render(heading: heading)
     }
 
     @Test("SwiftUI theme can render paragraph")
     func renderParagraph() async {
         let theme = SwiftUITheme()
         let paragraph = ParagraphInfo(text: "Test paragraph content.")
-        let view = theme.render(paragraph: paragraph)
-        #expect(view != nil)
+        let _ = theme.render(paragraph: paragraph)
     }
 
     @Test("SwiftUI theme can render code block")
@@ -162,16 +186,14 @@ struct SwiftUIThemeTests {
             language: "swift",
             code: "let x = 42"
         )
-        let view = theme.render(codeBlock: codeBlock)
-        #expect(view != nil)
+        let _ = theme.render(codeBlock: codeBlock)
     }
 
     @Test("SwiftUI theme can render document")
     func renderDocument() async {
         let theme = SwiftUITheme()
         let document = DocumentModel(content: "# Hello\n\nWorld")
-        let view = theme.render(document: document)
-        #expect(view != nil)
+        let _ = theme.render(document: document)
     }
 
     @Test("SwiftUI theme respects configuration")

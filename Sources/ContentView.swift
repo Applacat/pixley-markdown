@@ -421,7 +421,7 @@ struct NavigateUpButton: View {
 struct ViewModePicker: View {
     @Environment(\.settings) private var settings
 
-    /// Modes available in the picker. Hybrid and Liquid Glass hidden pending polish.
+    /// Modes available in the picker.
     private static let availableModes: [InteractiveMode] = [.plain, .enhanced]
 
     var body: some View {

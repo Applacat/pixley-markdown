@@ -124,15 +124,14 @@ struct MarkdownView: View {
     @ViewBuilder
     private var markdownContent: some View {
         switch settings.behavior.interactiveMode {
-        case .liquidGlass:
-            liquidGlassContent
-        case .plain, .enhanced, .hybrid:
-            // Hybrid will use enhanced rendering with native control overlays (TODO)
-            enhancedContent
+        case .enhanced:
+            nativeRendererContent
+        case .plain:
+            plainEditorContent
         }
     }
 
-    private var enhancedContent: some View {
+    private var plainEditorContent: some View {
         MarkdownEditor(
             text: .constant(coordinator.document.content),
             onError: { error in coordinator.showError(error) },
@@ -170,9 +169,16 @@ struct MarkdownView: View {
         }
     }
 
-    private var liquidGlassContent: some View {
-        LiquidGlassDocumentView(
+    private var nativeRendererContent: some View {
+        let palette = settings.rendering.syntaxTheme
+            .rendererTheme(for: settings.appearance.colorScheme)
+            .palette
+        return NativeDocumentView(
             content: coordinator.document.content,
+            palette: palette,
+            fontSize: settings.rendering.fontSize,
+            bookmarkedLines: bookmarkedLines,
+            commentedLines: commentedLines,
             onInteractiveElementChanged: { element, optionIndex, fieldName, value in
                 handleInputSubmitted(element, optionIndex: optionIndex, fieldName: fieldName, value: value)
             },
@@ -181,6 +187,16 @@ struct MarkdownView: View {
             },
             onStatusSelected: { status, state in
                 submitStatusAdvance(status: status, to: state)
+            },
+            onToggleBookmark: { lineNumber in
+                toggleBookmark(at: lineNumber)
+            },
+            onAddComment: { lineNumber, commentText in
+                handleGutterAction(lineNumber: lineNumber, shouldBookmark: false, commentText: commentText)
+            },
+            onScrollProgressChanged: { progress in
+                readingProgress = progress
+                coordinator.saveScrollPosition(progress)
             }
         )
     }

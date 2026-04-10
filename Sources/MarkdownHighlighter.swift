@@ -29,20 +29,20 @@ final class MarkdownHighlighter {
 
         /// Creates a Theme from an aimdRenderer SyntaxPalette
         init(from palette: SyntaxPalette) {
-            self.heading1 = NSColor(hex: palette.type) ?? .systemBlue
-            self.heading2 = NSColor(hex: palette.function) ?? .systemIndigo
-            self.heading3 = NSColor(hex: palette.keyword) ?? .systemPurple
-            self.bold = NSColor(hex: palette.foreground) ?? .labelColor
-            self.italic = NSColor(hex: palette.foreground) ?? .labelColor
-            self.code = NSColor(hex: palette.string) ?? .systemOrange
-            self.codeBackground = (NSColor(hex: palette.selection) ?? .quaternaryLabelColor).withAlphaComponent(0.3)
-            self.link = NSColor(hex: palette.function) ?? .systemTeal
-            self.listMarker = NSColor(hex: palette.comment) ?? .systemGray
-            self.blockquote = NSColor(hex: palette.comment) ?? .secondaryLabelColor
-            self.separator = NSColor(hex: palette.lineNumber) ?? .separatorColor
-            self.foreground = NSColor(hex: palette.foreground) ?? .labelColor
-            self.background = NSColor(hex: palette.background) ?? .textBackgroundColor
-            self.commentHighlight = NSColor(hex: palette.commentHighlight) ?? NSColor.systemYellow.withAlphaComponent(0.15)
+            self.heading1 = palette.typeNSColor
+            self.heading2 = palette.functionNSColor
+            self.heading3 = palette.keywordNSColor
+            self.bold = palette.foregroundNSColor
+            self.italic = palette.foregroundNSColor
+            self.code = palette.stringNSColor
+            self.codeBackground = palette.selectionNSColor.withAlphaComponent(0.3)
+            self.link = palette.functionNSColor
+            self.listMarker = palette.commentNSColor
+            self.blockquote = palette.commentNSColor
+            self.separator = palette.lineNumberNSColor
+            self.foreground = palette.foregroundNSColor
+            self.background = palette.backgroundNSColor
+            self.commentHighlight = palette.commentHighlightNSColor
         }
 
         /// Default theme using Xcode Dark palette

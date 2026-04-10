@@ -94,18 +94,26 @@ Menu commands use `@FocusedValue(\.activeCoordinator)` to target the key window.
 
 **Views:**
 - `AIMDReaderApp.swift` - App entry, window management, AppDelegate
-- `ContentView.swift` - BrowserView with NavigationSplitView, NavigateUpButton
+- `ContentView.swift` - BrowserView with NavigationSplitView, NavigateUpButton, ViewModePicker (Plain/Enhanced)
 - `BrowserWindowRoot.swift` - Per-window coordinator wrapper, hydrates from BrowserOpenRequest
 - `StartView.swift` - Pixelmator-style welcome with drag-and-drop
-- `MarkdownView.swift` - Markdown viewer with reload pill
+- `MarkdownView.swift` - Routes Enhanced → NativeDocumentView (SwiftUI), Plain → MarkdownEditor (NSTextView)
 - `ChatView.swift` - AI chat with "Thinking..." indicator + full response display
 - `SettingsView.swift` - Multi-tab settings (Appearance, Rendering, Behavior)
 - `OutlineFileList.swift` - NSOutlineView-backed sidebar (NSViewRepresentable)
 - `QuickSwitcher.swift` - Cmd+K file switcher
 - `ErrorBanner.swift` - Dismissible error display
-- `LineNumberRulerView.swift` - Line number gutter for markdown editor
-- `MarkdownEditor.swift` - NSTextView-backed editor (NSViewRepresentable)
+- `LineNumberRulerView.swift` - Line number gutter for Plain mode NSTextView
+- `MarkdownEditor.swift` - NSTextView-backed editor for Plain mode (NSViewRepresentable)
 - `MarkdownHighlighter.swift` - Regex-based syntax highlighting
+
+**Native Renderer (Enhanced mode — `Views/NativeRenderer/`):**
+- `NativeDocumentView.swift` - SwiftUI flat scroll renderer with gutter, Cmd+G/Cmd+B, search
+- `ContentBlockView.swift` - Per-block rendering with palette colors and code block line numbers
+- `MarkdownBlock.swift` - Block model with startLine/endLine, MarkdownBlockParser with flat parse
+- `GutterView.swift` - Gutter width constant
+- `GoToLineOverlay.swift` - Cmd+G line number dialog
+- `NativeControlView.swift` - Native macOS controls for interactive elements
 
 **Resources:**
 - `Assets.xcassets` - App assets including AIMD mascot
@@ -165,9 +173,9 @@ See `docs/whats-new-since-2.2.md` for full changelog since last App Store releas
 - Multi-window support (per-window AppCoordinator)
 - Interactive Markdown Protocol (9 patterns, Phases 1–4)
 - Prose Mode UX deep pass (hover states, tooltips, visual affordances)
-- Interactive mode toggle (Enhanced/Plain/Hybrid)
+- Interactive mode toggle (Plain/Enhanced — 2 modes, Hybrid and Liquid Glass removed)
 - Premium Gate (Pixley Pro $9.99 — StoreKit 2)
-- Liquid Glass rendering engine (SwiftUI)
+- Native SwiftUI renderer with flat monospace scroll, palette colors, gutter line numbers
 - Code extractions (PopoverControllers, InteractiveAnnotator)
 - Line number gutter (sibling view)
 - Fill-in re-edit popover + MarkdownEditor extraction

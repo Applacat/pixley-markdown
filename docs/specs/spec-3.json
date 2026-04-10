@@ -1,0 +1,24 @@
+{
+  "name": "spec-3",
+  "title": "Add Comment, Tab Navigation & Comment Threading for NativeDocumentView",
+  "version": "1.0",
+  "date": "2026-04-09",
+  "status": "spec",
+  "milestone": "v4: Native Renderer",
+  "depends_on": ["renderer-foundation", "spec-2"],
+  "phases": [
+    {
+      "name": "Comment Detection + Gutter Indicator",
+      "status": "pending"
+    },
+    {
+      "name": "Comment Popover + Threading",
+      "status": "pending"
+    },
+    {
+      "name": "Tab Focus Cycling",
+      "status": "pending"
+    }
+  ],
+  "user_stories": ["US-1", "US-2", "US-3", "US-4", "US-5"]
+}

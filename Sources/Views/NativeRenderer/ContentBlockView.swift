@@ -4,10 +4,11 @@ import aimdRenderer
 
 // MARK: - Content Block View
 
-/// Renders a single `MarkdownBlock` as a SwiftUI view.
+/// Renders a single `MarkdownBlock` as a SwiftUI view using SyntaxPalette colors.
 struct ContentBlockView: View {
 
     let block: MarkdownBlock
+    let palette: SyntaxPalette
     let searchText: String
     let onInteractiveElementChanged: (InteractiveElement, Int?, String, String) -> Void
     let onInteractiveElementClicked: (InteractiveElement, Int?) -> Void
@@ -22,7 +23,7 @@ struct ContentBlockView: View {
             inlineRunsView(runs)
 
         case .codeBlock(let language, let code):
-            codeBlockView(language: language, code: code)
+            codeBlockView(language: language, code: code, startLine: block.startLine)
 
         case .blockquote(let blocks):
             blockquoteView(blocks)
@@ -35,6 +36,7 @@ struct ContentBlockView: View {
 
         case .horizontalRule:
             Divider()
+                .overlay(palette.comment.opacity(0.3))
                 .padding(.vertical, 4)
 
         case .table(let headers, let rows):
@@ -54,7 +56,7 @@ struct ContentBlockView: View {
         case .rawText(let text):
             Text(text)
                 .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.primary)
+                .foregroundStyle(palette.foreground)
                 .textSelection(.enabled)
         }
     }
@@ -72,8 +74,9 @@ struct ContentBlockView: View {
 
         return highlightedText(text)
             .font(font)
-            .foregroundStyle(.primary)
-            .padding(.top, level == 1 ? 8 : 4)
+            .foregroundStyle(palette.type)
+            .padding(.top, level == 1 ? 12 : 8)
+            .padding(.bottom, 2)
             .textSelection(.enabled)
     }
 
@@ -86,7 +89,7 @@ struct ContentBlockView: View {
 
         return combined
             .font(.system(.body, design: .monospaced))
-            .foregroundStyle(.primary)
+            .foregroundStyle(palette.foreground)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -108,27 +111,31 @@ struct ContentBlockView: View {
         case .code:
             return Text(run.text)
                 .font(.system(.body, design: .monospaced))
-                .foregroundColor(.secondary)
+                .foregroundColor(palette.string)
         case .link(let url):
             var attr = AttributedString(run.text)
             attr.link = URL(string: url)
             return Text(attr)
         case .image:
             return Text("[\(run.text)]")
-                .foregroundColor(.secondary)
+                .foregroundColor(palette.comment)
         }
     }
 
     // MARK: - Code Block
 
-    private func codeBlockView(language: String?, code: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+    private func codeBlockView(language: String?, code: String, startLine: Int) -> some View {
+        let codeLines = code.components(separatedBy: "\n")
+        // Code content starts after the ``` fence line
+        let firstCodeLine = startLine + 1
+
+        return VStack(alignment: .leading, spacing: 0) {
             // Header with language and copy button
             HStack {
                 if let language, !language.isEmpty {
                     Text(language)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.comment)
                 }
                 Spacer()
                 Button {
@@ -137,6 +144,7 @@ struct ContentBlockView: View {
                 } label: {
                     Image(systemName: "doc.on.doc")
                         .font(.caption)
+                        .foregroundStyle(palette.comment)
                 }
                 .buttonStyle(.borderless)
                 .help("Copy code")
@@ -145,20 +153,46 @@ struct ContentBlockView: View {
             .padding(.top, 6)
             .padding(.bottom, 4)
 
-            // Code content
-            highlightedText(code)
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
-                .foregroundStyle(.primary)
+            // Code content with line numbers
+            HStack(alignment: .top, spacing: 0) {
+                // Line number column
+                VStack(alignment: .trailing, spacing: 0) {
+                    ForEach(codeLines.indices, id: \.self) { idx in
+                        Text("\(firstCodeLine + idx)")
+                            .font(.system(size: 10, design: .monospaced).monospacedDigit())
+                            .foregroundStyle(palette.lineNumber)
+                            .frame(height: 16)
+                    }
+                }
+                .frame(width: 28)
+                .padding(.leading, 4)
+
+                // Separator
+                Rectangle()
+                    .fill(palette.comment.opacity(0.15))
+                    .frame(width: 0.5)
+                    .padding(.vertical, 2)
+
+                // Code text
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(codeLines.indices, id: \.self) { idx in
+                        highlightedText(codeLines[idx])
+                            .font(.system(size: 12, weight: .regular, design: .monospaced))
+                            .foregroundStyle(palette.foreground)
+                            .frame(height: 16, alignment: .leading)
+                    }
+                }
                 .textSelection(.enabled)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 8)
+            }
+            .padding(.bottom, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(.ultraThinMaterial)
+        .background(palette.selection.opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                .strokeBorder(palette.comment.opacity(0.15), lineWidth: 0.5)
         )
     }
 
@@ -167,13 +201,14 @@ struct ContentBlockView: View {
     private func blockquoteView(_ blocks: [MarkdownBlock]) -> some View {
         HStack(spacing: 0) {
             RoundedRectangle(cornerRadius: 2)
-                .fill(Color.accentColor.opacity(0.5))
+                .fill(palette.keyword.opacity(0.5))
                 .frame(width: 3)
 
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(blocks) { block in
                     ContentBlockView(
                         block: block,
+                        palette: palette,
                         searchText: searchText,
                         onInteractiveElementChanged: onInteractiveElementChanged,
                         onInteractiveElementClicked: onInteractiveElementClicked,
@@ -193,7 +228,7 @@ struct ContentBlockView: View {
             ForEach(items) { item in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("\u{2022}")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.comment)
                     inlineRunsView(item.runs)
                 }
             }
@@ -205,7 +240,7 @@ struct ContentBlockView: View {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("\(startIndex + index).")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.comment)
                         .monospacedDigit()
                         .frame(minWidth: 20, alignment: .trailing)
                     inlineRunsView(item.runs)
@@ -223,13 +258,14 @@ struct ContentBlockView: View {
                 ForEach(headers.indices, id: \.self) { i in
                     Text(headers[i])
                         .font(.system(.caption, design: .monospaced).weight(.semibold))
+                        .foregroundStyle(palette.foreground)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(6)
                 }
             }
-            .background(Color.primary.opacity(0.05))
+            .background(palette.selection.opacity(0.3))
 
-            Divider()
+            Divider().overlay(palette.comment.opacity(0.2))
 
             // Data rows
             ForEach(rows.indices, id: \.self) { rowIndex in
@@ -237,19 +273,20 @@ struct ContentBlockView: View {
                     ForEach(rows[rowIndex].indices, id: \.self) { colIndex in
                         Text(rows[rowIndex][colIndex])
                             .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(palette.foreground)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(6)
                     }
                 }
                 if rowIndex < rows.count - 1 {
-                    Divider()
+                    Divider().overlay(palette.comment.opacity(0.1))
                 }
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                .strokeBorder(palette.comment.opacity(0.15), lineWidth: 0.5)
         )
     }
 
@@ -268,7 +305,7 @@ struct ContentBlockView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                     case .failure:
                         Label(alt.isEmpty ? "Image" : alt, systemImage: "photo")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.comment)
                     case .empty:
                         ProgressView()
                     @unknown default:
@@ -277,7 +314,7 @@ struct ContentBlockView: View {
                 }
             } else {
                 Label(alt.isEmpty ? "Image" : alt, systemImage: "photo")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.comment)
             }
         }
     }
@@ -304,7 +341,7 @@ struct ContentBlockView: View {
                 result = result + Text(before)
             }
 
-            // Matched text — bright accent to stand out (Text concatenation doesn't support .background)
+            // Matched text
             let matchStart = beforeEnd
             let matchEnd = text.index(matchStart, offsetBy: searchLowered.count)
             let matched = remaining[matchStart..<matchEnd]

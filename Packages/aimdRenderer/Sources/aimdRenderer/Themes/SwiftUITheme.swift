@@ -28,7 +28,7 @@ public struct SwiftUITheme: MarkdownTheme {
         return AnyView(
             Text(heading.text)
                 .font(.system(size: fontSize, weight: fontWeight(for: heading.level)))
-                .foregroundStyle(foregroundColor)
+                .foregroundStyle(palette.foreground)
                 .padding(.vertical, verticalPadding(for: heading.level))
         )
     }
@@ -37,14 +37,12 @@ public struct SwiftUITheme: MarkdownTheme {
         AnyView(
             Text(paragraph.text)
                 .font(.system(size: configuration.fontSize))
-                .foregroundStyle(foregroundColor)
+                .foregroundStyle(palette.foreground)
                 .padding(.vertical, 4)
         )
     }
 
     public func render(codeBlock: CodeBlockInfo) -> AnyView {
-        let palette = configuration.syntaxTheme.palette
-
         return AnyView(
             CodeBlockView(
                 codeBlock: codeBlock,
@@ -63,7 +61,7 @@ public struct SwiftUITheme: MarkdownTheme {
                 text: text,
                 destination: destination,
                 fontSize: configuration.fontSize,
-                linkColor: linkColor,
+                linkColor: palette.function,
                 underline: configuration.underlineLinks
             )
         )
@@ -74,19 +72,19 @@ public struct SwiftUITheme: MarkdownTheme {
         if ordered, let idx = index {
             marker = "\(idx)."
         } else {
-            marker = "•"
+            marker = "\u{2022}"
         }
 
         return AnyView(
             HStack(alignment: .top, spacing: 8) {
                 Text(marker)
                     .font(.system(size: configuration.fontSize))
-                    .foregroundStyle(secondaryColor)
+                    .foregroundStyle(palette.comment)
                     .frame(width: ordered ? 24 : 16, alignment: .trailing)
 
                 Text(listItem)
                     .font(.system(size: configuration.fontSize))
-                    .foregroundStyle(foregroundColor)
+                    .foregroundStyle(palette.foreground)
             }
             .padding(.vertical, 2)
         )
@@ -96,12 +94,12 @@ public struct SwiftUITheme: MarkdownTheme {
         AnyView(
             HStack(spacing: 12) {
                 Rectangle()
-                    .fill(accentColor.opacity(0.5))
+                    .fill(palette.keyword.opacity(0.5))
                     .frame(width: 4)
 
                 Text(blockQuote)
                     .font(.system(size: configuration.fontSize))
-                    .foregroundStyle(secondaryColor)
+                    .foregroundStyle(palette.comment)
                     .italic()
             }
             .padding(.vertical, 8)
@@ -120,12 +118,12 @@ public struct SwiftUITheme: MarkdownTheme {
             VStack(spacing: 8) {
                 Image(systemName: "photo")
                     .font(.system(size: 48))
-                    .foregroundStyle(secondaryColor)
+                    .foregroundStyle(palette.comment)
 
                 if !image.altText.isEmpty {
                     Text(image.altText)
                         .font(.system(size: configuration.fontSize - 2))
-                        .foregroundStyle(secondaryColor)
+                        .foregroundStyle(palette.comment)
                         .italic()
                 }
             }
@@ -138,15 +136,13 @@ public struct SwiftUITheme: MarkdownTheme {
     }
 
     public func render(inlineCode: String) -> AnyView {
-        let palette = configuration.syntaxTheme.palette
-
         return AnyView(
             Text(inlineCode)
                 .font(.system(size: configuration.fontSize - 1, design: .monospaced))
-                .foregroundStyle(Color(hex: palette.keyword))
+                .foregroundStyle(palette.keyword)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
-                .background(Color(hex: palette.background).opacity(0.5))
+                .background(palette.background.opacity(0.5))
                 .clipShape(RoundedRectangle(cornerRadius: 4))
         )
     }
@@ -156,7 +152,7 @@ public struct SwiftUITheme: MarkdownTheme {
             Text(emphasis)
                 .font(.system(size: configuration.fontSize))
                 .italic()
-                .foregroundStyle(foregroundColor)
+                .foregroundStyle(palette.foreground)
         )
     }
 
@@ -164,7 +160,7 @@ public struct SwiftUITheme: MarkdownTheme {
         AnyView(
             Text(strong)
                 .font(.system(size: configuration.fontSize, weight: .bold))
-                .foregroundStyle(foregroundColor)
+                .foregroundStyle(palette.foreground)
         )
     }
 
@@ -173,7 +169,7 @@ public struct SwiftUITheme: MarkdownTheme {
             Text(strikethrough)
                 .font(.system(size: configuration.fontSize))
                 .strikethrough()
-                .foregroundStyle(secondaryColor)
+                .foregroundStyle(palette.comment)
         )
     }
 
@@ -189,6 +185,10 @@ public struct SwiftUITheme: MarkdownTheme {
     }
 
     // MARK: - Private Helpers
+
+    private var palette: SyntaxPalette {
+        configuration.syntaxTheme.palette
+    }
 
     private func fontWeight(for headingLevel: Int) -> Font.Weight {
         switch headingLevel {
@@ -207,22 +207,6 @@ public struct SwiftUITheme: MarkdownTheme {
         default: return 6
         }
     }
-
-    private var foregroundColor: Color {
-        Color(hex: configuration.syntaxTheme.palette.foreground)
-    }
-
-    private var secondaryColor: Color {
-        Color(hex: configuration.syntaxTheme.palette.comment)
-    }
-
-    private var accentColor: Color {
-        Color(hex: configuration.syntaxTheme.palette.keyword)
-    }
-
-    private var linkColor: Color {
-        Color(hex: configuration.syntaxTheme.palette.function)
-    }
 }
 
 // MARK: - Helper Views (for concurrency safety)
@@ -238,7 +222,7 @@ private struct CodeBlockView: View {
             if let language = codeBlock.language, !language.isEmpty {
                 Text(language)
                     .font(.system(size: fontSize - 2, weight: .medium))
-                    .foregroundStyle(Color(hex: palette.comment))
+                    .foregroundStyle(palette.comment)
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
                     .padding(.bottom, 4)
@@ -247,12 +231,12 @@ private struct CodeBlockView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(codeBlock.code)
                     .font(.system(size: fontSize, design: .monospaced))
-                    .foregroundStyle(Color(hex: palette.foreground))
+                    .foregroundStyle(palette.foreground)
                     .textSelection(.enabled)
                     .padding(12)
             }
         }
-        .background(Color(hex: palette.background))
+        .background(palette.background)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .padding(.vertical, 8)
     }
@@ -295,7 +279,7 @@ private struct DocumentRendererView: View {
                     let scale = headingScale.factor(for: heading.level)
                     Text(heading.text)
                         .font(.system(size: fontSize * scale, weight: fontWeight(for: heading.level)))
-                        .foregroundStyle(Color(hex: palette.foreground))
+                        .foregroundStyle(palette.foreground)
                         .padding(.vertical, verticalPadding(for: heading.level))
                 }
 
@@ -303,7 +287,7 @@ private struct DocumentRendererView: View {
                 ForEach(document.ast.paragraphs) { paragraph in
                     Text(paragraph.text)
                         .font(.system(size: fontSize))
-                        .foregroundStyle(Color(hex: palette.foreground))
+                        .foregroundStyle(palette.foreground)
                         .padding(.vertical, 4)
                 }
 
@@ -318,7 +302,7 @@ private struct DocumentRendererView: View {
             }
             .padding()
         }
-        .background(Color(hex: palette.background))
+        .background(palette.background)
     }
 
     private func fontWeight(for headingLevel: Int) -> Font.Weight {
@@ -337,32 +321,5 @@ private struct DocumentRendererView: View {
         case 3: return 8
         default: return 6
         }
-    }
-}
-
-// MARK: - Color Extension
-
-extension Color {
-    /// Creates a Color from a hex string (e.g., "#FF5733" or "FF5733")
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-
-        let r, g, b: UInt64
-        switch hex.count {
-        case 6: // RGB
-            (r, g, b) = ((int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
-        case 8: // ARGB (ignore alpha for now)
-            (r, g, b) = ((int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
-        default:
-            (r, g, b) = (128, 128, 128) // Default gray
-        }
-
-        self.init(
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue: Double(b) / 255
-        )
     }
 }

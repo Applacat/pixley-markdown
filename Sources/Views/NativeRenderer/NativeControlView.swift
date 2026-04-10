@@ -37,6 +37,7 @@ struct NativeControlView: View {
                 EmptyView()
             }
         }
+        .focusable()
         .padding(.vertical, 2)
     }
 
@@ -258,7 +259,7 @@ struct NativeControlView: View {
             }
         }
         .padding(10)
-        .background(.ultraThinMaterial)
+        .background(Color.secondary.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
