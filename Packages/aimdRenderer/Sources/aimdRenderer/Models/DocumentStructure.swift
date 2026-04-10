@@ -91,6 +91,11 @@ public struct DocumentStructure: Sendable {
             case .confidence: name = "confidence"
             case .conditional: name = "conditional"
             case .collapsible: name = "collapsible"
+            case .slider: name = "slider"
+            case .stepper: name = "stepper"
+            case .toggle: name = "toggle"
+            case .colorPicker: name = "color-picker"
+            case .auditableCheckbox: name = "auditable-checkbox"
             }
             counts[name, default: 0] += 1
         }

@@ -419,6 +419,19 @@ struct MarkdownView: View {
                         }
                     }
 
+                case .auditableCheckbox(let ac):
+                    // Simple toggle from Plain mode: if currently checked, uncheck. Otherwise check with no note.
+                    let action = ac.isChecked ? "uncheck" : "check"
+                    try await interactionHandler.toggleAuditableCheckbox(
+                        ac, action: action, note: "", displayedContent: content, in: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+
+                case .slider, .stepper, .toggle, .colorPicker:
+                    // Plain mode no-op — use Enhanced mode for these controls
+                    break
+
                 default:
                     break
                 }
@@ -601,6 +614,20 @@ struct MarkdownView: View {
                         coordinator.updateDocumentContent(newContent)
                     }
 
+                case .slider, .stepper, .toggle, .colorPicker:
+                    try await interactionHandler.replaceSpec4Element(
+                        element, with: value, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+
+                case .auditableCheckbox(let ac):
+                    try await interactionHandler.toggleAuditableCheckbox(
+                        ac, action: fieldName, note: value, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
+                    ) { newContent in
+                        coordinator.updateDocumentContent(newContent)
+                    }
+
                 default:
                     break
                 }
@@ -638,6 +665,13 @@ struct MarkdownView: View {
         panel.allowsMultipleSelection = false
         panel.message = fillIn.hint
 
+        // Spec 4: Re-pick — seed with current path's parent directory
+        if let currentPath = fillIn.value, !currentPath.isEmpty {
+            let currentURL = URL(fileURLWithPath: currentPath)
+            panel.directoryURL = currentURL.deletingLastPathComponent()
+            panel.nameFieldStringValue = currentURL.lastPathComponent
+        }
+
         panel.begin { response in
             guard response == .OK, let selectedURL = panel.url else { return }
             Task { @MainActor in
@@ -661,6 +695,11 @@ struct MarkdownView: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.message = fillIn.hint
+
+        // Spec 4: Re-pick — seed with current folder path
+        if let currentPath = fillIn.value, !currentPath.isEmpty {
+            panel.directoryURL = URL(fileURLWithPath: currentPath)
+        }
 
         panel.begin { response in
             guard response == .OK, let selectedURL = panel.url else { return }

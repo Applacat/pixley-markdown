@@ -19,22 +19,24 @@ They click to toggle. You read back `[ ]` or `[x]`.
 
 ### Auditable Checkbox
 
-A checkbox that auto-appends a timestamp when checked. Write whatever labels you want.
+A checkbox that auto-appends a timestamp when checked, and prompts for an optional note. Trigger it by adding `(notes)` to the end of the label.
 
 ```markdown
-- [ ] Deployed to staging
-- [ ] Schema migration verified
+- [ ] Deployed to staging (notes)
+- [ ] Schema migration verified (notes)
 - [ ] Load test completed
 ```
 
-When they check, it becomes:
+Only checkboxes with the `(notes)` suffix are auditable. Regular checkboxes (without `(notes)`) just toggle.
+
+When they check an auditable checkbox, a popover prompts for an optional note. The result becomes:
 ```markdown
-- [x] Deployed to staging — 2026-03-08
-- [x] Schema migration verified — 2026-03-08: Had to run it twice
+- [x] Deployed to staging (notes) — 2026-04-10
+- [x] Schema migration verified (notes) — 2026-04-10: Had to run it twice
 - [ ] Load test completed
 ```
 
-Unchecking removes the timestamp and any notes. You read back `[x] Label — DATE` or `[x] Label — DATE: their note`.
+Unchecking removes the timestamp and note. You read back the date and optional note. The `(notes)` marker stays in place so it can be re-audited later.
 
 ---
 
@@ -128,7 +130,9 @@ They get a native color picker. `[[pick color]]` is replaced with a hex value (e
 Config file: [[choose file]]
 ```
 
-They get a native file dialog. `[[choose file]]` is replaced with the full path. After filling, the path shows as a clickable badge — they can click it to re-pick a different file.
+They get a native file dialog. `[[choose file]]` is replaced with `[[file: /path/to/file]]` so it stays detectable as a re-pickable file badge. They can click the filled badge to choose a different file — the new selection replaces the old path.
+
+You read back `[[file: /path/to/file]]`.
 
 ---
 
@@ -138,7 +142,9 @@ They get a native file dialog. `[[choose file]]` is replaced with the full path.
 Output directory: [[choose folder]]
 ```
 
-Same as file picker but for directories. Also re-pickable after filling.
+Same as file picker but for directories. Filled as `[[folder: /path/to/dir]]`. Also re-pickable.
+
+You read back `[[folder: /path/to/dir]]`.
 
 ---
 

@@ -261,6 +261,105 @@ extension CollapsibleElement: SelfDescribingElement {
     func apply(field: String, value: String) -> InteractiveEdit? { nil }
 }
 
+// MARK: - Spec 4 Conformances
+
+extension SliderElement: SelfDescribingElement {
+    var elementType: String { "Slider" }
+
+    var schemaDescription: String {
+        "An integer slider between \(minValue) and \(maxValue) (inclusive). Markdown: `[[\(keyword) \(minValue)-\(maxValue)]]` → replaced with the chosen integer."
+    }
+
+    var editableFields: [EditableField] {
+        [EditableField(name: "value", currentValue: "\(minValue)", validValues: nil)]
+    }
+
+    func apply(field: String, value: String) -> InteractiveEdit? {
+        guard field == "value", let intValue = Int(value), intValue >= minValue, intValue <= maxValue else { return nil }
+        return .replace(range: range, newText: "\(intValue)")
+    }
+}
+
+extension StepperElement: SelfDescribingElement {
+    var elementType: String { "Stepper" }
+
+    var schemaDescription: String {
+        if let mn = minValue, let mx = maxValue {
+            return "An integer stepper between \(mn) and \(mx). Markdown: `[[pick number \(mn)-\(mx)]]`."
+        }
+        return "An unbounded integer stepper. Markdown: `[[pick number]]`."
+    }
+
+    var editableFields: [EditableField] {
+        [EditableField(name: "value", currentValue: "0", validValues: nil)]
+    }
+
+    func apply(field: String, value: String) -> InteractiveEdit? {
+        guard field == "value", let intValue = Int(value) else { return nil }
+        if let mn = minValue, intValue < mn { return nil }
+        if let mx = maxValue, intValue > mx { return nil }
+        return .replace(range: range, newText: "\(intValue)")
+    }
+}
+
+extension ToggleElement: SelfDescribingElement {
+    var elementType: String { "Toggle" }
+
+    var schemaDescription: String {
+        "A binary toggle switch. Markdown: `[[toggle]]` → replaced with `on` or `off`."
+    }
+
+    var editableFields: [EditableField] {
+        [EditableField(name: "state", currentValue: "off", validValues: ["on", "off"])]
+    }
+
+    func apply(field: String, value: String) -> InteractiveEdit? {
+        guard field == "state", value == "on" || value == "off" else { return nil }
+        return .replace(range: range, newText: value)
+    }
+}
+
+extension ColorPickerElement: SelfDescribingElement {
+    var elementType: String { "Color Picker" }
+
+    var schemaDescription: String {
+        "A color picker. Markdown: `[[pick color]]` → replaced with a hex color like `#FF5733`."
+    }
+
+    var editableFields: [EditableField] {
+        [EditableField(name: "hex", currentValue: "#000000", validValues: nil)]
+    }
+
+    func apply(field: String, value: String) -> InteractiveEdit? {
+        guard field == "hex" else { return nil }
+        // Validate hex format
+        let hex = value.hasPrefix("#") ? value : "#\(value)"
+        let hexPattern = try! NSRegularExpression(pattern: #"^#[0-9A-Fa-f]{6}$"#)
+        let nsRange = NSRange(hex.startIndex..., in: hex)
+        guard hexPattern.firstMatch(in: hex, range: nsRange) != nil else { return nil }
+        return .replace(range: range, newText: hex)
+    }
+}
+
+extension AuditableCheckboxElement: SelfDescribingElement {
+    var elementType: String { "Auditable Checkbox" }
+
+    var schemaDescription: String {
+        "A checkbox that auto-appends a date stamp (and optional note) when checked. Trigger: `(notes)` suffix in label."
+    }
+
+    var editableFields: [EditableField] {
+        [EditableField(name: "isChecked", currentValue: isChecked ? "true" : "false", validValues: ["true", "false"])]
+    }
+
+    func apply(field: String, value: String) -> InteractiveEdit? {
+        guard field == "isChecked" else { return nil }
+        let shouldCheck = value.lowercased() == "true" || value == "x"
+        guard isChecked != shouldCheck else { return nil }
+        return .replace(range: checkRange, newText: shouldCheck ? "x" : " ")
+    }
+}
+
 // MARK: - InteractiveElement Convenience
 
 extension InteractiveElement {
@@ -277,6 +376,11 @@ extension InteractiveElement {
         case .confidence(let e): return e
         case .conditional(let e): return e
         case .collapsible(let e): return e
+        case .slider(let e): return e
+        case .stepper(let e): return e
+        case .toggle(let e): return e
+        case .colorPicker(let e): return e
+        case .auditableCheckbox(let e): return e
         }
     }
 }

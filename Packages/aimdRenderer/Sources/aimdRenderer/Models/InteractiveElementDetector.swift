@@ -26,11 +26,26 @@ public enum InteractiveElementDetector: Sendable {
             // elements.append(contentsOf: detectConfidence(in: text, searchRange: bqRange))
         }
 
-        // Standalone checkboxes (outside blockquotes)
+        // Standalone checkboxes (outside blockquotes) — includes auditable checkbox detection
         elements.append(contentsOf: detectCheckboxes(in: text, excludingRanges: blockquoteRanges))
 
-        // Fill-in-the-blank
-        elements.append(contentsOf: detectFillIns(in: text))
+        // Spec 4 new controls — must run BEFORE generic fill-in detection
+        // because they use the `[[...]]` syntax
+        elements.append(contentsOf: detectSliders(in: text))
+        elements.append(contentsOf: detectSteppers(in: text))
+        elements.append(contentsOf: detectToggles(in: text))
+        elements.append(contentsOf: detectColorPickers(in: text))
+
+        // Collect ranges already claimed by Spec 4 controls so fill-in doesn't re-detect them
+        let spec4Ranges: [Range<String.Index>] = elements.compactMap { element in
+            switch element {
+            case .slider, .stepper, .toggle, .colorPicker: return element.range
+            default: return nil
+            }
+        }
+
+        // Fill-in-the-blank (skips ranges claimed by Spec 4 controls)
+        elements.append(contentsOf: detectFillIns(in: text, excludingRanges: spec4Ranges))
 
         // Feedback comments
         elements.append(contentsOf: detectFeedback(in: text))
@@ -100,6 +115,7 @@ public enum InteractiveElementDetector: Sendable {
     )
 
     /// Detects standalone checkboxes (not inside blockquotes).
+    /// Routes checkboxes with `(notes)` suffix to AuditableCheckboxElement.
     static func detectCheckboxes(in text: String, excludingRanges: [Range<String.Index>]) -> [InteractiveElement] {
         let nsRange = NSRange(text.startIndex..., in: text)
         let matches = checkboxPattern.matches(in: text, range: nsRange)
@@ -117,6 +133,11 @@ public enum InteractiveElementDetector: Sendable {
             let isChecked = text[checkRange] == "x" || text[checkRange] == "X"
             let label = String(text[labelRange])
 
+            // Check if this is an auditable checkbox (label contains "(notes)" marker)
+            if let auditable = classifyAsAuditable(fullRange: fullRange, checkRange: checkRange, isChecked: isChecked, label: label) {
+                return .auditableCheckbox(auditable)
+            }
+
             return .checkbox(CheckboxElement(
                 range: fullRange,
                 checkRange: checkRange,
@@ -124,6 +145,50 @@ public enum InteractiveElementDetector: Sendable {
                 label: label
             ))
         }
+    }
+
+    /// Pattern for auditable checkbox labels with optional audit trail.
+    /// Group 1: label including `(notes)` marker
+    /// Group 2: optional date (YYYY-MM-DD)
+    /// Group 3: optional note text after colon
+    private static let auditablePattern = try! NSRegularExpression(
+        pattern: #"^(.*?\(notes\))(?:\s*—\s*(\d{4}-\d{2}-\d{2})(?::\s*(.+))?)?\s*$"#
+    )
+
+    /// Detects the `(notes)` marker in a checkbox label and parses the audit trail.
+    /// Formats:
+    ///   - `Label (notes)` → unchecked auditable
+    ///   - `Label (notes) — 2026-04-10` → checked, no note
+    ///   - `Label (notes) — 2026-04-10: note text` → checked with note
+    private static func classifyAsAuditable(
+        fullRange: Range<String.Index>,
+        checkRange: Range<String.Index>,
+        isChecked: Bool,
+        label: String
+    ) -> AuditableCheckboxElement? {
+        let nsRange = NSRange(label.startIndex..., in: label)
+        guard let match = auditablePattern.firstMatch(in: label, range: nsRange),
+              let cleanLabelRange = Range(match.range(at: 1), in: label) else {
+            return nil
+        }
+
+        // Strip `(notes)` from displayed label
+        let rawLabel = String(label[cleanLabelRange])
+        let cleanLabel = rawLabel
+            .replacingOccurrences(of: "(notes)", with: "")
+            .trimmingCharacters(in: .whitespaces)
+
+        let date: String? = Range(match.range(at: 2), in: label).map { String(label[$0]) }
+        let note: String? = Range(match.range(at: 3), in: label).map { String(label[$0]) }
+
+        return AuditableCheckboxElement(
+            range: fullRange,
+            checkRange: checkRange,
+            isChecked: isChecked,
+            label: cleanLabel,
+            date: date,
+            note: note
+        )
     }
 
     // MARK: - Choice Detection (Radio in Blockquote)
@@ -273,7 +338,7 @@ public enum InteractiveElementDetector: Sendable {
         pattern: #"\[\[([^\]]+)\]\]"#
     )
 
-    static func detectFillIns(in text: String) -> [InteractiveElement] {
+    static func detectFillIns(in text: String, excludingRanges: [Range<String.Index>] = []) -> [InteractiveElement] {
         let nsRange = NSRange(text.startIndex..., in: text)
         let matches = fillInPattern.matches(in: text, range: nsRange)
 
@@ -281,7 +346,33 @@ public enum InteractiveElementDetector: Sendable {
             guard let fullRange = Range(match.range, in: text),
                   let hintRange = Range(match.range(at: 1), in: text) else { return nil }
 
+            // Skip ranges already claimed by Spec 4 controls
+            if excludingRanges.contains(where: { $0 == fullRange }) {
+                return nil
+            }
+
             let hint = String(text[hintRange])
+
+            // Spec 4: Re-pickable file/folder picker — filled values use `file: PATH` or `folder: PATH` prefix
+            let trimmedHint = hint.trimmingCharacters(in: .whitespaces)
+            if trimmedHint.hasPrefix("file:") {
+                let path = String(trimmedHint.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                return .fillIn(FillInElement(
+                    range: fullRange,
+                    hint: hint,
+                    type: .file,
+                    value: path
+                ))
+            }
+            if trimmedHint.hasPrefix("folder:") {
+                let path = String(trimmedHint.dropFirst(7)).trimmingCharacters(in: .whitespaces)
+                return .fillIn(FillInElement(
+                    range: fullRange,
+                    hint: hint,
+                    type: .folder,
+                    value: path
+                ))
+            }
 
             // Check if this is a filled value (not a placeholder)
             if isFilledValue(hint) {
@@ -304,10 +395,117 @@ public enum InteractiveElementDetector: Sendable {
         }
     }
 
+    // MARK: - Spec 4: Slider Detection
+
+    /// Matches `[[slide MIN-MAX]]` or `[[rate MIN-MAX]]` with strict integer ranges.
+    /// MIN must be less than MAX.
+    private static let sliderPattern = try! NSRegularExpression(
+        pattern: #"\[\[(slide|rate)\s+(\d+)-(\d+)\]\]"#
+    )
+
+    static func detectSliders(in text: String) -> [InteractiveElement] {
+        let nsRange = NSRange(text.startIndex..., in: text)
+        let matches = sliderPattern.matches(in: text, range: nsRange)
+
+        return matches.compactMap { match -> InteractiveElement? in
+            guard let fullRange = Range(match.range, in: text),
+                  let keywordRange = Range(match.range(at: 1), in: text),
+                  let minRange = Range(match.range(at: 2), in: text),
+                  let maxRange = Range(match.range(at: 3), in: text),
+                  let minValue = Int(text[minRange]),
+                  let maxValue = Int(text[maxRange]),
+                  minValue < maxValue else {
+                return nil
+            }
+
+            let keyword = String(text[keywordRange])
+            return .slider(SliderElement(
+                range: fullRange,
+                minValue: minValue,
+                maxValue: maxValue,
+                keyword: keyword
+            ))
+        }
+    }
+
+    // MARK: - Spec 4: Stepper Detection
+
+    /// Matches `[[pick number]]` or `[[pick number MIN-MAX]]`.
+    private static let stepperPattern = try! NSRegularExpression(
+        pattern: #"\[\[pick\s+number(?:\s+(\d+)-(\d+))?\]\]"#
+    )
+
+    static func detectSteppers(in text: String) -> [InteractiveElement] {
+        let nsRange = NSRange(text.startIndex..., in: text)
+        let matches = stepperPattern.matches(in: text, range: nsRange)
+
+        return matches.compactMap { match -> InteractiveElement? in
+            guard let fullRange = Range(match.range, in: text) else { return nil }
+
+            var minValue: Int? = nil
+            var maxValue: Int? = nil
+            if match.numberOfRanges > 2,
+               let minR = Range(match.range(at: 1), in: text),
+               let maxR = Range(match.range(at: 2), in: text),
+               let mn = Int(text[minR]),
+               let mx = Int(text[maxR]),
+               mn < mx {
+                minValue = mn
+                maxValue = mx
+            }
+
+            return .stepper(StepperElement(
+                range: fullRange,
+                minValue: minValue,
+                maxValue: maxValue
+            ))
+        }
+    }
+
+    // MARK: - Spec 4: Toggle Detection
+
+    /// Matches `[[toggle]]`.
+    private static let togglePattern = try! NSRegularExpression(
+        pattern: #"\[\[toggle\]\]"#
+    )
+
+    static func detectToggles(in text: String) -> [InteractiveElement] {
+        let nsRange = NSRange(text.startIndex..., in: text)
+        let matches = togglePattern.matches(in: text, range: nsRange)
+
+        return matches.compactMap { match -> InteractiveElement? in
+            guard let fullRange = Range(match.range, in: text) else { return nil }
+            return .toggle(ToggleElement(range: fullRange))
+        }
+    }
+
+    // MARK: - Spec 4: Color Picker Detection
+
+    /// Matches `[[pick color]]`.
+    private static let colorPickerPattern = try! NSRegularExpression(
+        pattern: #"\[\[pick\s+color\]\]"#
+    )
+
+    static func detectColorPickers(in text: String) -> [InteractiveElement] {
+        let nsRange = NSRange(text.startIndex..., in: text)
+        let matches = colorPickerPattern.matches(in: text, range: nsRange)
+
+        return matches.compactMap { match -> InteractiveElement? in
+            guard let fullRange = Range(match.range, in: text) else { return nil }
+            return .colorPicker(ColorPickerElement(range: fullRange))
+        }
+    }
+
     /// Returns true if the text inside [[ ]] is a user-filled value rather than a placeholder hint.
     /// Placeholder hints contain directive words like "enter", "fill-in", "choose", "pick", "select".
     private static func isFilledValue(_ hint: String) -> Bool {
         let lower = hint.lowercased().trimmingCharacters(in: .whitespaces)
+        // Spec 4 keyword prefixes — these are control patterns that failed Spec 4 detection
+        // (e.g. invalid `[[slide 10-1]]` range). They should never be treated as filled fill-ins.
+        let spec4Keywords = ["slide", "rate", "toggle"]
+        for keyword in spec4Keywords {
+            if lower == keyword || lower.hasPrefix("\(keyword) ") { return false }
+        }
         let placeholderKeywords = ["enter", "fill-in", "fill in", "choose", "pick", "select", "type", "your "]
         // If hint contains a placeholder keyword followed by content description, it's a placeholder
         // Also check for pipe separator (used in [[fill-in: type | hint]] extended syntax)

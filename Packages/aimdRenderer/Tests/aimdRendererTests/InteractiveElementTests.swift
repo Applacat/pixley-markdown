@@ -764,3 +764,235 @@ final class MarkdownStructureParserTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(allElements.count, 3) // checkbox + choice + feedback
     }
 }
+
+// MARK: - Spec 4: New Controls Detection Tests
+
+final class Spec4DetectionTests: XCTestCase {
+
+    // MARK: - Slider
+
+    func testDetectsSlider() {
+        let text = "Priority: [[slide 1-10]]"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .slider(let s) = elements.first else {
+            XCTFail("Expected slider"); return
+        }
+        XCTAssertEqual(s.minValue, 1)
+        XCTAssertEqual(s.maxValue, 10)
+        XCTAssertEqual(s.keyword, "slide")
+    }
+
+    func testDetectsRateSlider() {
+        let text = "Satisfaction: [[rate 1-5]]"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .slider(let s) = elements.first else {
+            XCTFail("Expected slider"); return
+        }
+        XCTAssertEqual(s.minValue, 1)
+        XCTAssertEqual(s.maxValue, 5)
+        XCTAssertEqual(s.keyword, "rate")
+    }
+
+    func testInvalidSliderRangeNotDetected() {
+        // Reversed range (min > max) should not be detected
+        let text = "Bad: [[slide 10-1]]"
+        let elements = InteractiveElementDetector.detect(in: text)
+        // Falls through to generic fillIn (is a placeholder)
+        for element in elements {
+            if case .slider = element {
+                XCTFail("Should not detect invalid slider range")
+            }
+        }
+    }
+
+    func testSliderWithoutRangeNotDetected() {
+        let text = "[[slide]]"
+        let elements = InteractiveElementDetector.detect(in: text)
+        for element in elements {
+            if case .slider = element {
+                XCTFail("Slider requires MIN-MAX range")
+            }
+        }
+    }
+
+    // MARK: - Stepper
+
+    func testDetectsStepperWithRange() {
+        let text = "Count: [[pick number 1-20]]"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .stepper(let s) = elements.first else {
+            XCTFail("Expected stepper"); return
+        }
+        XCTAssertEqual(s.minValue, 1)
+        XCTAssertEqual(s.maxValue, 20)
+    }
+
+    func testDetectsStepperWithoutRange() {
+        let text = "Count: [[pick number]]"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .stepper(let s) = elements.first else {
+            XCTFail("Expected stepper"); return
+        }
+        XCTAssertNil(s.minValue)
+        XCTAssertNil(s.maxValue)
+    }
+
+    // MARK: - Toggle
+
+    func testDetectsToggle() {
+        let text = "Enable: [[toggle]]"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .toggle = elements.first else {
+            XCTFail("Expected toggle"); return
+        }
+    }
+
+    func testMultipleToggles() {
+        let text = """
+        Dark mode: [[toggle]]
+        Notifications: [[toggle]]
+        """
+        let elements = InteractiveElementDetector.detect(in: text)
+        let toggles = elements.filter { if case .toggle = $0 { return true }; return false }
+        XCTAssertEqual(toggles.count, 2)
+    }
+
+    // MARK: - Color Picker
+
+    func testDetectsColorPicker() {
+        let text = "Brand: [[pick color]]"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .colorPicker = elements.first else {
+            XCTFail("Expected color picker"); return
+        }
+    }
+
+    func testStepperAndColorPickerDistinct() {
+        let text = """
+        Count: [[pick number 1-10]]
+        Color: [[pick color]]
+        """
+        let elements = InteractiveElementDetector.detect(in: text)
+        let steppers = elements.filter { if case .stepper = $0 { return true }; return false }
+        let colors = elements.filter { if case .colorPicker = $0 { return true }; return false }
+        XCTAssertEqual(steppers.count, 1)
+        XCTAssertEqual(colors.count, 1)
+    }
+
+    // MARK: - Auditable Checkbox
+
+    func testDetectsAuditableCheckboxUnchecked() {
+        let text = "- [ ] Deploy to staging (notes)"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .auditableCheckbox(let ac) = elements.first else {
+            XCTFail("Expected auditable checkbox"); return
+        }
+        XCTAssertFalse(ac.isChecked)
+        XCTAssertEqual(ac.label, "Deploy to staging")
+        XCTAssertNil(ac.date)
+        XCTAssertNil(ac.note)
+    }
+
+    func testDetectsAuditableCheckboxCheckedNoNote() {
+        let text = "- [x] Deploy to staging (notes) — 2026-04-10"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .auditableCheckbox(let ac) = elements.first else {
+            XCTFail("Expected auditable checkbox"); return
+        }
+        XCTAssertTrue(ac.isChecked)
+        XCTAssertEqual(ac.label, "Deploy to staging")
+        XCTAssertEqual(ac.date, "2026-04-10")
+        XCTAssertNil(ac.note)
+    }
+
+    func testDetectsAuditableCheckboxCheckedWithNote() {
+        let text = "- [x] Deploy to staging (notes) — 2026-04-10: had to rerun migration"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .auditableCheckbox(let ac) = elements.first else {
+            XCTFail("Expected auditable checkbox"); return
+        }
+        XCTAssertTrue(ac.isChecked)
+        XCTAssertEqual(ac.label, "Deploy to staging")
+        XCTAssertEqual(ac.date, "2026-04-10")
+        XCTAssertEqual(ac.note, "had to rerun migration")
+    }
+
+    func testRegularCheckboxWithoutNotesMarker() {
+        let text = "- [ ] Regular task"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .checkbox = elements.first else {
+            XCTFail("Expected regular checkbox, got auditable"); return
+        }
+    }
+
+    // MARK: - Re-pickable File/Folder
+
+    func testDetectsFilledFilePath() {
+        let text = "Report: [[file: /Users/test/report.pdf]]"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .fillIn(let fi) = elements.first else {
+            XCTFail("Expected fillIn"); return
+        }
+        XCTAssertEqual(fi.type, .file)
+        XCTAssertEqual(fi.value, "/Users/test/report.pdf")
+    }
+
+    func testDetectsFilledFolderPath() {
+        let text = "Output: [[folder: /Users/test/exports]]"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .fillIn(let fi) = elements.first else {
+            XCTFail("Expected fillIn"); return
+        }
+        XCTAssertEqual(fi.type, .folder)
+        XCTAssertEqual(fi.value, "/Users/test/exports")
+    }
+
+    func testEmptyFilePicker() {
+        let text = "Report: [[choose file]]"
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 1)
+        guard case .fillIn(let fi) = elements.first else {
+            XCTFail("Expected fillIn"); return
+        }
+        XCTAssertEqual(fi.type, .file)
+        XCTAssertNil(fi.value)
+    }
+
+    // MARK: - Detection Priority
+
+    func testSpec4ControlsDontConflictWithGenericFillIn() {
+        let text = """
+        Name: [[enter name]]
+        Rating: [[slide 1-10]]
+        Color: [[pick color]]
+        Toggle: [[toggle]]
+        Number: [[pick number 1-5]]
+        """
+        let elements = InteractiveElementDetector.detect(in: text)
+        XCTAssertEqual(elements.count, 5)
+
+        let sliders = elements.filter { if case .slider = $0 { return true }; return false }
+        let colors = elements.filter { if case .colorPicker = $0 { return true }; return false }
+        let toggles = elements.filter { if case .toggle = $0 { return true }; return false }
+        let steppers = elements.filter { if case .stepper = $0 { return true }; return false }
+        let fillIns = elements.filter { if case .fillIn = $0 { return true }; return false }
+
+        XCTAssertEqual(sliders.count, 1)
+        XCTAssertEqual(colors.count, 1)
+        XCTAssertEqual(toggles.count, 1)
+        XCTAssertEqual(steppers.count, 1)
+        XCTAssertEqual(fillIns.count, 1) // Only [[enter name]]
+    }
+}

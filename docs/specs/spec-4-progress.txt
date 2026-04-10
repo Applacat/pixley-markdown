@@ -1,0 +1,5 @@
+Spec 4 — New Interactive Controls
+
+Phase 1: Element Types, Detection, Write-back [PENDING]
+Phase 2: Enhanced Mode Rendering [PENDING]
+Phase 3: Plain Mode Click Targets + Note Sanitization [PENDING]

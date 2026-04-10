@@ -37,6 +37,16 @@ struct NativeControlView: View {
                 collapsibleView(col)
             case .conditional:
                 EmptyView()
+            case .slider(let s):
+                sliderView(s)
+            case .stepper(let s):
+                stepperView(s)
+            case .toggle(let t):
+                toggleView(t)
+            case .colorPicker(let cp):
+                colorPickerView(cp)
+            case .auditableCheckbox(let ac):
+                auditableCheckboxView(ac)
             }
         }
         .focusable()
@@ -116,20 +126,20 @@ struct NativeControlView: View {
                 })
 
             case .file:
-                Button {
-                    onClicked(element, nil)
-                } label: {
-                    Label(fi.value ?? fi.hint, systemImage: "doc")
-                }
-                .buttonStyle(.bordered)
+                FilePathBadge(
+                    path: fi.value,
+                    iconName: "doc",
+                    emptyLabel: "Choose file",
+                    onClick: { onClicked(element, nil) }
+                )
 
             case .folder:
-                Button {
-                    onClicked(element, nil)
-                } label: {
-                    Label(fi.value ?? fi.hint, systemImage: "folder")
-                }
-                .buttonStyle(.bordered)
+                FilePathBadge(
+                    path: fi.value,
+                    iconName: "folder",
+                    emptyLabel: "Choose folder",
+                    onClick: { onClicked(element, nil) }
+                )
             }
         }
     }
@@ -310,6 +320,291 @@ struct NativeControlView: View {
             elements: innerElements,
             includeHeadings: true
         )
+    }
+
+    // MARK: - Slider (Spec 4)
+
+    private func sliderView(_ s: SliderElement) -> some View {
+        SliderControl(element: s, parent: element, onChanged: onChanged)
+    }
+
+    // MARK: - Stepper (Spec 4)
+
+    private func stepperView(_ s: StepperElement) -> some View {
+        StepperControl(element: s, parent: element, onChanged: onChanged)
+    }
+
+    // MARK: - Toggle (Spec 4)
+
+    private func toggleView(_ t: ToggleElement) -> some View {
+        ToggleControl(element: t, parent: element, onChanged: onChanged)
+    }
+
+    // MARK: - Color Picker (Spec 4)
+
+    private func colorPickerView(_ cp: ColorPickerElement) -> some View {
+        ColorPickerControl(element: cp, parent: element, onChanged: onChanged)
+    }
+
+    // MARK: - Auditable Checkbox (Spec 4)
+
+    private func auditableCheckboxView(_ ac: AuditableCheckboxElement) -> some View {
+        AuditableCheckboxControl(element: ac, parent: element, onChanged: onChanged, onClicked: onClicked)
+    }
+}
+
+// MARK: - Spec 4 Control Views
+
+private struct SliderControl: View {
+    let element: SliderElement
+    let parent: InteractiveElement
+    let onChanged: (InteractiveElement, Int?, String, String) -> Void
+
+    @State private var draftValue: Double
+
+    init(element: SliderElement, parent: InteractiveElement, onChanged: @escaping (InteractiveElement, Int?, String, String) -> Void) {
+        self.element = element
+        self.parent = parent
+        self.onChanged = onChanged
+        self._draftValue = State(initialValue: Double(element.minValue))
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Slider(
+                value: $draftValue,
+                in: Double(element.minValue)...Double(element.maxValue),
+                step: 1,
+                onEditingChanged: { editing in
+                    // Write on release (editing transitions from true → false)
+                    if !editing {
+                        let intValue = Int(draftValue.rounded())
+                        onChanged(parent, nil, "value", "\(intValue)")
+                    }
+                }
+            )
+            .frame(width: 160)
+
+            Text("\(Int(draftValue.rounded()))")
+                .font(.system(.body, design: .monospaced).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 24, alignment: .trailing)
+        }
+    }
+}
+
+private struct StepperControl: View {
+    let element: StepperElement
+    let parent: InteractiveElement
+    let onChanged: (InteractiveElement, Int?, String, String) -> Void
+
+    @State private var value: Int
+
+    init(element: StepperElement, parent: InteractiveElement, onChanged: @escaping (InteractiveElement, Int?, String, String) -> Void) {
+        self.element = element
+        self.parent = parent
+        self.onChanged = onChanged
+        // Initialize at minValue (or 0 for unbounded) so it's always within range — avoids clamping onChange
+        self._value = State(initialValue: element.minValue ?? 0)
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Stepper(
+                value: $value,
+                in: (element.minValue ?? 0)...(element.maxValue ?? 99),
+                step: 1
+            ) {
+                Text("\(value)")
+                    .font(.system(.body, design: .monospaced).monospacedDigit())
+                    .frame(minWidth: 24, alignment: .trailing)
+            }
+            .onChange(of: value) { _, newValue in
+                onChanged(parent, nil, "value", "\(newValue)")
+            }
+        }
+    }
+}
+
+private struct ToggleControl: View {
+    let element: ToggleElement
+    let parent: InteractiveElement
+    let onChanged: (InteractiveElement, Int?, String, String) -> Void
+
+    @State private var isOn: Bool = false
+
+    var body: some View {
+        Toggle("", isOn: $isOn)
+            .toggleStyle(.switch)
+            .labelsHidden()
+            .onChange(of: isOn) { _, newValue in
+                onChanged(parent, nil, "state", newValue ? "on" : "off")
+            }
+    }
+}
+
+private struct ColorPickerControl: View {
+    let element: ColorPickerElement
+    let parent: InteractiveElement
+    let onChanged: (InteractiveElement, Int?, String, String) -> Void
+
+    @State private var selectedColor: Color = .gray
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ColorPicker("", selection: $selectedColor, supportsOpacity: false)
+                .labelsHidden()
+                .onChange(of: selectedColor) { _, newColor in
+                    onChanged(parent, nil, "hex", hexString(from: newColor))
+                }
+
+            Text("pick color")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func hexString(from color: Color) -> String {
+        let nsColor = NSColor(color).usingColorSpace(.sRGB) ?? .gray
+        // Clamp components to [0, 1] — extended sRGB can exceed this range after conversion
+        let r = Int((max(0, min(1, nsColor.redComponent)) * 255).rounded())
+        let g = Int((max(0, min(1, nsColor.greenComponent)) * 255).rounded())
+        let b = Int((max(0, min(1, nsColor.blueComponent)) * 255).rounded())
+        return String(format: "#%02X%02X%02X", r, g, b)
+    }
+}
+
+private struct AuditableCheckboxControl: View {
+    let element: AuditableCheckboxElement
+    let parent: InteractiveElement
+    let onChanged: (InteractiveElement, Int?, String, String) -> Void
+    let onClicked: (InteractiveElement, Int?) -> Void
+
+    @State private var showNotePopover: Bool = false
+    @State private var noteText: String = ""
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Toggle(isOn: Binding(
+                get: { element.isChecked },
+                set: { newValue in
+                    if newValue {
+                        // Show note prompt on check
+                        showNotePopover = true
+                    } else {
+                        // Uncheck immediately — clear audit trail
+                        onChanged(parent, nil, "uncheck", "")
+                    }
+                }
+            )) {
+                HStack(spacing: 6) {
+                    Text(element.label)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(element.isChecked ? .secondary : .primary)
+
+                    if let date = element.date {
+                        Text("— \(date)")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let note = element.note, !note.isEmpty {
+                        Text(": \(note)")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .toggleStyle(.checkbox)
+        }
+        .popover(isPresented: $showNotePopover) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Add note (optional)")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+
+                TextField("Note…", text: $noteText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(width: 240)
+
+                HStack {
+                    Button("Cancel") {
+                        showNotePopover = false
+                    }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+
+                    Button("No note") {
+                        onChanged(parent, nil, "check", "")
+                        showNotePopover = false
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("Save") {
+                        onChanged(parent, nil, "check", noteText)
+                        showNotePopover = false
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(noteText.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .padding(12)
+        }
+        .onChange(of: showNotePopover) { _, shown in
+            if !shown { noteText = "" }
+        }
+    }
+}
+
+// MARK: - File Path Badge (Spec 4: Re-pickable file/folder)
+
+/// Clickable badge showing a file or folder path. Empty state shows a "Choose file/folder" button.
+/// Filled state shows filename + faded parent path.
+private struct FilePathBadge: View {
+    let path: String?
+    let iconName: String
+    let emptyLabel: String
+    let onClick: () -> Void
+
+    var body: some View {
+        Button(action: onClick) {
+            HStack(spacing: 4) {
+                Image(systemName: iconName)
+                    .font(.caption)
+
+                if let path, !path.isEmpty {
+                    // Show faded parent + filename
+                    let url = URL(fileURLWithPath: path)
+                    let filename = url.lastPathComponent
+                    let parent = url.deletingLastPathComponent().path
+
+                    if !parent.isEmpty && parent != "/" {
+                        Text("\(abbreviatedParent(parent)) ‹ ")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(filename)
+                        .font(.system(.body, design: .monospaced))
+                        .fontWeight(.medium)
+                } else {
+                    Text(emptyLabel)
+                        .font(.system(.body, design: .monospaced))
+                }
+            }
+        }
+        .buttonStyle(.bordered)
+        .help(path ?? emptyLabel)
+    }
+
+    /// Abbreviates home directory to `~`.
+    private func abbreviatedParent(_ path: String) -> String {
+        let home = NSHomeDirectory()
+        if path.hasPrefix(home) {
+            return "~" + String(path.dropFirst(home.count))
+        }
+        return path
     }
 }
 

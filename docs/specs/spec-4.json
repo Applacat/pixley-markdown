@@ -1,0 +1,24 @@
+{
+  "name": "spec-4",
+  "title": "New Interactive Controls (Slider, Stepper, Toggle, Color, Auditable Checkbox, File Re-pick)",
+  "version": "1.0",
+  "date": "2026-04-10",
+  "status": "spec",
+  "milestone": "v4: Native Renderer",
+  "closes": [5, 6, 7, 8, 9, 10],
+  "phases": [
+    {
+      "name": "Element Types, Detection, Write-back",
+      "status": "pending"
+    },
+    {
+      "name": "Enhanced Mode Rendering",
+      "status": "pending"
+    },
+    {
+      "name": "Plain Mode Click Targets + Note Sanitization",
+      "status": "pending"
+    }
+  ],
+  "user_stories": ["US-1", "US-2", "US-3", "US-4", "US-5", "US-6", "US-7", "US-8"]
+}

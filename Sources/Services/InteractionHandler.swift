@@ -224,14 +224,167 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        // Wrap value in [[ ]] so it stays detectable as a fill-in for re-editing
-        let wrapped = "[[\(value)]]"
+        // Spec 4: File/folder types use prefix convention for re-pickable detection
+        let wrapped: String
+        switch element.type {
+        case .file:
+            wrapped = "[[file: \(value)]]"
+        case .folder:
+            wrapped = "[[folder: \(value)]]"
+        case .text, .date:
+            wrapped = "[[\(value)]]"
+        }
         try await apply(
             edit: .replace(range: element.range, newText: wrapped),
             to: url,
             fileWatcher: fileWatcher,
             onContentUpdated: onContentUpdated
         )
+    }
+
+    /// Spec 4: Replaces a Spec 4 control element (slider, stepper, toggle, color picker)
+    /// with a raw value, using offset-based re-detection to survive external edits.
+    /// The pattern is consumed — controls are empty-state only (MVP).
+    func replaceSpec4Element(
+        _ element: InteractiveElement,
+        with value: String,
+        displayedContent: String,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        fileWatcher?.suppressChanges(for: 1.0)
+
+        // Re-detect the element on fresh file content using offset-based matching
+        let (freshRange, currentContent) = try await redetectSpec4ElementRange(
+            staleRange: element.range,
+            displayedContent: displayedContent,
+            url: url,
+            matchesElement: element
+        )
+
+        var modified = currentContent
+        modified.replaceSubrange(freshRange, with: value)
+
+        try await secureWrite(modified, to: url)
+        await MainActor.run { onContentUpdated?(modified) }
+    }
+
+    /// Helper: re-detects a Spec 4 element in fresh file content using character offset
+    /// as the stable identifier. Returns the fresh range and the current content.
+    private func redetectSpec4ElementRange(
+        staleRange: Range<String.Index>,
+        displayedContent: String,
+        url: URL,
+        matchesElement: InteractiveElement
+    ) async throws -> (Range<String.Index>, String) {
+        let staleOffset = displayedContent.distance(from: displayedContent.startIndex, to: staleRange.lowerBound)
+
+        // Capture the kind discriminator for the Sendable closure
+        let kindMatcher: @Sendable (InteractiveElement) -> Bool = { element in
+            switch (element, matchesElement) {
+            case (.slider, .slider),
+                 (.stepper, .stepper),
+                 (.toggle, .toggle),
+                 (.colorPicker, .colorPicker):
+                return true
+            default:
+                return false
+            }
+        }
+
+        return try await Task.detached(priority: .userInitiated) {
+            let data = try Data(contentsOf: url)
+            guard let currentContent = String(data: data, encoding: .utf8) else {
+                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"]))
+            }
+
+            let elements = InteractiveElementDetector.detect(in: currentContent)
+            let candidates = elements.filter(kindMatcher)
+
+            guard let fresh = candidates.min(by: {
+                let aOff = currentContent.distance(from: currentContent.startIndex, to: $0.range.lowerBound)
+                let bOff = currentContent.distance(from: currentContent.startIndex, to: $1.range.lowerBound)
+                return abs(aOff - staleOffset) < abs(bOff - staleOffset)
+            }) else {
+                throw WriteError.rangeMismatch
+            }
+
+            return (fresh.range, currentContent)
+        }.value
+    }
+
+    /// Spec 4: Toggles an auditable checkbox. Action is "check" (appends date + optional note)
+    /// or "uncheck" (removes date + note).
+    /// `displayedContent` is the content the user is viewing — needed to compute stable offsets
+    /// since the on-disk file may have changed since the element was detected.
+    func toggleAuditableCheckbox(
+        _ element: AuditableCheckboxElement,
+        action: String,
+        note: String,
+        displayedContent: String,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        fileWatcher?.suppressChanges(for: 1.0)
+
+        // Re-detect the element on fresh file content using offset-based matching
+        let (fresh, currentContent) = try await redetectElement(
+            staleBlockquoteRange: element.range,
+            displayedContent: displayedContent,
+            url: url,
+            extract: { if case .auditableCheckbox(let ac) = $0 { return ac }; return nil },
+            isCompatible: { _ in true },
+            blockquoteRange: { $0.range }
+        )
+
+        // Sanitize note text (defense in depth: strip newlines, HTML comment sequences, cap length)
+        let sanitizedNote = Self.sanitizeNoteText(note)
+
+        // Build new line content
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = formatter.string(from: Date())
+
+        // Reconstruct the line: preserve the original list marker prefix (e.g. `- [`)
+        let lineText = String(currentContent[fresh.range])
+        guard let openBracket = lineText.firstIndex(of: "[") else { return }
+        let prefix = String(lineText[lineText.startIndex...openBracket])
+        let suffix = "] " // closing bracket + space
+
+        let labelWithMarker = "\(fresh.label) (notes)"
+        let newLine: String
+        switch action {
+        case "check":
+            let stamp = sanitizedNote.isEmpty ? "— \(today)" : "— \(today): \(sanitizedNote)"
+            newLine = "\(prefix)x\(suffix)\(labelWithMarker) \(stamp)"
+        case "uncheck":
+            newLine = "\(prefix) \(suffix)\(labelWithMarker)"
+        default:
+            return
+        }
+
+        var newContent = currentContent
+        newContent.replaceSubrange(fresh.range, with: newLine)
+
+        try await secureWrite(newContent, to: url)
+        await MainActor.run {
+            onContentUpdated?(newContent)
+        }
+    }
+
+    /// Sanitizes note text to prevent HTML comment corruption, newline injection, and excessive length.
+    static func sanitizeNoteText(_ text: String) -> String {
+        var clean = text.trimmingCharacters(in: .whitespaces)
+        clean = clean.replacingOccurrences(of: "\n", with: " ")
+        clean = clean.replacingOccurrences(of: "\r", with: " ")
+        clean = clean.replacingOccurrences(of: "-->", with: "—>")
+        clean = clean.replacingOccurrences(of: "--", with: "—")
+        if clean.count > 500 {
+            clean = String(clean.prefix(500))
+        }
+        return clean
     }
 
     /// Sets feedback text in a feedback comment.

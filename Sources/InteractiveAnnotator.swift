@@ -213,6 +213,19 @@ final class InteractiveAnnotator {
 
             case .conditional, .collapsible:
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+
+            case .auditableCheckbox(let ac):
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                let tooltip = ac.isChecked ? "Click to uncheck (auditable)" : "Click to mark as complete (will prompt for note)"
+                attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
+                if ac.isChecked {
+                    attributed.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: nsRange)
+                }
+
+            case .slider, .stepper, .toggle, .colorPicker:
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                attributed.addAttribute(.toolTip, value: "Click to adjust", range: nsRange)
+                attributed.addAttribute(.backgroundColor, value: NSColor.controlAccentColor.withAlphaComponent(0.08), range: nsRange)
             }
         }
 
@@ -427,6 +440,26 @@ final class InteractiveAnnotator {
 
             case .conditional, .collapsible:
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+
+            case .auditableCheckbox(let ac):
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                attributed.addAttribute(.toolTip, value: ac.isChecked ? "Click to uncheck (auditable)" : "Click to mark as complete (will prompt for note)", range: nsRange)
+
+            case .slider(let s):
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                attributed.addAttribute(.toolTip, value: "Slider \(s.minValue)–\(s.maxValue) — switch to Enhanced mode to use", range: nsRange)
+
+            case .stepper:
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                attributed.addAttribute(.toolTip, value: "Stepper — switch to Enhanced mode to use", range: nsRange)
+
+            case .toggle:
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                attributed.addAttribute(.toolTip, value: "Toggle — switch to Enhanced mode to use", range: nsRange)
+
+            case .colorPicker:
+                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
+                attributed.addAttribute(.toolTip, value: "Color picker — switch to Enhanced mode to use", range: nsRange)
             }
         }
     }

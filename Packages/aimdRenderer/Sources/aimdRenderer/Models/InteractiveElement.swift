@@ -17,6 +17,11 @@ public enum InteractiveElement: Sendable, Identifiable {
         case .confidence(let e): return "confidence-\(e.range.lowerBound)"
         case .conditional(let e): return "conditional-\(e.range.lowerBound)"
         case .collapsible(let e): return "collapsible-\(e.range.lowerBound)"
+        case .slider(let e): return "slider-\(e.range.lowerBound)"
+        case .stepper(let e): return "stepper-\(e.range.lowerBound)"
+        case .toggle(let e): return "toggle-\(e.range.lowerBound)"
+        case .colorPicker(let e): return "colorPicker-\(e.range.lowerBound)"
+        case .auditableCheckbox(let e): return "auditableCheckbox-\(e.range.lowerBound)"
         }
     }
 
@@ -30,6 +35,11 @@ public enum InteractiveElement: Sendable, Identifiable {
     case confidence(ConfidenceElement)
     case conditional(ConditionalElement)
     case collapsible(CollapsibleElement)
+    case slider(SliderElement)
+    case stepper(StepperElement)
+    case toggle(ToggleElement)
+    case colorPicker(ColorPickerElement)
+    case auditableCheckbox(AuditableCheckboxElement)
 
     /// Human-readable name of this element type for UI display.
     public var displayName: String {
@@ -44,6 +54,11 @@ public enum InteractiveElement: Sendable, Identifiable {
         case .confidence: return "Confidence"
         case .conditional: return "Conditional"
         case .collapsible: return "Collapsible"
+        case .slider: return "Slider"
+        case .stepper: return "Stepper"
+        case .toggle: return "Toggle"
+        case .colorPicker: return "Color Picker"
+        case .auditableCheckbox: return "Auditable Checkbox"
         }
     }
 
@@ -60,6 +75,11 @@ public enum InteractiveElement: Sendable, Identifiable {
         case .confidence(let e): return e.range
         case .conditional(let e): return e.range
         case .collapsible(let e): return e.range
+        case .slider(let e): return e.range
+        case .stepper(let e): return e.range
+        case .toggle(let e): return e.range
+        case .colorPicker(let e): return e.range
+        case .auditableCheckbox(let e): return e.range
         }
     }
 }
@@ -269,5 +289,90 @@ public struct CollapsibleElement: Sendable {
         self.range = range
         self.title = title
         self.contentRange = contentRange
+    }
+}
+
+// MARK: - Spec 4: New Controls
+
+/// A slider control: `[[slide MIN-MAX]]` or `[[rate MIN-MAX]]`.
+/// Integer range only, inclusive on both ends. Strict validation —
+/// invalid ranges (reversed, missing) are not detected.
+public struct SliderElement: Sendable {
+    public let range: Range<String.Index>
+    public let minValue: Int
+    public let maxValue: Int
+    /// "slide" or "rate" — preserved for round-trip write-back
+    public let keyword: String
+
+    public init(range: Range<String.Index>, minValue: Int, maxValue: Int, keyword: String) {
+        self.range = range
+        self.minValue = minValue
+        self.maxValue = maxValue
+        self.keyword = keyword
+    }
+}
+
+/// A stepper control: `[[pick number]]` or `[[pick number MIN-MAX]]`.
+/// Integer-only, step size 1.
+public struct StepperElement: Sendable {
+    public let range: Range<String.Index>
+    /// nil when the pattern is `[[pick number]]` without range
+    public let minValue: Int?
+    public let maxValue: Int?
+
+    public init(range: Range<String.Index>, minValue: Int?, maxValue: Int?) {
+        self.range = range
+        self.minValue = minValue
+        self.maxValue = maxValue
+    }
+}
+
+/// A toggle switch: `[[toggle]]`.
+public struct ToggleElement: Sendable {
+    public let range: Range<String.Index>
+
+    public init(range: Range<String.Index>) {
+        self.range = range
+    }
+}
+
+/// A color picker: `[[pick color]]`.
+public struct ColorPickerElement: Sendable {
+    public let range: Range<String.Index>
+
+    public init(range: Range<String.Index>) {
+        self.range = range
+    }
+}
+
+/// A checkbox variant that auto-appends a date stamp (and optional note) when checked.
+/// Triggered by the `(notes)` suffix in the label.
+public struct AuditableCheckboxElement: Sendable {
+    /// Range of the full `- [ ] label (notes)` line
+    public let range: Range<String.Index>
+    /// Range of just the space/x character inside the brackets
+    public let checkRange: Range<String.Index>
+    public let isChecked: Bool
+    /// The label with the `(notes)` suffix stripped
+    public let label: String
+    /// The timestamp if checked (format: `YYYY-MM-DD`)
+    public let date: String?
+    /// The optional note text if provided
+    public let note: String?
+
+    public init(
+        range: Range<String.Index>,
+        checkRange: Range<String.Index>,
+        isChecked: Bool,
+        label: String,
+        date: String?,
+        note: String?
+    ) {
+        self.range = range
+        self.checkRange = checkRange
+        self.isChecked = isChecked
+        self.label = label
+        self.date = date
+        self.note = note
     }
 }
