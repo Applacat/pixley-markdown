@@ -267,7 +267,8 @@ extension SliderElement: SelfDescribingElement {
     var elementType: String { "Slider" }
 
     var schemaDescription: String {
-        "An integer slider between \(minValue) and \(maxValue) (inclusive). Markdown: `[[\(keyword) \(minValue)-\(maxValue)]]` → replaced with the chosen integer."
+        "An integer slider between \(minValue) and \(maxValue) (inclusive). " +
+        "Markdown: `[[\(keyword) \(minValue)-\(maxValue)]]` → replaced with the chosen integer."
     }
 
     var editableFields: [EditableField] {

@@ -339,7 +339,10 @@ struct ContentBlockView: View {
 
         while let range = remainingLowered.range(of: searchLowered) {
             // Text before match
-            let beforeEnd = text.index(remaining.startIndex, offsetBy: remainingLowered.distance(from: remainingLowered.startIndex, to: range.lowerBound))
+            let offset = remainingLowered.distance(
+                from: remainingLowered.startIndex, to: range.lowerBound
+            )
+            let beforeEnd = text.index(remaining.startIndex, offsetBy: offset)
             let before = remaining[remaining.startIndex..<beforeEnd]
             if !before.isEmpty {
                 result = result + Text(before)

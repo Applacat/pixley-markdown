@@ -516,124 +516,107 @@ struct MarkdownView: View {
 
     /// Handles submissions from inline NSPopovers (fill-in, feedback, suggestion, review notes, challenge).
     private func handleInputSubmitted(_ element: InteractiveElement, optionIndex: Int?, fieldName: String, value: String) {
-        // Intercept "addComment" submissions from the Add Comment popover
-        if fieldName == "addComment",
-           let range = pendingCommentRange,
-           let selectedText = pendingCommentText,
-           let url = pendingCommentFileURL {
-            pendingCommentRange = nil
-            pendingCommentText = nil
-            pendingCommentFileURL = nil
-            Task {
-                do {
-                    try await interactionHandler.addComment(
-                        selectedText: selectedText,
-                        comment: value,
-                        range: range,
-                        in: url,
-                        fileWatcher: fileWatcher
-                    ) { newContent in
-                        coordinator.updateDocumentContent(newContent)
-                    }
-                } catch {
-                    coordinator.showError(.error(message: error.localizedDescription))
-                }
-            }
-            return
-        }
-
+        if handlePendingComment(fieldName: fieldName, value: value) { return }
         guard let fileURL = coordinator.navigation.selectedFile else { return }
         let content = coordinator.document.content
 
         Task {
             do {
-                switch element {
-                case .fillIn(let fi):
-                    try await interactionHandler.fillIn(
-                        fi, value: value, in: fileURL, fileWatcher: fileWatcher
-                    ) { newContent in
-                        coordinator.updateDocumentContent(newContent)
-                    }
-
-                case .feedback(let fb):
-                    try await interactionHandler.setFeedback(
-                        fb, text: value, in: fileURL, fileWatcher: fileWatcher
-                    ) { newContent in
-                        coordinator.updateDocumentContent(newContent)
-                    }
-
-                case .suggestion(let s):
-                    if fieldName == "editComment" {
-                        try await interactionHandler.editComment(
-                            s, newComment: value, in: fileURL, fileWatcher: fileWatcher
-                        ) { newContent in
-                            coordinator.updateDocumentContent(newContent)
-                        }
-                    } else if value == "accept" {
-                        try await interactionHandler.acceptSuggestion(
-                            s, in: fileURL, fileWatcher: fileWatcher
-                        ) { newContent in
-                            coordinator.updateDocumentContent(newContent)
-                        }
-                    } else {
-                        try await interactionHandler.rejectSuggestion(
-                            s, in: fileURL, fileWatcher: fileWatcher
-                        ) { newContent in
-                            coordinator.updateDocumentContent(newContent)
-                        }
-                    }
-
-                case .review(let rv):
-                    if fieldName == "clearReview" {
-                        try await interactionHandler.clearReview(
-                            in: rv,
-                            displayedContent: content,
-                            url: fileURL,
-                            fileWatcher: fileWatcher
-                        ) { newContent in
-                            coordinator.updateDocumentContent(newContent)
-                        }
-                    } else {
-                        guard let optionIndex else { return }
-                        try await interactionHandler.selectReview(
-                            optionIndex: optionIndex,
-                            notes: value.isEmpty ? nil : value,
-                            in: rv,
-                            displayedContent: content,
-                            url: fileURL,
-                            fileWatcher: fileWatcher
-                        ) { newContent in
-                            coordinator.updateDocumentContent(newContent)
-                        }
-                    }
-
-                case .confidence(let conf):
-                    try await interactionHandler.challengeConfidence(
-                        conf, feedback: value, in: fileURL, fileWatcher: fileWatcher
-                    ) { newContent in
-                        coordinator.updateDocumentContent(newContent)
-                    }
-
-                case .slider, .stepper, .toggle, .colorPicker:
-                    try await interactionHandler.replaceSpec4Element(
-                        element, with: value, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
-                    ) { newContent in
-                        coordinator.updateDocumentContent(newContent)
-                    }
-
-                case .auditableCheckbox(let ac):
-                    try await interactionHandler.toggleAuditableCheckbox(
-                        ac, action: fieldName, note: value, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
-                    ) { newContent in
-                        coordinator.updateDocumentContent(newContent)
-                    }
-
-                default:
-                    break
-                }
+                try await dispatchElementInput(
+                    element, optionIndex: optionIndex, fieldName: fieldName,
+                    value: value, content: content, fileURL: fileURL
+                )
             } catch {
                 coordinator.showError(.error(message: error.localizedDescription))
             }
+        }
+    }
+
+    private func handlePendingComment(fieldName: String, value: String) -> Bool {
+        guard fieldName == "addComment",
+              let range = pendingCommentRange,
+              let selectedText = pendingCommentText,
+              let url = pendingCommentFileURL else { return false }
+        pendingCommentRange = nil
+        pendingCommentText = nil
+        pendingCommentFileURL = nil
+        Task {
+            do {
+                try await interactionHandler.addComment(
+                    selectedText: selectedText, comment: value,
+                    range: range, in: url, fileWatcher: fileWatcher
+                ) { newContent in coordinator.updateDocumentContent(newContent) }
+            } catch {
+                coordinator.showError(.error(message: error.localizedDescription))
+            }
+        }
+        return true
+    }
+
+    private func dispatchElementInput(
+        _ element: InteractiveElement, optionIndex: Int?,
+        fieldName: String, value: String, content: String, fileURL: URL
+    ) async throws {
+        switch element {
+        case .fillIn(let fi):
+            try await interactionHandler.fillIn(
+                fi, value: value, in: fileURL, fileWatcher: fileWatcher
+            ) { newContent in coordinator.updateDocumentContent(newContent) }
+        case .feedback(let fb):
+            try await interactionHandler.setFeedback(
+                fb, text: value, in: fileURL, fileWatcher: fileWatcher
+            ) { newContent in coordinator.updateDocumentContent(newContent) }
+        case .suggestion(let s):
+            try await dispatchSuggestionInput(s, fieldName: fieldName, value: value, fileURL: fileURL)
+        case .review(let rv):
+            try await dispatchReviewInput(rv, optionIndex: optionIndex, fieldName: fieldName, value: value, content: content, fileURL: fileURL)
+        case .confidence(let conf):
+            try await interactionHandler.challengeConfidence(
+                conf, feedback: value, in: fileURL, fileWatcher: fileWatcher
+            ) { newContent in coordinator.updateDocumentContent(newContent) }
+        case .slider, .stepper, .toggle, .colorPicker:
+            try await interactionHandler.replaceSpec4Element(
+                element, with: value, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
+            ) { newContent in coordinator.updateDocumentContent(newContent) }
+        case .auditableCheckbox(let ac):
+            try await interactionHandler.toggleAuditableCheckbox(
+                ac, action: fieldName, note: value, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
+            ) { newContent in coordinator.updateDocumentContent(newContent) }
+        default:
+            break
+        }
+    }
+
+    private func dispatchSuggestionInput(_ s: SuggestionElement, fieldName: String, value: String, fileURL: URL) async throws {
+        if fieldName == "editComment" {
+            try await interactionHandler.editComment(
+                s, newComment: value, in: fileURL, fileWatcher: fileWatcher
+            ) { newContent in coordinator.updateDocumentContent(newContent) }
+        } else if value == "accept" {
+            try await interactionHandler.acceptSuggestion(
+                s, in: fileURL, fileWatcher: fileWatcher
+            ) { newContent in coordinator.updateDocumentContent(newContent) }
+        } else {
+            try await interactionHandler.rejectSuggestion(
+                s, in: fileURL, fileWatcher: fileWatcher
+            ) { newContent in coordinator.updateDocumentContent(newContent) }
+        }
+    }
+
+    private func dispatchReviewInput(
+        _ rv: ReviewElement, optionIndex: Int?,
+        fieldName: String, value: String, content: String, fileURL: URL
+    ) async throws {
+        if fieldName == "clearReview" {
+            try await interactionHandler.clearReview(
+                in: rv, displayedContent: content, url: fileURL, fileWatcher: fileWatcher
+            ) { newContent in coordinator.updateDocumentContent(newContent) }
+        } else {
+            guard let optionIndex else { return }
+            try await interactionHandler.selectReview(
+                optionIndex: optionIndex, notes: value.isEmpty ? nil : value,
+                in: rv, displayedContent: content, url: fileURL, fileWatcher: fileWatcher
+            ) { newContent in coordinator.updateDocumentContent(newContent) }
         }
     }
 

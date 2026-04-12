@@ -48,190 +48,233 @@ final class InteractiveAnnotator {
     ///   - enhanced: When true, applies full visual affordances (pills, backgrounds, tooltips).
     ///               When false, only adds click targets and cursor attributes (plain mode).
     func annotateInteractiveElements(_ attributed: NSMutableAttributedString, elements: [InteractiveElement], text: String, enhanced: Bool = true) {
-        // Plain mode: just add click targets and tooltips, no visual styling
         if !enhanced {
             annotatePlainClickTargets(attributed, elements: elements, text: text)
-            // Still replace x with check glyph for checked items (readability, not styling)
             replaceCheckGlyphs(attributed, elements: elements, text: text)
             return
         }
 
         for element in elements {
-            let swiftRange = element.range
-            guard let nsRange = Optional(NSRange(swiftRange, in: text)) else { continue }
-            guard nsRange.location + nsRange.length <= attributed.length else { continue }
-
+            guard let nsRange = validNSRange(for: element, in: text, length: attributed.length) else { continue }
             let wrapper = InteractiveElementWrapper(element)
 
             switch element {
             case .checkbox(let cb):
-                // Click target: the FULL line
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                let tooltip = cb.isChecked ? "Click to uncheck" : "Click to mark as complete"
-                attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
-                // Dim checked items to show completion (no strikethrough -- native feel)
-                if cb.isChecked {
-                    attributed.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: nsRange)
-                }
-
+                annotateEnhancedCheckbox(attributed, cb: cb, wrapper: wrapper, range: nsRange)
             case .choice(let ch):
-                for (i, option) in ch.options.enumerated() {
-                    let optionNS = NSRange(option.range, in: text)
-                    guard optionNS.location + optionNS.length <= attributed.length else { continue }
-                    let optionWrapper = InteractiveElementWrapper(element, optionIndex: i)
-                    attributed.addAttribute(.interactiveElement, value: optionWrapper, range: optionNS)
-                    attributed.addAttribute(.toolTip, value: "Click to select this option", range: optionNS)
-                    if option.isSelected {
-                        attributed.addAttribute(.backgroundColor, value: NSColor.systemBlue.withAlphaComponent(0.08), range: optionNS)
-                    }
-                }
-
+                annotateEnhancedChoice(attributed, ch: ch, element: element, text: text)
             case .review(let rv):
-                for (i, option) in rv.options.enumerated() {
-                    let optionNS = NSRange(option.range, in: text)
-                    guard optionNS.location + optionNS.length <= attributed.length else { continue }
-                    let optionWrapper = InteractiveElementWrapper(element, optionIndex: i)
-                    attributed.addAttribute(.interactiveElement, value: optionWrapper, range: optionNS)
-                    attributed.addAttribute(.toolTip, value: "Click to set review: \(option.status.rawValue)", range: optionNS)
-                    let statusColor = Self.reviewStatusColor(option.status)
-                    if option.isSelected {
-                        attributed.addAttribute(.backgroundColor, value: statusColor.withAlphaComponent(0.15), range: optionNS)
-                        attributed.addAttribute(.foregroundColor, value: statusColor, range: optionNS)
-                    }
-                }
-
+                annotateEnhancedReview(attributed, rv: rv, element: element, text: text)
             case .fillIn(let fi):
-                // Native text field appearance: glass-like background, solid underline, hidden delimiters
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                attributed.addAttribute(.backgroundColor, value: NSColor.quaternaryLabelColor.withAlphaComponent(0.25), range: nsRange)
-                attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
-                attributed.addAttribute(.underlineColor, value: NSColor.separatorColor, range: nsRange)
-                if fi.value == nil {
-                    // Unfilled: italic placeholder in the inner content
-                    let innerStart = nsRange.location + 2
-                    let innerLength = nsRange.length - 4
-                    if innerLength > 0 && innerStart + innerLength <= attributed.length {
-                        let innerRange = NSRange(location: innerStart, length: innerLength)
-                        let regularFont = NSFont.monospacedSystemFont(ofSize: baseFont.pointSize, weight: .regular)
-                        let italicDescriptor = regularFont.fontDescriptor.withSymbolicTraits(.italic)
-                        let italicFont = NSFont(descriptor: italicDescriptor, size: baseFont.pointSize) ?? regularFont
-                        attributed.addAttribute(.font, value: italicFont, range: innerRange)
-                        attributed.addAttribute(.foregroundColor, value: NSColor.placeholderTextColor, range: innerRange)
-                    }
-                } else {
-                    attributed.addAttribute(.foregroundColor, value: foregroundColor, range: nsRange)
-                }
-                let tooltip: String = switch fi.type {
-                case .text: fi.value != nil ? "Click to edit: \(fi.hint)" : "Click to fill in: \(fi.hint)"
-                case .file: "Click to choose a file"
-                case .folder: "Click to choose a folder"
-                case .date: "Click to pick a date"
-                }
-                attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
-
+                annotateEnhancedFillIn(attributed, fi: fi, wrapper: wrapper, range: nsRange)
             case .feedback(let fb):
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                attributed.addAttribute(.backgroundColor, value: NSColor.systemPurple.withAlphaComponent(0.08), range: nsRange)
-                if fb.existingText != nil {
-                    attributed.addAttribute(.foregroundColor, value: NSColor.systemPurple, range: nsRange)
-                    attributed.addAttribute(.toolTip, value: "Click to edit feedback", range: nsRange)
-                } else {
-                    attributed.addAttribute(.foregroundColor, value: NSColor.systemPurple.withAlphaComponent(0.5), range: nsRange)
-                    let regularFont = NSFont.monospacedSystemFont(ofSize: baseFont.pointSize, weight: .regular)
-                    let italicDescriptor = regularFont.fontDescriptor.withSymbolicTraits(.italic)
-                    let italicFont = NSFont(descriptor: italicDescriptor, size: baseFont.pointSize) ?? regularFont
-                    attributed.addAttribute(.font, value: italicFont, range: nsRange)
-                    attributed.addAttribute(.toolTip, value: "Click to leave feedback", range: nsRange)
-                }
-
+                annotateEnhancedFeedback(attributed, fb: fb, wrapper: wrapper, range: nsRange)
             case .suggestion(let s):
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                let (color, tooltip, decoration): (NSColor, String, CriticDecoration) = switch s.type {
-                case .addition:
-                    (.systemGreen, "Suggested addition — click to review", .none)
-                case .deletion:
-                    (.systemRed, "Suggested deletion — click to review", .strikethrough)
-                case .substitution:
-                    (.systemOrange, "Suggested change — click to review", .none)
-                case .highlight:
-                    (.systemYellow, s.comment != nil ? "Comment — click to read" : "Highlighted — click to add comment", .none)
-                }
-                if s.type == .highlight {
-                    let bgColor = commentHighlightColor ?? NSColor.systemYellow.withAlphaComponent(0.15)
-                    attributed.addAttribute(.backgroundColor, value: bgColor, range: nsRange)
-                    // Hide the {>>comment<<} portion — only show the highlighted text
-                    if s.comment != nil {
-                        let fullText = String(text[swiftRange])
-                        if let commentStart = fullText.range(of: "==}{>>") {
-                            let hideStart = text.index(swiftRange.lowerBound, offsetBy: fullText.distance(from: fullText.startIndex, to: commentStart.lowerBound) + 2) // after "=="
-                            let hideRange = hideStart..<swiftRange.upperBound
-                            let hideNS = NSRange(hideRange, in: text)
-                            if hideNS.location + hideNS.length <= attributed.length {
-                                attributed.addAttribute(.foregroundColor, value: NSColor.clear, range: hideNS)
-                                attributed.addAttribute(.font, value: NSFont.systemFont(ofSize: 0.1), range: hideNS)
-                            }
-                        }
-                    }
-                } else {
-                    attributed.addAttribute(.foregroundColor, value: color, range: nsRange)
-                    attributed.addAttribute(.backgroundColor, value: color.withAlphaComponent(0.10), range: nsRange)
-                }
-                if decoration == .strikethrough {
-                    attributed.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
-                    attributed.addAttribute(.strikethroughColor, value: color.withAlphaComponent(0.6), range: nsRange)
-                }
-                attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
-                Self.dimCriticMarkupDelimiters(in: attributed, range: nsRange, text: text)
-
+                annotateEnhancedSuggestion(attributed, s: s, wrapper: wrapper, range: nsRange, swiftRange: element.range, text: text)
             case .status(let st):
-                let labelNS = NSRange(st.labelRange, in: text)
-                if labelNS.location + labelNS.length <= attributed.length {
-                    attributed.addAttribute(.interactiveElement, value: wrapper, range: labelNS)
-                    let isTerminal = st.nextStates.isEmpty
-                    let badgeColor: NSColor = isTerminal ? .systemGreen : .controlAccentColor
-                    // Stronger background to look more button-like
-                    attributed.addAttribute(.backgroundColor, value: badgeColor.withAlphaComponent(isTerminal ? 0.15 : 0.12), range: labelNS)
-                    attributed.addAttribute(.foregroundColor, value: isTerminal ? badgeColor : .labelColor, range: labelNS)
-                    let tooltip = isTerminal ? "Status complete" : "Click to change status"
-                    attributed.addAttribute(.toolTip, value: tooltip, range: labelNS)
-                }
-                let commentNS = NSRange(st.commentRange, in: text)
-                if commentNS.location + commentNS.length <= attributed.length {
-                    attributed.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: commentNS)
-                }
-
+                annotateEnhancedStatus(attributed, st: st, wrapper: wrapper, text: text)
             case .confidence(let c):
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                let (color, tooltip): (NSColor, String) = switch c.level {
-                case .high: (.systemGreen, "AI is confident — click to confirm")
-                case .medium: (.systemYellow, "AI confidence: medium")
-                case .low: (.systemRed, "AI is uncertain — click to challenge")
-                case .confirmed: (.systemBlue, "Confirmed")
-                }
-                attributed.addAttribute(.backgroundColor, value: color.withAlphaComponent(0.15), range: nsRange)
-                attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
-
+                annotateEnhancedConfidence(attributed, c: c, wrapper: wrapper, range: nsRange)
             case .conditional, .collapsible:
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-
             case .auditableCheckbox(let ac):
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                let tooltip = ac.isChecked ? "Click to uncheck (auditable)" : "Click to mark as complete (will prompt for note)"
-                attributed.addAttribute(.toolTip, value: tooltip, range: nsRange)
-                if ac.isChecked {
-                    attributed.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: nsRange)
-                }
-
+                annotateEnhancedAuditableCheckbox(attributed, ac: ac, wrapper: wrapper, range: nsRange)
             case .slider, .stepper, .toggle, .colorPicker:
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                attributed.addAttribute(.toolTip, value: "Click to adjust", range: nsRange)
-                attributed.addAttribute(.backgroundColor, value: NSColor.controlAccentColor.withAlphaComponent(0.08), range: nsRange)
+                annotateEnhancedControl(attributed, wrapper: wrapper, range: nsRange)
             }
         }
 
-        // Post-pass: replace markdown brackets with native macOS control indicators.
-        // SF Symbol checkboxes, radio buttons, dropdown chevrons, hidden field delimiters.
         replaceWithNativeIndicators(attributed, elements: elements, text: text)
+    }
+
+    // MARK: - Range Validation
+
+    private func validNSRange(for element: InteractiveElement, in text: String, length: Int) -> NSRange? {
+        let nsRange = NSRange(element.range, in: text)
+        guard nsRange.location + nsRange.length <= length else { return nil }
+        return nsRange
+    }
+
+    // MARK: - Enhanced Mode Per-Element Annotation
+
+    private func annotateEnhancedCheckbox(
+        _ attributed: NSMutableAttributedString, cb: CheckboxElement,
+        wrapper: InteractiveElementWrapper, range: NSRange
+    ) {
+        attributed.addAttribute(.interactiveElement, value: wrapper, range: range)
+        let tooltip = cb.isChecked ? "Click to uncheck" : "Click to mark as complete"
+        attributed.addAttribute(.toolTip, value: tooltip, range: range)
+        if cb.isChecked {
+            attributed.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
+        }
+    }
+
+    private func annotateEnhancedChoice(_ attributed: NSMutableAttributedString, ch: ChoiceElement, element: InteractiveElement, text: String) {
+        for (i, option) in ch.options.enumerated() {
+            let optionNS = NSRange(option.range, in: text)
+            guard optionNS.location + optionNS.length <= attributed.length else { continue }
+            attributed.addAttribute(.interactiveElement, value: InteractiveElementWrapper(element, optionIndex: i), range: optionNS)
+            attributed.addAttribute(.toolTip, value: "Click to select this option", range: optionNS)
+            if option.isSelected {
+                attributed.addAttribute(.backgroundColor, value: NSColor.systemBlue.withAlphaComponent(0.08), range: optionNS)
+            }
+        }
+    }
+
+    private func annotateEnhancedReview(_ attributed: NSMutableAttributedString, rv: ReviewElement, element: InteractiveElement, text: String) {
+        for (i, option) in rv.options.enumerated() {
+            let optionNS = NSRange(option.range, in: text)
+            guard optionNS.location + optionNS.length <= attributed.length else { continue }
+            attributed.addAttribute(.interactiveElement, value: InteractiveElementWrapper(element, optionIndex: i), range: optionNS)
+            attributed.addAttribute(.toolTip, value: "Click to set review: \(option.status.rawValue)", range: optionNS)
+            let statusColor = Self.reviewStatusColor(option.status)
+            if option.isSelected {
+                attributed.addAttribute(.backgroundColor, value: statusColor.withAlphaComponent(0.15), range: optionNS)
+                attributed.addAttribute(.foregroundColor, value: statusColor, range: optionNS)
+            }
+        }
+    }
+
+    private func annotateEnhancedFillIn(
+        _ attributed: NSMutableAttributedString, fi: FillInElement,
+        wrapper: InteractiveElementWrapper, range: NSRange
+    ) {
+        attributed.addAttribute(.interactiveElement, value: wrapper, range: range)
+        attributed.addAttribute(.backgroundColor, value: NSColor.quaternaryLabelColor.withAlphaComponent(0.25), range: range)
+        attributed.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+        attributed.addAttribute(.underlineColor, value: NSColor.separatorColor, range: range)
+        if fi.value == nil {
+            let innerStart = range.location + 2
+            let innerLength = range.length - 4
+            if innerLength > 0 && innerStart + innerLength <= attributed.length {
+                let innerRange = NSRange(location: innerStart, length: innerLength)
+                let italicFont = makeItalicFont()
+                attributed.addAttribute(.font, value: italicFont, range: innerRange)
+                attributed.addAttribute(.foregroundColor, value: NSColor.placeholderTextColor, range: innerRange)
+            }
+        } else {
+            attributed.addAttribute(.foregroundColor, value: foregroundColor, range: range)
+        }
+        let tooltip: String = switch fi.type {
+        case .text: fi.value != nil ? "Click to edit: \(fi.hint)" : "Click to fill in: \(fi.hint)"
+        case .file: "Click to choose a file"
+        case .folder: "Click to choose a folder"
+        case .date: "Click to pick a date"
+        }
+        attributed.addAttribute(.toolTip, value: tooltip, range: range)
+    }
+
+    private func annotateEnhancedFeedback(
+        _ attributed: NSMutableAttributedString, fb: FeedbackElement,
+        wrapper: InteractiveElementWrapper, range: NSRange
+    ) {
+        attributed.addAttribute(.interactiveElement, value: wrapper, range: range)
+        attributed.addAttribute(.backgroundColor, value: NSColor.systemPurple.withAlphaComponent(0.08), range: range)
+        if fb.existingText != nil {
+            attributed.addAttribute(.foregroundColor, value: NSColor.systemPurple, range: range)
+            attributed.addAttribute(.toolTip, value: "Click to edit feedback", range: range)
+        } else {
+            attributed.addAttribute(.foregroundColor, value: NSColor.systemPurple.withAlphaComponent(0.5), range: range)
+            attributed.addAttribute(.font, value: makeItalicFont(), range: range)
+            attributed.addAttribute(.toolTip, value: "Click to leave feedback", range: range)
+        }
+    }
+
+    private func annotateEnhancedSuggestion(
+        _ attributed: NSMutableAttributedString, s: SuggestionElement,
+        wrapper: InteractiveElementWrapper, range: NSRange,
+        swiftRange: Range<String.Index>, text: String
+    ) {
+        attributed.addAttribute(.interactiveElement, value: wrapper, range: range)
+        let (color, tooltip, decoration): (NSColor, String, CriticDecoration) = switch s.type {
+        case .addition:    (.systemGreen, "Suggested addition — click to review", .none)
+        case .deletion:    (.systemRed, "Suggested deletion — click to review", .strikethrough)
+        case .substitution: (.systemOrange, "Suggested change — click to review", .none)
+        case .highlight:   (.systemYellow, s.comment != nil ? "Comment — click to read" : "Highlighted — click to add comment", .none)
+        }
+        if s.type == .highlight {
+            let bgColor = commentHighlightColor ?? NSColor.systemYellow.withAlphaComponent(0.15)
+            attributed.addAttribute(.backgroundColor, value: bgColor, range: range)
+            hideHighlightComment(in: attributed, swiftRange: swiftRange, nsRange: range, text: text)
+        } else {
+            attributed.addAttribute(.foregroundColor, value: color, range: range)
+            attributed.addAttribute(.backgroundColor, value: color.withAlphaComponent(0.10), range: range)
+        }
+        if decoration == .strikethrough {
+            attributed.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            attributed.addAttribute(.strikethroughColor, value: color.withAlphaComponent(0.6), range: range)
+        }
+        attributed.addAttribute(.toolTip, value: tooltip, range: range)
+        Self.dimCriticMarkupDelimiters(in: attributed, range: range, text: text)
+    }
+
+    private func hideHighlightComment(in attributed: NSMutableAttributedString, swiftRange: Range<String.Index>, nsRange: NSRange, text: String) {
+        let fullText = String(text[swiftRange])
+        guard let commentStart = fullText.range(of: "==}{>>") else { return }
+        let offset = fullText.distance(from: fullText.startIndex, to: commentStart.lowerBound) + 2
+        let hideStart = text.index(swiftRange.lowerBound, offsetBy: offset)
+        let hideNS = NSRange(hideStart..<swiftRange.upperBound, in: text)
+        guard hideNS.location + hideNS.length <= attributed.length else { return }
+        attributed.addAttribute(.foregroundColor, value: NSColor.clear, range: hideNS)
+        attributed.addAttribute(.font, value: NSFont.systemFont(ofSize: 0.1), range: hideNS)
+    }
+
+    private func annotateEnhancedStatus(
+        _ attributed: NSMutableAttributedString, st: StatusElement,
+        wrapper: InteractiveElementWrapper, text: String
+    ) {
+        let labelNS = NSRange(st.labelRange, in: text)
+        if labelNS.location + labelNS.length <= attributed.length {
+            attributed.addAttribute(.interactiveElement, value: wrapper, range: labelNS)
+            let isTerminal = st.nextStates.isEmpty
+            let badgeColor: NSColor = isTerminal ? .systemGreen : .controlAccentColor
+            attributed.addAttribute(.backgroundColor, value: badgeColor.withAlphaComponent(isTerminal ? 0.15 : 0.12), range: labelNS)
+            attributed.addAttribute(.foregroundColor, value: isTerminal ? badgeColor : .labelColor, range: labelNS)
+            attributed.addAttribute(.toolTip, value: isTerminal ? "Status complete" : "Click to change status", range: labelNS)
+        }
+        let commentNS = NSRange(st.commentRange, in: text)
+        if commentNS.location + commentNS.length <= attributed.length {
+            attributed.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: commentNS)
+        }
+    }
+
+    private func annotateEnhancedConfidence(
+        _ attributed: NSMutableAttributedString, c: ConfidenceElement,
+        wrapper: InteractiveElementWrapper, range: NSRange
+    ) {
+        attributed.addAttribute(.interactiveElement, value: wrapper, range: range)
+        let (color, tooltip): (NSColor, String) = switch c.level {
+        case .high:      (.systemGreen, "AI is confident — click to confirm")
+        case .medium:    (.systemYellow, "AI confidence: medium")
+        case .low:       (.systemRed, "AI is uncertain — click to challenge")
+        case .confirmed: (.systemBlue, "Confirmed")
+        }
+        attributed.addAttribute(.backgroundColor, value: color.withAlphaComponent(0.15), range: range)
+        attributed.addAttribute(.toolTip, value: tooltip, range: range)
+    }
+
+    private func annotateEnhancedAuditableCheckbox(
+        _ attributed: NSMutableAttributedString, ac: AuditableCheckboxElement,
+        wrapper: InteractiveElementWrapper, range: NSRange
+    ) {
+        attributed.addAttribute(.interactiveElement, value: wrapper, range: range)
+        let tooltip = ac.isChecked ? "Click to uncheck (auditable)" : "Click to mark as complete (will prompt for note)"
+        attributed.addAttribute(.toolTip, value: tooltip, range: range)
+        if ac.isChecked {
+            attributed.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
+        }
+    }
+
+    private func annotateEnhancedControl(_ attributed: NSMutableAttributedString, wrapper: InteractiveElementWrapper, range: NSRange) {
+        attributed.addAttribute(.interactiveElement, value: wrapper, range: range)
+        attributed.addAttribute(.toolTip, value: "Click to adjust", range: range)
+        attributed.addAttribute(.backgroundColor, value: NSColor.controlAccentColor.withAlphaComponent(0.08), range: range)
+    }
+
+    private func makeItalicFont() -> NSFont {
+        let regularFont = NSFont.monospacedSystemFont(ofSize: baseFont.pointSize, weight: .regular)
+        let italicDescriptor = regularFont.fontDescriptor.withSymbolicTraits(.italic)
+        return NSFont(descriptor: italicDescriptor, size: baseFont.pointSize) ?? regularFont
     }
 
     // MARK: - Check Glyph Replacement
@@ -370,97 +413,105 @@ final class InteractiveAnnotator {
     /// Plain mode: adds only click targets and tooltips without visual enhancements.
     private func annotatePlainClickTargets(_ attributed: NSMutableAttributedString, elements: [InteractiveElement], text: String) {
         for element in elements {
-            let swiftRange = element.range
-            guard let nsRange = Optional(NSRange(swiftRange, in: text)) else { continue }
-            guard nsRange.location + nsRange.length <= attributed.length else { continue }
-
+            guard let nsRange = validNSRange(for: element, in: text, length: attributed.length) else { continue }
             let wrapper = InteractiveElementWrapper(element)
 
             switch element {
             case .checkbox(let cb):
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                attributed.addAttribute(.toolTip, value: cb.isChecked ? "Click to uncheck" : "Click to mark as complete", range: nsRange)
-
+                addClickTarget(attributed, wrapper: wrapper, range: nsRange,
+                               tooltip: cb.isChecked ? "Click to uncheck" : "Click to mark as complete")
             case .choice(let ch):
-                for (i, option) in ch.options.enumerated() {
-                    let optionNS = NSRange(option.range, in: text)
-                    guard optionNS.location + optionNS.length <= attributed.length else { continue }
-                    attributed.addAttribute(.interactiveElement, value: InteractiveElementWrapper(element, optionIndex: i), range: optionNS)
-                    attributed.addAttribute(.toolTip, value: "Click to select this option", range: optionNS)
-                }
-
+                addOptionClickTargets(attributed, options: ch.options, element: element, text: text, tooltip: "Click to select this option")
             case .review(let rv):
-                for (i, option) in rv.options.enumerated() {
-                    let optionNS = NSRange(option.range, in: text)
-                    guard optionNS.location + optionNS.length <= attributed.length else { continue }
-                    attributed.addAttribute(.interactiveElement, value: InteractiveElementWrapper(element, optionIndex: i), range: optionNS)
-                    attributed.addAttribute(.toolTip, value: "Click to set review: \(option.status.rawValue)", range: optionNS)
-                }
-
+                addReviewClickTargets(attributed, options: rv.options, element: element, text: text)
             case .fillIn(let fi):
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                let tip: String = switch fi.type {
-                case .text: "Click to fill in: \(fi.hint)"
-                case .file: "Click to choose a file"
-                case .folder: "Click to choose a folder"
-                case .date: "Click to pick a date"
-                }
-                attributed.addAttribute(.toolTip, value: tip, range: nsRange)
-
+                addClickTarget(attributed, wrapper: wrapper, range: nsRange, tooltip: fillInTooltip(fi))
             case .feedback(let fb):
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                attributed.addAttribute(.toolTip, value: fb.existingText != nil ? "Click to edit feedback" : "Click to leave feedback", range: nsRange)
-
+                addClickTarget(attributed, wrapper: wrapper, range: nsRange,
+                               tooltip: fb.existingText != nil ? "Click to edit feedback" : "Click to leave feedback")
             case .suggestion(let s):
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                let tip: String = switch s.type {
-                case .addition: "Suggested addition — click to review"
-                case .deletion: "Suggested deletion — click to review"
-                case .substitution: "Suggested change — click to review"
-                case .highlight: "Highlighted — click to review"
-                }
-                attributed.addAttribute(.toolTip, value: tip, range: nsRange)
-
+                addClickTarget(attributed, wrapper: wrapper, range: nsRange, tooltip: suggestionTooltip(s))
             case .status(let st):
-                let labelNS = NSRange(st.labelRange, in: text)
-                if labelNS.location + labelNS.length <= attributed.length {
-                    attributed.addAttribute(.interactiveElement, value: wrapper, range: labelNS)
-                    attributed.addAttribute(.toolTip, value: st.nextStates.isEmpty ? "Status complete" : "Click to advance status", range: labelNS)
-                }
-
+                annotatePlainStatus(attributed, st: st, wrapper: wrapper, text: text)
             case .confidence(let c):
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                let tip: String = switch c.level {
-                case .high: "AI is confident — click to confirm"
-                case .medium: "AI confidence: medium"
-                case .low: "AI is uncertain — click to challenge"
-                case .confirmed: "Confirmed"
-                }
-                attributed.addAttribute(.toolTip, value: tip, range: nsRange)
-
+                addClickTarget(attributed, wrapper: wrapper, range: nsRange, tooltip: confidenceTooltip(c))
             case .conditional, .collapsible:
                 attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-
             case .auditableCheckbox(let ac):
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                attributed.addAttribute(.toolTip, value: ac.isChecked ? "Click to uncheck (auditable)" : "Click to mark as complete (will prompt for note)", range: nsRange)
-
+                addClickTarget(attributed, wrapper: wrapper, range: nsRange,
+                               tooltip: ac.isChecked ? "Click to uncheck (auditable)" : "Click to mark as complete (will prompt for note)")
             case .slider(let s):
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                attributed.addAttribute(.toolTip, value: "Slider \(s.minValue)–\(s.maxValue) — switch to Enhanced mode to use", range: nsRange)
-
+                addClickTarget(attributed, wrapper: wrapper, range: nsRange,
+                               tooltip: "Slider \(s.minValue)–\(s.maxValue) — switch to Enhanced mode to use")
             case .stepper:
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                attributed.addAttribute(.toolTip, value: "Stepper — switch to Enhanced mode to use", range: nsRange)
-
+                addClickTarget(attributed, wrapper: wrapper, range: nsRange, tooltip: "Stepper — switch to Enhanced mode to use")
             case .toggle:
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                attributed.addAttribute(.toolTip, value: "Toggle — switch to Enhanced mode to use", range: nsRange)
-
+                addClickTarget(attributed, wrapper: wrapper, range: nsRange, tooltip: "Toggle — switch to Enhanced mode to use")
             case .colorPicker:
-                attributed.addAttribute(.interactiveElement, value: wrapper, range: nsRange)
-                attributed.addAttribute(.toolTip, value: "Color picker — switch to Enhanced mode to use", range: nsRange)
+                addClickTarget(attributed, wrapper: wrapper, range: nsRange, tooltip: "Color picker — switch to Enhanced mode to use")
             }
+        }
+    }
+
+    // MARK: - Plain Mode Helpers
+
+    private func addClickTarget(_ attributed: NSMutableAttributedString, wrapper: InteractiveElementWrapper, range: NSRange, tooltip: String) {
+        attributed.addAttribute(.interactiveElement, value: wrapper, range: range)
+        attributed.addAttribute(.toolTip, value: tooltip, range: range)
+    }
+
+    private func addOptionClickTargets(
+        _ attributed: NSMutableAttributedString, options: [ChoiceOption],
+        element: InteractiveElement, text: String, tooltip: String
+    ) {
+        for (i, option) in options.enumerated() {
+            let optionNS = NSRange(option.range, in: text)
+            guard optionNS.location + optionNS.length <= attributed.length else { continue }
+            attributed.addAttribute(.interactiveElement, value: InteractiveElementWrapper(element, optionIndex: i), range: optionNS)
+            attributed.addAttribute(.toolTip, value: tooltip, range: optionNS)
+        }
+    }
+
+    private func addReviewClickTargets(_ attributed: NSMutableAttributedString, options: [ReviewOption], element: InteractiveElement, text: String) {
+        for (i, option) in options.enumerated() {
+            let optionNS = NSRange(option.range, in: text)
+            guard optionNS.location + optionNS.length <= attributed.length else { continue }
+            attributed.addAttribute(.interactiveElement, value: InteractiveElementWrapper(element, optionIndex: i), range: optionNS)
+            attributed.addAttribute(.toolTip, value: "Click to set review: \(option.status.rawValue)", range: optionNS)
+        }
+    }
+
+    private func annotatePlainStatus(_ attributed: NSMutableAttributedString, st: StatusElement, wrapper: InteractiveElementWrapper, text: String) {
+        let labelNS = NSRange(st.labelRange, in: text)
+        guard labelNS.location + labelNS.length <= attributed.length else { return }
+        attributed.addAttribute(.interactiveElement, value: wrapper, range: labelNS)
+        attributed.addAttribute(.toolTip, value: st.nextStates.isEmpty ? "Status complete" : "Click to advance status", range: labelNS)
+    }
+
+    private func fillInTooltip(_ fi: FillInElement) -> String {
+        switch fi.type {
+        case .text: "Click to fill in: \(fi.hint)"
+        case .file: "Click to choose a file"
+        case .folder: "Click to choose a folder"
+        case .date: "Click to pick a date"
+        }
+    }
+
+    private func suggestionTooltip(_ s: SuggestionElement) -> String {
+        switch s.type {
+        case .addition: "Suggested addition — click to review"
+        case .deletion: "Suggested deletion — click to review"
+        case .substitution: "Suggested change — click to review"
+        case .highlight: "Highlighted — click to review"
+        }
+    }
+
+    private func confidenceTooltip(_ c: ConfidenceElement) -> String {
+        switch c.level {
+        case .high: "AI is confident — click to confirm"
+        case .medium: "AI confidence: medium"
+        case .low: "AI is uncertain — click to challenge"
+        case .confirmed: "Confirmed"
         }
     }
 

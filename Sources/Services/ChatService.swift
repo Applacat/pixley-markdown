@@ -102,7 +102,11 @@ final class ChatService {
             session = LanguageModelSession(instructions: instructions)
         }
         turnCount = 0
-        Self.log.info("Session started with \(truncated.count) chars, tools: \(hasInteractiveElements), summary: \(self.currentSummary?.count ?? 0) chars")
+        Self.log.info("""
+            Session started with \(truncated.count) chars, \
+            tools: \(hasInteractiveElements), \
+            summary: \(self.currentSummary?.count ?? 0) chars
+            """)
     }
 
     /// Resets the session completely (user pressed "Forget").
@@ -283,9 +287,7 @@ final class ChatService {
     // MARK: - Instructions Builder
 
     private func buildInstructions(documentContent: String, summary: String?) -> String {
-        var parts: [String] = [
-            "You help users understand and interact with markdown documents. Be direct and specific. Don't repeat what the user already knows."
-        ]
+        var parts: [String] = [Prompts.chatSystem]
 
         // Build structured context if document has interactive elements
         let structure = MarkdownStructureParser.parse(text: documentContent)
@@ -359,7 +361,12 @@ final class ChatService {
     }
 
     /// Recursively collects element state grouped by section headings.
-    private func collectSectionElements(_ sections: [Section], allElements: [InteractiveElement], content: String, into result: inout [(title: String, remaining: [(index: Int, description: String)], completed: Int, total: Int)]) {
+    private func collectSectionElements(
+        _ sections: [Section],
+        allElements: [InteractiveElement],
+        content: String,
+        into result: inout [(title: String, remaining: [(index: Int, description: String)], completed: Int, total: Int)]
+    ) {
         for section in sections {
             var remaining: [(index: Int, description: String)] = []
             var completed = 0

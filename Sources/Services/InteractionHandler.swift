@@ -73,7 +73,11 @@ final class InteractionHandler {
         return try await Task.detached(priority: .userInitiated) {
             let data = try Data(contentsOf: url)
             guard let currentContent = String(data: data, encoding: .utf8) else {
-                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"]))
+                throw WriteError.readFailed(
+                    url,
+                    NSError(domain: "InteractionHandler", code: 1,
+                            userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"])
+                )
             }
 
             let elements = InteractiveElementDetector.detect(in: currentContent)
@@ -117,7 +121,11 @@ final class InteractionHandler {
             do {
                 let data = try Data(contentsOf: url)
                 guard let text = String(data: data, encoding: .utf8) else {
-                    throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"]))
+                    throw WriteError.readFailed(
+                    url,
+                    NSError(domain: "InteractionHandler", code: 1,
+                            userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"])
+                )
                 }
                 currentContent = text
             } catch let error as WriteError {
@@ -296,7 +304,11 @@ final class InteractionHandler {
         return try await Task.detached(priority: .userInitiated) {
             let data = try Data(contentsOf: url)
             guard let currentContent = String(data: data, encoding: .utf8) else {
-                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"]))
+                throw WriteError.readFailed(
+                    url,
+                    NSError(domain: "InteractionHandler", code: 1,
+                            userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"])
+                )
             }
 
             let elements = InteractiveElementDetector.detect(in: currentContent)

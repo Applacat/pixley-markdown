@@ -53,6 +53,8 @@ struct InlineRun: Hashable {
 
 struct ListItemBlock: Identifiable {
     let id = UUID()
+    /// 1-based source line number for this item (used for per-item gutter alignment)
+    let startLine: Int
     let runs: [InlineRun]
     let children: [MarkdownBlock]
 }
@@ -71,7 +73,13 @@ enum MarkdownBlockParser {
 
     /// Parse a section's raw text content (below its heading) into blocks.
     /// `lineOffset` is the 0-based line offset of the section's first line within the full document.
-    static func parse(content: String, sectionRange: Range<String.Index>, elements: [InteractiveElement], includeHeadings: Bool = false, lineOffset: Int = 0) -> [MarkdownBlock] {
+    static func parse(
+        content: String,
+        sectionRange: Range<String.Index>,
+        elements: [InteractiveElement],
+        includeHeadings: Bool = false,
+        lineOffset: Int = 0
+    ) -> [MarkdownBlock] {
         let text = String(content[sectionRange])
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
 
@@ -96,14 +104,22 @@ enum MarkdownBlockParser {
             // Heading (only in flat parse mode)
             if includeHeadings, let headingLevel = parseHeadingLevel(trimmed) {
                 let headingText = String(trimmed.dropFirst(headingLevel + 1))
-                blocks.append(MarkdownBlock(id: blocks.count, kind: .heading(level: headingLevel, text: headingText), startLine: absLine, endLine: absLine))
+                blocks.append(MarkdownBlock(
+                    id: blocks.count,
+                    kind: .heading(level: headingLevel, text: headingText),
+                    startLine: absLine,
+                    endLine: absLine
+                ))
                 i += 1
                 continue
             }
 
             // Check if this line starts an interactive element
             let prevI = i
-            if let elementKind = matchInteractiveElement(lineIndex: i, lines: lines, sectionStart: sectionStart, content: content, elements: elements, consumed: &i) {
+            if let elementKind = matchInteractiveElement(
+                lineIndex: i, lines: lines, sectionStart: sectionStart,
+                content: content, elements: elements, consumed: &i
+            ) {
                 let endAbsLine = lineOffset + (i - 1) + 1
                 blocks.append(MarkdownBlock(id: blocks.count, kind: elementKind, startLine: absLine, endLine: endAbsLine))
                 continue
@@ -127,7 +143,10 @@ enum MarkdownBlockParser {
 
             // Blockquote
             if trimmed.hasPrefix("> ") || trimmed == ">" {
-                let result = parseBlockquote(from: lines, startIndex: i, lineOffset: lineOffset, content: content, sectionRange: sectionRange, elements: elements)
+                let result = parseBlockquote(
+                    from: lines, startIndex: i, lineOffset: lineOffset,
+                    content: content, sectionRange: sectionRange, elements: elements
+                )
                 let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
                 blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
                 i = result.nextIndex
@@ -136,7 +155,7 @@ enum MarkdownBlockParser {
 
             // Unordered list
             if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("+ ") {
-                let result = parseUnorderedList(from: lines, startIndex: i)
+                let result = parseUnorderedList(from: lines, startIndex: i, lineOffset: lineOffset)
                 let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
                 blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
                 i = result.nextIndex
@@ -145,7 +164,7 @@ enum MarkdownBlockParser {
 
             // Ordered list
             if let _ = trimmed.range(of: #"^\d+\.\s"#, options: .regularExpression) {
-                let result = parseOrderedList(from: lines, startIndex: i)
+                let result = parseOrderedList(from: lines, startIndex: i, lineOffset: lineOffset)
                 let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
                 blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
                 i = result.nextIndex
@@ -204,7 +223,14 @@ enum MarkdownBlockParser {
 
     // MARK: - Blockquote
 
-    private static func parseBlockquote(from lines: [String], startIndex: Int, lineOffset: Int, content: String, sectionRange: Range<String.Index>, elements: [InteractiveElement]) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
+    private static func parseBlockquote(
+        from lines: [String],
+        startIndex: Int,
+        lineOffset: Int,
+        content: String,
+        sectionRange: Range<String.Index>,
+        elements: [InteractiveElement]
+    ) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
         var quoteLines: [String] = []
         var i = startIndex
 
@@ -229,7 +255,7 @@ enum MarkdownBlockParser {
 
     // MARK: - Lists
 
-    private static func parseUnorderedList(from lines: [String], startIndex: Int) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
+    private static func parseUnorderedList(from lines: [String], startIndex: Int, lineOffset: Int) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
         var items: [ListItemBlock] = []
         var i = startIndex
 
@@ -237,7 +263,8 @@ enum MarkdownBlockParser {
             let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("+ ") {
                 let text = String(trimmed.dropFirst(2))
-                items.append(ListItemBlock(runs: parseInlineRuns(text), children: []))
+                let itemLine = lineOffset + i + 1
+                items.append(ListItemBlock(startLine: itemLine, runs: parseInlineRuns(text), children: []))
                 i += 1
             } else if trimmed.isEmpty {
                 break
@@ -249,7 +276,7 @@ enum MarkdownBlockParser {
         return (.unorderedList(items: items), i)
     }
 
-    private static func parseOrderedList(from lines: [String], startIndex: Int) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
+    private static func parseOrderedList(from lines: [String], startIndex: Int, lineOffset: Int) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
         var items: [ListItemBlock] = []
         var i = startIndex
         var firstNum = 1
@@ -263,7 +290,8 @@ enum MarkdownBlockParser {
                     firstNum = num
                 }
                 if let text = extractGroup(from: matchStr, pattern: #"^\d+\.\s(.+)$"#) {
-                    items.append(ListItemBlock(runs: parseInlineRuns(text), children: []))
+                    let itemLine = lineOffset + i + 1
+                    items.append(ListItemBlock(startLine: itemLine, runs: parseInlineRuns(text), children: []))
                 }
                 i += 1
             } else if trimmed.isEmpty {
@@ -418,7 +446,14 @@ enum MarkdownBlockParser {
 
     // MARK: - Interactive Elements
 
-    private static func matchInteractiveElement(lineIndex: Int, lines: [String], sectionStart: Int, content: String, elements: [InteractiveElement], consumed: inout Int) -> MarkdownBlock.Kind? {
+    private static func matchInteractiveElement(
+        lineIndex: Int,
+        lines: [String],
+        sectionStart: Int,
+        content: String,
+        elements: [InteractiveElement],
+        consumed: inout Int
+    ) -> MarkdownBlock.Kind? {
         var offset = sectionStart
         for j in 0..<lineIndex {
             offset += lines[j].count + 1

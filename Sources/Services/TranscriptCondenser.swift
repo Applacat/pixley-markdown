@@ -81,12 +81,7 @@ final class TranscriptCondenser {
     private static let summarizerTimeout: Duration = .seconds(5)
 
     private func aiCondense(transcriptText: String) async throws -> String {
-        let summarizerSession = LanguageModelSession(instructions: """
-            Summarize this conversation. \
-            Preserve: key facts learned, specific questions asked, important conclusions. \
-            Drop: exact wording, greetings, pleasantries. \
-            Keep under 400 characters.
-            """)
+        let summarizerSession = LanguageModelSession(instructions: Prompts.condenserSystem)
 
         let capturedSession = summarizerSession
         let respondTask = Task<String, Error> {

@@ -235,6 +235,21 @@ public enum LinkBehavior: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+// MARK: - Settings Keys
+
+enum SettingsKey: String {
+    case colorScheme
+    case mascotDirection
+    case fontSize
+    case fontFamily
+    case syntaxTheme
+    case headingScale
+    case showLineNumbers
+    case linkBehavior
+    case underlineLinks
+    case interactiveMode
+}
+
 // MARK: - UserDefaults Implementation
 
 /// Default implementation using UserDefaults for persistence.
@@ -264,28 +279,28 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
         let behavior = BehaviorSettings()
 
         // Load persisted values into containers
-        if let raw = defaults.string(forKey: "colorScheme") {
+        if let raw = defaults.string(forKey: SettingsKey.colorScheme.rawValue) {
             appearance.colorScheme = raw == "dark" ? .dark : .light
         }
-        let directionRaw = defaults.string(forKey: "mascotDirection") ?? MascotDirection.left.rawValue
+        let directionRaw = defaults.string(forKey: SettingsKey.mascotDirection.rawValue) ?? MascotDirection.left.rawValue
         appearance.mascotDirection = MascotDirection(rawValue: directionRaw) ?? .left
 
-        rendering.fontSize = defaults.object(forKey: "fontSize") as? CGFloat ?? 14.0
-        rendering.fontFamily = defaults.string(forKey: "fontFamily")
-        let themeRaw = defaults.string(forKey: "syntaxTheme") ?? SyntaxThemeSetting.xcode.rawValue
+        rendering.fontSize = defaults.object(forKey: SettingsKey.fontSize.rawValue) as? CGFloat ?? 14.0
+        rendering.fontFamily = defaults.string(forKey: SettingsKey.fontFamily.rawValue)
+        let themeRaw = defaults.string(forKey: SettingsKey.syntaxTheme.rawValue) ?? SyntaxThemeSetting.xcode.rawValue
         rendering.syntaxTheme = SyntaxThemeSetting(rawValue: themeRaw) ?? SyntaxThemeSetting(migrating: themeRaw)
-        let scaleRaw = defaults.string(forKey: "headingScale") ?? HeadingScaleSetting.normal.rawValue
+        let scaleRaw = defaults.string(forKey: SettingsKey.headingScale.rawValue) ?? HeadingScaleSetting.normal.rawValue
         rendering.headingScale = HeadingScaleSetting(rawValue: scaleRaw) ?? .normal
-        rendering.showLineNumbers = defaults.bool(forKey: "showLineNumbers")
+        rendering.showLineNumbers = defaults.bool(forKey: SettingsKey.showLineNumbers.rawValue)
 
-        let linkRaw = defaults.string(forKey: "linkBehavior") ?? LinkBehavior.browser.rawValue
+        let linkRaw = defaults.string(forKey: SettingsKey.linkBehavior.rawValue) ?? LinkBehavior.browser.rawValue
         behavior.linkBehavior = LinkBehavior(rawValue: linkRaw) ?? .browser
-        if defaults.object(forKey: "underlineLinks") == nil {
+        if defaults.object(forKey: SettingsKey.underlineLinks.rawValue) == nil {
             behavior.underlineLinks = true
         } else {
-            behavior.underlineLinks = defaults.bool(forKey: "underlineLinks")
+            behavior.underlineLinks = defaults.bool(forKey: SettingsKey.underlineLinks.rawValue)
         }
-        let modeRaw = defaults.string(forKey: "interactiveMode") ?? InteractiveMode.enhanced.rawValue
+        let modeRaw = defaults.string(forKey: SettingsKey.interactiveMode.rawValue) ?? InteractiveMode.enhanced.rawValue
         // Migration: "Hybrid" and "Liquid Glass" resolve to Enhanced
         behavior.interactiveMode = InteractiveMode(rawValue: modeRaw) ?? .enhanced
 
@@ -304,29 +319,29 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
 
     private func persistAppearance() {
         if let scheme = appearance.colorScheme {
-            defaults.set(scheme == .dark ? "dark" : "light", forKey: "colorScheme")
+            defaults.set(scheme == .dark ? "dark" : "light", forKey: SettingsKey.colorScheme.rawValue)
         } else {
-            defaults.removeObject(forKey: "colorScheme")
+            defaults.removeObject(forKey: SettingsKey.colorScheme.rawValue)
         }
-        defaults.set(appearance.mascotDirection.rawValue, forKey: "mascotDirection")
+        defaults.set(appearance.mascotDirection.rawValue, forKey: SettingsKey.mascotDirection.rawValue)
     }
 
     private func persistRendering() {
-        defaults.set(rendering.fontSize, forKey: "fontSize")
+        defaults.set(rendering.fontSize, forKey: SettingsKey.fontSize.rawValue)
         if let family = rendering.fontFamily {
-            defaults.set(family, forKey: "fontFamily")
+            defaults.set(family, forKey: SettingsKey.fontFamily.rawValue)
         } else {
-            defaults.removeObject(forKey: "fontFamily")
+            defaults.removeObject(forKey: SettingsKey.fontFamily.rawValue)
         }
-        defaults.set(rendering.syntaxTheme.rawValue, forKey: "syntaxTheme")
-        defaults.set(rendering.headingScale.rawValue, forKey: "headingScale")
-        defaults.set(rendering.showLineNumbers, forKey: "showLineNumbers")
+        defaults.set(rendering.syntaxTheme.rawValue, forKey: SettingsKey.syntaxTheme.rawValue)
+        defaults.set(rendering.headingScale.rawValue, forKey: SettingsKey.headingScale.rawValue)
+        defaults.set(rendering.showLineNumbers, forKey: SettingsKey.showLineNumbers.rawValue)
     }
 
     private func persistBehavior() {
-        defaults.set(behavior.linkBehavior.rawValue, forKey: "linkBehavior")
-        defaults.set(behavior.underlineLinks, forKey: "underlineLinks")
-        defaults.set(behavior.interactiveMode.rawValue, forKey: "interactiveMode")
+        defaults.set(behavior.linkBehavior.rawValue, forKey: SettingsKey.linkBehavior.rawValue)
+        defaults.set(behavior.underlineLinks, forKey: SettingsKey.underlineLinks.rawValue)
+        defaults.set(behavior.interactiveMode.rawValue, forKey: SettingsKey.interactiveMode.rawValue)
     }
 
     /// Debounced persist task — coalesces rapid settings changes (e.g., font-size stepper)
@@ -400,9 +415,6 @@ public final class UserDefaultsSettingsRepository: SettingsRepository {
 /// Note: Returns concrete type for SwiftUI Environment compatibility
 // @preconcurrency required: EnvironmentKey.defaultValue lacks @MainActor annotation.
 // Safe because SwiftUI accesses this on @MainActor view update path.
-// TODO: Consider decomposing aggregated settings repository into domain-specific
-// repositories (AppearanceSettings, BehaviorSettings) if the file grows beyond
-// its current scope. Also consider removing SwiftUI import coupling in the future.
 private struct SettingsRepositoryKey: @preconcurrency EnvironmentKey {
     @MainActor static var defaultValue = UserDefaultsSettingsRepository.shared
 }
