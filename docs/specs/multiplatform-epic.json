@@ -1,0 +1,72 @@
+{
+  "feature": "multiplatform-epic",
+  "status": "ready",
+  "created": "2026-04-14",
+  "epic": 23,
+  "spec_path": "docs/specs/multiplatform-epic.md",
+  "phases": [
+    {
+      "id": 1,
+      "name": "Structure — Target + Build",
+      "stories": ["US-1", "US-2", "US-3"],
+      "tickets": [56],
+      "status": "pending",
+      "branch": "multiplatform/phase-1-target"
+    },
+    {
+      "id": 2,
+      "name": "iCloud Drive Integration",
+      "stories": ["US-4", "US-5", "US-6", "US-7", "US-8", "US-9"],
+      "tickets": [57, 58],
+      "status": "pending",
+      "branch": "multiplatform/phase-2-icloud"
+    },
+    {
+      "id": 3,
+      "name": "iOS UI",
+      "stories": ["US-10", "US-11", "US-12", "US-13"],
+      "tickets": [59, 60],
+      "status": "pending",
+      "branch": "multiplatform/phase-3-ios-ui"
+    },
+    {
+      "id": 4,
+      "name": "visionOS",
+      "stories": ["US-14", "US-15"],
+      "tickets": [61],
+      "status": "pending",
+      "branch": "multiplatform/phase-4-visionos"
+    }
+  ],
+  "stories": [
+    {"id": "US-1", "title": "Add iOS target to XcodeGen project.yml", "phase": 1},
+    {"id": "US-2", "title": "Platform conditionals in shared files", "phase": 1},
+    {"id": "US-3", "title": "Enhanced-only enforcement on iOS", "phase": 1},
+    {"id": "US-4", "title": "iCloud entitlement + container setup", "phase": 2},
+    {"id": "US-5", "title": "iCloud Drive folder browser (shared)", "phase": 2},
+    {"id": "US-6", "title": "NSFileCoordinator / NSFilePresenter integration", "phase": 2},
+    {"id": "US-7", "title": "Reload pill for iCloud sync changes", "phase": 2},
+    {"id": "US-8", "title": "Conflict detection + resolution banner", "phase": 2},
+    {"id": "US-9", "title": "macOS StartView — add Browse iCloud Drive", "phase": 2},
+    {"id": "US-10", "title": "iOS sidebar — List + DisclosureGroup", "phase": 3},
+    {"id": "US-11", "title": "iOS app lifecycle — Scene-based windows", "phase": 3},
+    {"id": "US-12", "title": "iOS StartView adaptation", "phase": 3},
+    {"id": "US-13", "title": "iOS navigation polish", "phase": 3},
+    {"id": "US-14", "title": "Add visionOS target", "phase": 4},
+    {"id": "US-15", "title": "visionOS UI adaptation", "phase": 4}
+  ],
+  "decisions": {
+    "rendering": "Enhanced only on iOS/iPadOS/visionOS",
+    "targets": "Separate Xcode targets via XcodeGen, not #if wrapping",
+    "icloud": "Both platforms, browse any folder, greenfield setup",
+    "cloud_states": "Badges for downloaded/downloading/cloud-only",
+    "conflicts": "Banner with version picker",
+    "fm_target": "iOS 18.1+ minimum, Apple Silicon required",
+    "storekit": "Deprecated, app is free",
+    "ipad_windows": "Multi-window from day 1",
+    "ios_start": "Adapted StartView with recents + iCloud browse",
+    "file_watching": "Reload pill for iCloud sync on iOS",
+    "merge": "Incremental at phase gates when macOS builds",
+    "test_devices": "iPhone + Mac physical, iPad + visionOS simulator"
+  }
+}

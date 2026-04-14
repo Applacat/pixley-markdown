@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 
+#if os(macOS)
 // MARK: - App Delegate
 
 /// Handles file/folder opens from Finder (double-click, "Open With", drag to Dock icon).
@@ -78,6 +79,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 }
+#endif
 
 // MARK: - App Entry Point
 
@@ -90,7 +92,9 @@ struct PixleyMarkdownApp: App {
 
     // MARK: - State
 
+    #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #endif
     @FocusedValue(\.activeCoordinator) private var activeCoordinator
 
     /// Settings repository — injected into Environment for all views
@@ -110,18 +114,26 @@ struct PixleyMarkdownApp: App {
     }
 
     var body: some Scene {
-        // Start window - minimal launcher
+        #if os(macOS)
+        // Start window - minimal launcher (macOS uses single Window)
         Window("Pixley Markdown", id: "start") {
             StartView()
                 .environment(\.settings, settings)
                 .modelContainer(modelContainer)
                 .preferredColorScheme(settings.appearance.colorScheme)
         }
-        #if os(macOS)
         .defaultLaunchBehavior(.presented)
         .windowResizability(.contentSize)
         .defaultPosition(.center)
         .restorationBehavior(.disabled)
+        #else
+        // iOS uses WindowGroup
+        WindowGroup("Pixley Markdown", id: "start") {
+            StartView()
+                .environment(\.settings, settings)
+                .modelContainer(modelContainer)
+                .preferredColorScheme(settings.appearance.colorScheme)
+        }
         #endif
 
         // Browser window — per-window coordinator via BrowserWindowRoot
@@ -294,11 +306,13 @@ struct PixleyMarkdownApp: App {
         }
         #endif
 
+        #if os(macOS)
         // Settings window (Cmd+,)
         Settings {
             SettingsView()
                 .environment(\.settings, settings)
         }
+        #endif
     }
 
     // MARK: - Find Panel

@@ -36,6 +36,7 @@ struct BrowserView: View {
             }
             coordinator.closeFolder()
 
+            #if os(macOS)
             // If last browser window, show start
             let browserWindows = NSApp.windows.filter {
                 $0.identifier?.rawValue.contains("browser") == true
@@ -43,6 +44,9 @@ struct BrowserView: View {
             if browserWindows.count <= 1 {
                 openWindow(id: "start")
             }
+            #else
+            openWindow(id: "start")
+            #endif
         }
     }
 
@@ -50,8 +54,13 @@ struct BrowserView: View {
 
     private var browserContent: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
+            #if os(macOS)
             OutlineFileListWrapper()
                 .navigationSplitViewColumnWidth(min: 280, ideal: 400, max: 600)
+            #else
+            Text("Sidebar — iOS implementation pending")
+                .foregroundStyle(.secondary)
+            #endif
         } detail: {
             if coordinator.navigation.selectedFile != nil {
                 MarkdownView()
@@ -96,6 +105,7 @@ struct BrowserView: View {
             }
         }
         #endif
+        #if os(macOS)
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers)
         }
@@ -104,17 +114,20 @@ struct BrowserView: View {
                 dropOverlay
             }
         }
+        #endif
         .quickSwitcherOverlay(allFiles: allMarkdownFiles)
         .errorBannerOverlay()
         .onChange(of: coordinator.navigation.displayItems) { _, newItems in
             allMarkdownFiles = FolderTreeFilter.flattenMarkdownFiles(newItems)
         }
+        #if os(macOS)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             coordinator.suspendFolderWatcher()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             coordinator.resumeFolderWatcher()
         }
+        #endif
     }
 
     // MARK: - No Folder View
@@ -163,6 +176,7 @@ struct BrowserView: View {
         dismissWindow(id: "browser")
     }
 
+    #if os(macOS)
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
         guard let provider = providers.first,
               provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { return false }
@@ -189,8 +203,10 @@ struct BrowserView: View {
         }
         return true
     }
+    #endif
 }
 
+#if os(macOS)
 // MARK: - Outline File List Wrapper
 
 /// Wrapper for OutlineFileList that handles loading and filtering
@@ -398,7 +414,7 @@ struct NavigateUpButton: View {
             RecentFoldersManager.shared.addFolder(parentURL)
             coordinator.openFolder(parentURL)
         } else {
-            // Request access via NSOpenPanel
+            #if os(macOS)
             let panel = NSOpenPanel()
             panel.canChooseFiles = false
             panel.canChooseDirectories = true
@@ -411,9 +427,11 @@ struct NavigateUpButton: View {
                 RecentFoldersManager.shared.addFolder(url)
                 coordinator.openFolder(url)
             }
+            #endif
         }
     }
 }
+#endif
 
 // MARK: - View Mode Picker
 
@@ -505,7 +523,12 @@ struct AIChatModifier: ViewModifier {
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
-                            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                            #if canImport(AppKit)
+                            let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                            #else
+                            let reduceMotion = UIAccessibility.isReduceMotionEnabled
+                            #endif
+                            if reduceMotion {
                                 coordinator.toggleAIChat()
                             } else {
                                 withAnimation {

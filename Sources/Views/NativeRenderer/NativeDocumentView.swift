@@ -9,6 +9,22 @@ private struct ScrollMetrics: Equatable {
     let viewportHeight: CGFloat
 }
 
+// MARK: - Gutter Row Model
+
+/// A single renderable row in the outer gutter/content grid. Every source line
+/// (including blank lines) gets a row so the gutter sequence is continuous.
+struct GutterRowModel: Identifiable {
+    enum Kind {
+        case blank
+        case block(MarkdownBlock)
+        case unorderedListItem(ListItemBlock)
+        case orderedListItem(ListItemBlock, displayNumber: Int)
+    }
+    let id: String
+    let lineNumber: Int
+    let kind: Kind
+}
+
 // MARK: - Native Document View
 
 /// Pure SwiftUI renderer that displays a markdown document as a flat monospace scroll
@@ -30,6 +46,7 @@ struct NativeDocumentView: View {
 
     @State private var cachedBlocks: [MarkdownBlock] = []
     @State private var cachedContent: String = ""
+    @State private var gutterRows: [GutterRowModel] = []
     @State private var searchText: String = ""
     @State private var isSearching: Bool = false
     @State private var matchCount: Int = 0
@@ -37,7 +54,6 @@ struct NativeDocumentView: View {
     @State private var isGoToLineVisible: Bool = false
     @State private var scrollTarget: Int? = nil
     @State private var currentScrollOffset: CGFloat = 0
-    @State private var blockOffsets: [Int: CGFloat] = [:]
     @FocusState private var searchFieldFocused: Bool
 
     var body: some View {
@@ -48,37 +64,9 @@ struct NativeDocumentView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(cachedBlocks) { block in
-                            HStack(alignment: .top, spacing: 0) {
-                                GutterLineView(
-                                    lineNumber: block.startLine,
-                                    isBookmarked: bookmarkedLines.contains(block.startLine),
-                                    isCommented: commentedLines.contains(block.startLine),
-                                    existingComments: extractCommentThread(for: block.startLine),
-                                    palette: palette,
-                                    fontSize: fontSize,
-                                    onToggleBookmark: { onToggleBookmark(block.startLine) },
-                                    onAddComment: { text in onAddComment(block.startLine, text) }
-                                )
-
-                                ContentBlockView(
-                                    block: block,
-                                    palette: palette,
-                                    searchText: searchText,
-                                    documentContent: content,
-                                    onInteractiveElementChanged: onInteractiveElementChanged,
-                                    onInteractiveElementClicked: onInteractiveElementClicked,
-                                    onStatusSelected: onStatusSelected
-                                )
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .id(block.id)
-                            .onGeometryChange(for: CGFloat.self) { geo in
-                                geo.frame(in: .named("scrollArea")).minY
-                            } action: { minY in
-                                blockOffsets[block.id] = minY
-                            }
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(gutterRows) { row in
+                            renderGutterRow(row)
                         }
                     }
                     .padding(.vertical, 16)
@@ -92,19 +80,18 @@ struct NativeDocumentView: View {
                     } action: { metrics in
                         currentScrollOffset = -metrics.contentMinY
                         lastContentHeight = metrics.contentHeight
+                        reportScrollProgress(viewportHeight: lastViewportHeight)
                     }
                 }
                 .coordinateSpace(name: "scrollArea")
                 .onGeometryChange(for: CGFloat.self) { geo in
                     geo.size.height
                 } action: { viewportHeight in
+                    lastViewportHeight = viewportHeight
                     reportScrollProgress(viewportHeight: viewportHeight)
                 }
                 .font(.system(.body, design: .monospaced))
                 .background(palette.background)
-                .onChange(of: currentScrollOffset) { _, _ in
-                    reportScrollProgress(viewportHeight: lastViewportHeight)
-                }
                 .onChange(of: scrollTarget) { _, target in
                     if let target {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -161,6 +148,118 @@ struct NativeDocumentView: View {
         }
     }
 
+    // MARK: - Row Rendering (Per-Line Gutter Alignment)
+
+    @ViewBuilder
+    private func renderGutterRow(_ row: GutterRowModel) -> some View {
+        switch row.kind {
+        case .blank:
+            gutterRow(lineNumber: row.lineNumber, rowID: row.id) {
+                // Blank line: single-line height matching surrounding text
+                Text(" ")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(Color.clear)
+            }
+
+        case .unorderedListItem(let item):
+            gutterRow(lineNumber: row.lineNumber, rowID: row.id) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("\u{2022}")
+                        .foregroundStyle(palette.comment)
+                    inlineRunsView(item.runs)
+                }
+            }
+
+        case .orderedListItem(let item, let displayNumber):
+            gutterRow(lineNumber: row.lineNumber, rowID: row.id) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("\(displayNumber).")
+                        .foregroundStyle(palette.comment)
+                        .monospacedDigit()
+                        .frame(minWidth: 20, alignment: .trailing)
+                    inlineRunsView(item.runs)
+                }
+            }
+
+        case .block(let block):
+            gutterRow(lineNumber: row.lineNumber, rowID: row.id) {
+                ContentBlockView(
+                    block: block,
+                    palette: palette,
+                    searchText: searchText,
+                    documentContent: content,
+                    onInteractiveElementChanged: onInteractiveElementChanged,
+                    onInteractiveElementClicked: onInteractiveElementClicked,
+                    onStatusSelected: onStatusSelected
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    /// A single row in the outer gutter/content grid: one gutter cell + padding + one content cell.
+    @ViewBuilder
+    private func gutterRow<Content: View>(
+        lineNumber: Int,
+        rowID: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            GutterLineView(
+                lineNumber: lineNumber,
+                isBookmarked: bookmarkedLines.contains(lineNumber),
+                isCommented: commentedLines.contains(lineNumber),
+                existingComments: extractCommentThread(for: lineNumber),
+                palette: palette,
+                fontSize: fontSize,
+                onToggleBookmark: { onToggleBookmark(lineNumber) },
+                onAddComment: { text in onAddComment(lineNumber, text) }
+            )
+            // Vertical separator between gutter and content
+            Rectangle()
+                .fill(palette.comment.opacity(0.15))
+                .frame(width: 0.5)
+                .padding(.horizontal, 12)
+
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .id(rowID)
+    }
+
+    /// Renders inline styled runs for list items (used by per-item list rows).
+    private func inlineRunsView(_ runs: [InlineRun]) -> some View {
+        let combined = runs.reduce(Text("")) { result, run in
+            result + styledText(run)
+        }
+        return combined
+            .font(.system(.body, design: .monospaced))
+            .foregroundStyle(palette.foreground)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func styledText(_ run: InlineRun) -> Text {
+        switch run.style {
+        case .plain: return Text(run.text)
+        case .bold: return Text(run.text).bold()
+        case .italic: return Text(run.text).italic()
+        case .boldItalic: return Text(run.text).bold().italic()
+        case .strikethrough: return Text(run.text).strikethrough()
+        case .code:
+            return Text(run.text)
+                .font(.system(.body, design: .monospaced))
+                .foregroundColor(palette.string)
+        case .link(let url):
+            var attr = AttributedString(run.text)
+            attr.link = URL(string: url)
+            return Text(attr)
+        case .image:
+            return Text("[\(run.text)]")
+                .foregroundColor(palette.comment)
+        }
+    }
+
     // MARK: - Comment Thread Extraction
 
     /// Extracts existing comment texts for a given content line by scanning consecutive
@@ -197,23 +296,85 @@ struct NativeDocumentView: View {
         let structure = MarkdownStructureParser.parse(text: content)
         cachedBlocks = MarkdownBlockParser.parseFlat(content: content, elements: structure.elements)
         cachedContent = content
-        blockOffsets = [:]
+        gutterRows = Self.computeGutterRows(blocks: cachedBlocks, content: content)
+    }
+
+    /// Flattens blocks into per-line rows, emitting blank spacer rows for empty source lines
+    /// so every line number from 1..N appears in the gutter.
+    private static func computeGutterRows(blocks: [MarkdownBlock], content: String) -> [GutterRowModel] {
+        let totalLines = content.isEmpty ? 0 : content.components(separatedBy: "\n").count
+        guard totalLines > 0 else { return [] }
+
+        var rows: [GutterRowModel] = []
+        var cursor = 1
+
+        func emitBlanks(upTo target: Int) {
+            while cursor < target {
+                rows.append(GutterRowModel(id: "blank-\(cursor)", lineNumber: cursor, kind: .blank))
+                cursor += 1
+            }
+        }
+
+        for block in blocks {
+            emitBlanks(upTo: block.startLine)
+
+            switch block.kind {
+            case .unorderedList(let items):
+                for item in items {
+                    emitBlanks(upTo: item.startLine)
+                    rows.append(GutterRowModel(
+                        id: "ulist-\(block.id)-\(item.startLine)",
+                        lineNumber: item.startLine,
+                        kind: .unorderedListItem(item)
+                    ))
+                    cursor = item.startLine + 1
+                }
+            case .orderedList(let items, let startIndex):
+                for (offset, item) in items.enumerated() {
+                    emitBlanks(upTo: item.startLine)
+                    rows.append(GutterRowModel(
+                        id: "olist-\(block.id)-\(item.startLine)",
+                        lineNumber: item.startLine,
+                        kind: .orderedListItem(item, displayNumber: startIndex + offset)
+                    ))
+                    cursor = item.startLine + 1
+                }
+            default:
+                rows.append(GutterRowModel(
+                    id: "block-\(block.id)",
+                    lineNumber: block.startLine,
+                    kind: .block(block)
+                ))
+                cursor = block.endLine + 1
+            }
+        }
+
+        // Trailing blank lines
+        emitBlanks(upTo: totalLines + 1)
+
+        return rows
     }
 
     // MARK: - Scroll Progress
 
     @State private var lastViewportHeight: CGFloat = 0
     @State private var lastContentHeight: CGFloat = 0
+    @State private var lastReportedProgress: Double = -1
 
     private func reportScrollProgress(viewportHeight: CGFloat) {
-        lastViewportHeight = viewportHeight
         let scrollable = lastContentHeight - viewportHeight
-        guard scrollable > 0 else {
-            onScrollProgressChanged?(0)
-            return
+        let progress: Double
+        if scrollable > 0 {
+            progress = min(max(currentScrollOffset / scrollable, 0), 1)
+        } else {
+            progress = 0
         }
-        let progress = min(max(currentScrollOffset / scrollable, 0), 1)
-        onScrollProgressChanged?(progress)
+        // Throttle: only fire callback when progress changes by >0.5% to break potential
+        // feedback loops from parent re-renders that recreate closures.
+        if abs(progress - lastReportedProgress) > 0.005 {
+            lastReportedProgress = progress
+            onScrollProgressChanged?(progress)
+        }
     }
 
     // MARK: - Scroll To Line
@@ -226,13 +387,18 @@ struct NativeDocumentView: View {
     // MARK: - Bookmark at Current Position
 
     private func toggleBookmarkAtCurrentPosition() {
-        // Find the block whose top is nearest to (but not far below) the viewport top
-        let nearestBlock = cachedBlocks
-            .filter { blockOffsets[$0.id] != nil }
-            .min(by: { abs(blockOffsets[$0.id]!) < abs(blockOffsets[$1.id]!) })
-
-        let line = nearestBlock?.startLine ?? cachedBlocks.first?.startLine ?? 1
-        onToggleBookmark(line)
+        // Estimate nearest visible line from scroll offset and content height
+        guard !cachedBlocks.isEmpty, lastContentHeight > 0 else {
+            if let first = cachedBlocks.first { onToggleBookmark(first.startLine) }
+            return
+        }
+        let totalLines = max(1, cachedBlocks.last?.endLine ?? 1)
+        let ratio = min(max(currentScrollOffset / lastContentHeight, 0), 1)
+        let targetLine = max(1, Int((Double(totalLines) * Double(ratio)).rounded()))
+        // Find the block containing or starting at that line
+        let block = cachedBlocks.first { $0.startLine <= targetLine && $0.endLine >= targetLine }
+            ?? cachedBlocks.first
+        onToggleBookmark(block?.startLine ?? 1)
     }
 
     // MARK: - Search Bar
@@ -251,9 +417,11 @@ struct NativeDocumentView: View {
                         currentMatchIndex = (currentMatchIndex + 1) % matchCount
                     }
                 }
+                #if os(macOS)
                 .onExitCommand {
                     dismissSearch()
                 }
+                #endif
 
             if matchCount > 0 {
                 Text("\(currentMatchIndex + 1) of \(matchCount)")

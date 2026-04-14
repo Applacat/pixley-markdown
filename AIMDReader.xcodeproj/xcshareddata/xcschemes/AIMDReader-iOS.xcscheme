@@ -15,23 +15,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "5F9B56D0E6C1DBEA945EF0EB"
-               BuildableName = "AIMDReader.app"
-               BlueprintName = "AIMDReader"
-               ReferencedContainer = "container:AIMDReader.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "NO"
-            buildForProfiling = "NO"
-            buildForArchiving = "NO"
-            buildForAnalyzing = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "88722FC0EC3E2932E50BC9D5"
-               BuildableName = "AIMDReaderTests.xctest"
-               BlueprintName = "AIMDReaderTests"
+               BlueprintIdentifier = "F2CF3C2F6C50AA26945F1260"
+               BuildableName = "AIMDReader-iOS.app"
+               BlueprintName = "AIMDReader-iOS"
                ReferencedContainer = "container:AIMDReader.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -46,27 +32,14 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "5F9B56D0E6C1DBEA945EF0EB"
-            BuildableName = "AIMDReader.app"
-            BlueprintName = "AIMDReader"
+            BlueprintIdentifier = "F2CF3C2F6C50AA26945F1260"
+            BuildableName = "AIMDReader-iOS.app"
+            BlueprintName = "AIMDReader-iOS"
             ReferencedContainer = "container:AIMDReader.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "88722FC0EC3E2932E50BC9D5"
-               BuildableName = "AIMDReaderTests.xctest"
-               BlueprintName = "AIMDReaderTests"
-               ReferencedContainer = "container:AIMDReader.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
       </Testables>
-      <CommandLineArguments>
-      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -82,9 +55,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "5F9B56D0E6C1DBEA945EF0EB"
-            BuildableName = "AIMDReader.app"
-            BlueprintName = "AIMDReader"
+            BlueprintIdentifier = "F2CF3C2F6C50AA26945F1260"
+            BuildableName = "AIMDReader-iOS.app"
+            BlueprintName = "AIMDReader-iOS"
             ReferencedContainer = "container:AIMDReader.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -101,9 +74,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "5F9B56D0E6C1DBEA945EF0EB"
-            BuildableName = "AIMDReader.app"
-            BlueprintName = "AIMDReader"
+            BlueprintIdentifier = "F2CF3C2F6C50AA26945F1260"
+            BuildableName = "AIMDReader-iOS.app"
+            BlueprintName = "AIMDReader-iOS"
             ReferencedContainer = "container:AIMDReader.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

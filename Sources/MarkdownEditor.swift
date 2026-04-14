@@ -5,17 +5,6 @@ import aimdRenderer
 // MARK: - Configuration
 
 /// Configuration for markdown text handling
-/// OOD: Shared, observable configuration that can be modified from multiple places
-enum MarkdownConfig {
-    /// Maximum allowed text size (10MB) to prevent DoS attacks
-    /// Accessible from any context without actor isolation
-    static let maxTextSize = 10_485_760
-
-    /// Maximum text size for syntax highlighting (1MB)
-    /// Files larger than this show plain text
-    static let maxHighlightSize = 1_048_576
-}
-
 // MARK: - Interactive Element Attribute Key
 
 extension NSAttributedString.Key {

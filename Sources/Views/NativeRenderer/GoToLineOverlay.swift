@@ -30,9 +30,11 @@ struct GoToLineOverlay: View {
                     .onSubmit {
                         submit()
                     }
+                    #if os(macOS)
                     .onExitCommand {
                         onDismiss()
                     }
+                    #endif
 
                 if showError {
                     Text("Invalid")

@@ -41,8 +41,10 @@ public final class AppCoordinator {
     /// Chat summary repository for per-document conversation persistence
     public var chatSummaryRepository: ChatSummaryRepository?
 
+    #if os(macOS)
     /// Watches the open folder for file system changes (new/modified/deleted files)
     private var folderWatcher: FolderWatcher?
+    #endif
 
     /// Coalesces rapid FSEvent-triggered reloads into a single tree reload
     private var folderReloadTask: Task<Void, Never>?
@@ -66,13 +68,17 @@ public final class AppCoordinator {
     public func openFolder(_ url: URL) {
         navigation.openFolder(url)
         document.clearContent()
+        #if os(macOS)
         startFolderWatcher(for: url)
+        #endif
     }
 
     /// Closes the current folder and returns to start screen
     public func closeFolder() {
         flushScrollPosition()
+        #if os(macOS)
         stopFolderWatcher()
+        #endif
         navigation.closeFolder()
         document.clearContent()
     }
@@ -280,6 +286,7 @@ public final class AppCoordinator {
 
     // MARK: - Folder Watcher
 
+    #if os(macOS)
     /// Suspend folder watcher when app resigns active (saves energy).
     public func suspendFolderWatcher() {
         folderWatcher?.suspend()
@@ -407,6 +414,7 @@ public final class AppCoordinator {
             }
         }
     }
+    #endif
 }
 
 // MARK: - Navigation State

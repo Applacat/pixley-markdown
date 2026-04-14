@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(AppKit)
 import AppKit
+#endif
 import aimdRenderer
 
 // MARK: - File Load Trigger
@@ -123,14 +125,19 @@ struct MarkdownView: View {
 
     @ViewBuilder
     private var markdownContent: some View {
+        #if os(macOS)
         switch settings.behavior.interactiveMode {
         case .enhanced:
             nativeRendererContent
         case .plain:
             plainEditorContent
         }
+        #else
+        nativeRendererContent
+        #endif
     }
 
+    #if os(macOS)
     private var plainEditorContent: some View {
         MarkdownEditor(
             text: .constant(coordinator.document.content),
@@ -168,6 +175,7 @@ struct MarkdownView: View {
             }
         }
     }
+    #endif
 
     private var nativeRendererContent: some View {
         let palette = settings.rendering.syntaxTheme
@@ -395,11 +403,13 @@ struct MarkdownView: View {
 
                 case .fillIn(let fi):
                     // Only file/folder pickers reach here (text/date handled by popover)
+                    #if canImport(AppKit)
                     switch fi.type {
                     case .file: openFilePicker(for: fi)
                     case .folder: openFolderPicker(for: fi)
                     default: break
                     }
+                    #endif
 
                 case .status(let st):
                     if let nextState = st.nextStates.first, st.nextStates.count == 1 {
@@ -466,18 +476,19 @@ struct MarkdownView: View {
                     coordinator.showError(.error(message: "This text already has a comment."))
                     return
                 }
+                #if canImport(AppKit)
                 showAddCommentPopover(selectedText: selectedText, swiftRange: swiftRange, nsRange: nsRange, fileURL: fileURL)
+                #endif
             }
         }
     }
 
+    #if canImport(AppKit)
     private func showAddCommentPopover(selectedText: String, swiftRange: Range<String.Index>, nsRange: NSRange, fileURL: URL) {
-        // Store context for the comment submission
         pendingCommentRange = swiftRange
         pendingCommentText = selectedText
         pendingCommentFileURL = fileURL
 
-        // Show inline input popover at the selection (reuses existing InputPopoverController pattern)
         if let textView = findMarkdownTextView() {
             textView.showInputPopover(
                 for: .feedback(FeedbackElement(range: swiftRange, existingText: nil)),
@@ -491,12 +502,14 @@ struct MarkdownView: View {
             )
         }
     }
+    #endif
 
     /// State for pending comment (between popover show and submit)
     @State private var pendingCommentRange: Range<String.Index>?
     @State private var pendingCommentText: String?
     @State private var pendingCommentFileURL: URL?
 
+    #if canImport(AppKit)
     /// Finds the MarkdownNSTextView in the view hierarchy
     private func findMarkdownTextView() -> MarkdownNSTextView? {
         guard let window = NSApp.keyWindow else { return nil }
@@ -511,6 +524,7 @@ struct MarkdownView: View {
         }
         return nil
     }
+    #endif
 
     // MARK: - Popover Input Handling
 
@@ -640,6 +654,7 @@ struct MarkdownView: View {
 
     // MARK: - File/Folder Pickers
 
+    #if canImport(AppKit)
     private func openFilePicker(for fillIn: FillInElement) {
         guard let fileURL = coordinator.navigation.selectedFile else { return }
         let panel = NSOpenPanel()
@@ -699,6 +714,7 @@ struct MarkdownView: View {
             }
         }
     }
+    #endif
 
     // MARK: - File Watching
 

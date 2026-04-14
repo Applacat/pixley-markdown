@@ -150,8 +150,12 @@ struct StartView: View {
 
     private var entryPointsColumn: some View {
         VStack(spacing: 4) {
+            #if os(macOS)
             launcherButton("Open File", icon: "doc.text", color: .blue, action: chooseFile)
             launcherButton("Open Folder", icon: "folder", color: .blue, action: chooseFolder)
+            #else
+            launcherButton("Browse Files", icon: "folder", color: .blue, action: openWelcomeFolderWithPrompt)
+            #endif
             launcherButton("Sample Files", icon: "book.circle", color: .orange, action: openWelcomeFolderWithPrompt)
         }
         .frame(width: 220)
@@ -266,6 +270,7 @@ struct StartView: View {
 
     // MARK: - File/Folder Actions
 
+    #if os(macOS)
     private func chooseFile() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
@@ -300,6 +305,7 @@ struct StartView: View {
             self.openFolder(url)
         }
     }
+    #endif
 
     private func openFolder(_ url: URL) {
         RecentFoldersManager.shared.addFolder(url)

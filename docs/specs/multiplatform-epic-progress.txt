@@ -1,0 +1,25 @@
+Multiplatform Epic — Progress Tracker
+======================================
+
+Phase 1: Structure — Target + Build
+  [PENDING] US-1: Add iOS target to XcodeGen project.yml
+  [PENDING] US-2: Platform conditionals in shared files
+  [PENDING] US-3: Enhanced-only enforcement on iOS
+
+Phase 2: iCloud Drive Integration
+  [PENDING] US-4: iCloud entitlement + container setup
+  [PENDING] US-5: iCloud Drive folder browser (shared)
+  [PENDING] US-6: NSFileCoordinator / NSFilePresenter integration
+  [PENDING] US-7: Reload pill for iCloud sync changes
+  [PENDING] US-8: Conflict detection + resolution banner
+  [PENDING] US-9: macOS StartView — add Browse iCloud Drive
+
+Phase 3: iOS UI
+  [PENDING] US-10: iOS sidebar — List + DisclosureGroup
+  [PENDING] US-11: iOS app lifecycle — Scene-based windows
+  [PENDING] US-12: iOS StartView adaptation
+  [PENDING] US-13: iOS navigation polish
+
+Phase 4: visionOS
+  [PENDING] US-14: Add visionOS target
+  [PENDING] US-15: visionOS UI adaptation

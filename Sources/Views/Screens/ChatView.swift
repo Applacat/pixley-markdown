@@ -2,7 +2,9 @@ import SwiftUI
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
+#if canImport(AppKit)
 import AppKit
+#endif
 import aimdRenderer
 
 // MARK: - Chat View
@@ -242,7 +244,12 @@ struct ChatView: View {
             return
         }
 
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        #if canImport(AppKit)
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #else
+        let reduceMotion = UIAccessibility.isReduceMotionEnabled
+        #endif
+        if reduceMotion {
             proxy.scrollTo(target, anchor: .bottom)
         } else {
             withAnimation {

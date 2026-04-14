@@ -1,5 +1,7 @@
 import Foundation
 
+#if os(macOS)
+
 /// Watches a file for external modifications using DispatchSource.
 /// Notifies via callback when the file content changes on disk.
 ///
@@ -57,12 +59,10 @@ final class FileWatcher {
     // MARK: - Private
 
     private func startSource(path: String) {
-        // Close previous fd if any
         if fileDescriptor >= 0 {
             let oldFD = fileDescriptor
             source?.cancel()
             source = nil
-            // setCancelHandler closes it, but if no source was set, close manually
             close(oldFD)
             fileDescriptor = -1
         }
@@ -96,11 +96,8 @@ final class FileWatcher {
     }
 
     private func handleFileEvent(path: String) {
-        // Atomic writes invalidate the fd (rename replaces the inode).
-        // Re-watch the path to track the new file.
         let events = source?.data ?? []
         if events.contains(.rename) || events.contains(.delete) {
-            // Small delay to let the atomic rename complete
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(50))
                 guard let self, self.watchedPath == path else { return }
@@ -112,7 +109,6 @@ final class FileWatcher {
         guard currentDate != lastModificationDate else { return }
         lastModificationDate = currentDate
 
-        // Check time-based suppression window
         if let suppressUntil, Date() < suppressUntil {
             return
         }
@@ -125,3 +121,18 @@ final class FileWatcher {
         try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date
     }
 }
+
+#else
+
+/// Stub FileWatcher for iOS — file watching will be handled by NSFilePresenter in Phase 2 (iCloud).
+@MainActor
+final class FileWatcher {
+
+    init(onChange: @escaping @MainActor () -> Void) {}
+
+    func suppressChanges(for duration: TimeInterval = 1.0) {}
+    func watch(_ url: URL) {}
+    func stop() {}
+}
+
+#endif

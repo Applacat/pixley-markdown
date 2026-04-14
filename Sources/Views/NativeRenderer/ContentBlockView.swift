@@ -1,5 +1,10 @@
 import SwiftUI
+#if canImport(AppKit)
 import AppKit
+#endif
+#if canImport(UIKit)
+import UIKit
+#endif
 import aimdRenderer
 
 // MARK: - Content Block View
@@ -142,8 +147,12 @@ struct ContentBlockView: View {
                 }
                 Spacer()
                 Button {
+                    #if canImport(AppKit)
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(code, forType: .string)
+                    #else
+                    UIPasteboard.general.string = code
+                    #endif
                 } label: {
                     Image(systemName: "doc.on.doc")
                         .font(.caption)

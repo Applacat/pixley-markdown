@@ -1,4 +1,6 @@
+#if canImport(AppKit)
 import AppKit
+#endif
 import SwiftUI
 
 // MARK: - Settings View
@@ -178,8 +180,10 @@ struct AppearanceSettingsTab: View {
     }
 
     private func applyMascotIcon(_ direction: MascotDirection) {
+        #if os(macOS)
         guard let image = NSImage(named: direction.assetName) else { return }
         NSApp.applicationIconImage = image
+        #endif
     }
 
     /// Indicator showing whether a theme has light+dark variants or is dark-only

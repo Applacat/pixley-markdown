@@ -172,7 +172,11 @@ public enum SyntaxThemeSetting: String, CaseIterable, Identifiable, Sendable {
         if let scheme = colorScheme {
             isDark = scheme == .dark
         } else {
+            #if os(macOS)
             isDark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            #else
+            isDark = UITraitCollection.current.userInterfaceStyle == .dark
+            #endif
         }
         return rendererTheme(isDark: isDark)
     }
@@ -210,6 +214,7 @@ public enum HeadingScaleSetting: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    #if os(macOS)
     /// Converts to the MarkdownHighlighter's HeadingScale enum
     var highlighterScale: MarkdownHighlighter.HeadingScale {
         switch self {
@@ -218,6 +223,7 @@ public enum HeadingScaleSetting: String, CaseIterable, Identifiable, Sendable {
         case .spacious: return .spacious
         }
     }
+    #endif
 }
 
 /// Link behavior options

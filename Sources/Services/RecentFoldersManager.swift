@@ -82,6 +82,14 @@ struct RecentFolder: Identifiable, Codable {
 @MainActor
 final class RecentFoldersManager {
 
+    #if os(macOS)
+    private static let bookmarkCreationOptions: URL.BookmarkCreationOptions = .withSecurityScope
+    private static let bookmarkResolutionOptions: URL.BookmarkResolutionOptions = .withSecurityScope
+    #else
+    private static let bookmarkCreationOptions: URL.BookmarkCreationOptions = []
+    private static let bookmarkResolutionOptions: URL.BookmarkResolutionOptions = []
+    #endif
+
     static let shared = RecentFoldersManager()
 
     private let maxRecents = 10
@@ -183,7 +191,7 @@ final class RecentFoldersManager {
     func addFolder(_ url: URL) {
         // Create security-scoped bookmark
         guard let bookmarkData = try? url.bookmarkData(
-            options: .withSecurityScope,
+            options: Self.bookmarkCreationOptions,
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         ) else {
@@ -228,7 +236,7 @@ final class RecentFoldersManager {
 
         guard let url = try? URL(
             resolvingBookmarkData: folder.bookmarkData,
-            options: .withSecurityScope,
+            options: Self.bookmarkResolutionOptions,
             relativeTo: nil,
             bookmarkDataIsStale: &isStale
         ) else {
@@ -256,7 +264,7 @@ final class RecentFoldersManager {
     private func refreshStaleBookmark(_ folder: RecentFolder, url: URL) {
         // Create fresh bookmark data
         guard let bookmarkData = try? url.bookmarkData(
-            options: .withSecurityScope,
+            options: Self.bookmarkCreationOptions,
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         ) else {

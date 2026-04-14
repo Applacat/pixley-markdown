@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(AppKit)
 import AppKit
+#endif
 import aimdRenderer
 
 // MARK: - Native Control View
@@ -65,7 +67,9 @@ struct NativeControlView: View {
                     .font(.system(.body, design: .monospaced))
                     .foregroundStyle(cb.isChecked ? .secondary : .primary)
             }
+            #if os(macOS)
             .toggleStyle(.checkbox)
+            #endif
         }
     }
 
@@ -465,11 +469,19 @@ private struct ColorPickerControl: View {
     }
 
     private func hexString(from color: Color) -> String {
+        #if canImport(AppKit)
         let nsColor = NSColor(color).usingColorSpace(.sRGB) ?? .gray
-        // Clamp components to [0, 1] — extended sRGB can exceed this range after conversion
         let r = Int((max(0, min(1, nsColor.redComponent)) * 255).rounded())
         let g = Int((max(0, min(1, nsColor.greenComponent)) * 255).rounded())
         let b = Int((max(0, min(1, nsColor.blueComponent)) * 255).rounded())
+        #else
+        let uiColor = UIColor(color)
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0
+        uiColor.getRed(&red, green: &green, blue: &blue, alpha: nil)
+        let r = Int((max(0, min(1, red)) * 255).rounded())
+        let g = Int((max(0, min(1, green)) * 255).rounded())
+        let b = Int((max(0, min(1, blue)) * 255).rounded())
+        #endif
         return String(format: "#%02X%02X%02X", r, g, b)
     }
 }
@@ -515,7 +527,9 @@ private struct AuditableCheckboxControl: View {
                     }
                 }
             }
+            #if os(macOS)
             .toggleStyle(.checkbox)
+            #endif
         }
         .popover(isPresented: $showNotePopover) {
             VStack(alignment: .leading, spacing: 8) {

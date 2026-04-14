@@ -11,6 +11,14 @@ private let log = Logger(subsystem: "com.aimd.reader", category: "BookmarkManage
 @MainActor
 final class SecurityScopedBookmarkManager {
 
+    #if os(macOS)
+    private static let bookmarkOptions: URL.BookmarkCreationOptions = .withSecurityScope
+    private static let bookmarkResolutionOptions: URL.BookmarkResolutionOptions = .withSecurityScope
+    #else
+    private static let bookmarkOptions: URL.BookmarkCreationOptions = []
+    private static let bookmarkResolutionOptions: URL.BookmarkResolutionOptions = []
+    #endif
+
     // MARK: - Shared Instance
 
     static let shared = SecurityScopedBookmarkManager()
@@ -47,7 +55,7 @@ final class SecurityScopedBookmarkManager {
 
         do {
             let bookmarkData = try url.bookmarkData(
-                options: .withSecurityScope,
+                options: Self.bookmarkOptions,
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil
             )
@@ -89,7 +97,7 @@ final class SecurityScopedBookmarkManager {
         do {
             let url = try URL(
                 resolvingBookmarkData: bookmarkData,
-                options: .withSecurityScope,
+                options: Self.bookmarkResolutionOptions,
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
