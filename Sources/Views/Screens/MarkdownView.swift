@@ -51,6 +51,19 @@ struct MarkdownView: View {
                 markdownContent
             }
 
+            // Conflict banner overlay
+            if coordinator.document.hasConflict,
+               let fileURL = coordinator.navigation.selectedFile {
+                VStack {
+                    ConflictBanner(fileURL: fileURL) {
+                        coordinator.reloadDocument()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    Spacer()
+                }
+            }
+
             // Reload pill overlay
             if coordinator.document.hasChanges {
                 VStack {

@@ -63,6 +63,9 @@ targets:
           ONLY_ACTIVE_ARCH: NO
     entitlements:
       path: Resources/AIMDReader.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
 
   AIMDReader-iOS:
     type: application

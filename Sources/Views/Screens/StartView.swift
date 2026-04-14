@@ -19,6 +19,10 @@ struct StartView: View {
     @State private var showWelcomeError = false
     @State private var recents: [RecentItem] = []
     @State private var hasPruned = false
+    #if os(iOS)
+    @State private var showFolderPicker = false
+    @State private var showFilePicker = false
+    #endif
 
     private var hasRecents: Bool { !recents.isEmpty }
 
@@ -30,11 +34,15 @@ struct StartView: View {
                 Color.clear
             }
         }
+        #if os(macOS)
         .frame(width: hasRecents ? 720 : 480, height: 520)
+        #endif
         .animation(reduceMotion ? .none : .easeInOut(duration: 0.25), value: hasRecents)
         .onAppear {
+            #if os(macOS)
             // Store openWindow action for AppDelegate bridge
             WindowRouter.shared.openWindowAction = openWindow
+            #endif
 
             // Run launch logic first (only once)
             if !hasPerformedLaunch {
@@ -55,6 +63,25 @@ struct StartView: View {
             recents = RecentFoldersManager.shared.getAllRecents()
             isReady = true
         }
+        #if os(iOS)
+        .fileImporter(
+            isPresented: $showFolderPicker,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            handleFileImporterResult(result, isFolder: true)
+        }
+        .fileImporter(
+            isPresented: $showFilePicker,
+            allowedContentTypes: [
+                .init(filenameExtension: "md") ?? .plainText,
+                .init(filenameExtension: "markdown") ?? .plainText
+            ],
+            allowsMultipleSelection: false
+        ) { result in
+            handleFileImporterResult(result, isFolder: false)
+        }
+        #endif
     }
 
     // MARK: - Launch Logic
@@ -94,13 +121,16 @@ struct StartView: View {
 
             Spacer()
 
+            #if os(macOS)
             Text("or drop a folder or .md file anywhere")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(.bottom, 20)
+            #endif
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.ultraThinMaterial)
+        #if os(macOS)
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers)
         }
@@ -109,6 +139,7 @@ struct StartView: View {
                 dropOverlay
             }
         }
+        #endif
         .alert("Tutorial Unavailable", isPresented: $showWelcomeError) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -153,8 +184,10 @@ struct StartView: View {
             #if os(macOS)
             launcherButton("Open File", icon: "doc.text", color: .blue, action: chooseFile)
             launcherButton("Open Folder", icon: "folder", color: .blue, action: chooseFolder)
+            launcherButton("Browse iCloud Drive", icon: "icloud", color: .cyan, action: browseICloudDrive)
             #else
-            launcherButton("Browse Files", icon: "folder", color: .blue, action: openWelcomeFolderWithPrompt)
+            launcherButton("Browse iCloud Drive", icon: "icloud", color: .blue) { showFolderPicker = true }
+            launcherButton("Open File", icon: "doc.text", color: .blue) { showFilePicker = true }
             #endif
             launcherButton("Sample Files", icon: "book.circle", color: .orange, action: openWelcomeFolderWithPrompt)
         }
@@ -305,6 +338,32 @@ struct StartView: View {
             self.openFolder(url)
         }
     }
+
+    private func browseICloudDrive() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose an iCloud Drive folder"
+        panel.prompt = "Open"
+
+        // Point panel at iCloud Drive if available
+        if let iCloudURL = FileManager.default.url(forUbiquityContainerIdentifier: nil) {
+            panel.directoryURL = iCloudURL.appendingPathComponent("Documents")
+        } else {
+            // Fall back to user's iCloud Drive via ~/Library/Mobile Documents
+            let mobileDocuments = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs")
+            if FileManager.default.fileExists(atPath: mobileDocuments.path) {
+                panel.directoryURL = mobileDocuments
+            }
+        }
+
+        panel.begin { @MainActor response in
+            guard response == .OK, let url = panel.url else { return }
+            self.openFolder(url)
+        }
+    }
     #endif
 
     private func openFolder(_ url: URL) {
@@ -312,6 +371,7 @@ struct StartView: View {
         openBrowserAndDismiss(BrowserOpenRequest(folderURL: url))
     }
 
+    #if os(macOS)
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
         guard let provider = providers.first,
               provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { return false }
@@ -341,6 +401,38 @@ struct StartView: View {
         }
         return true
     }
+    #endif
+
+    // MARK: - iOS File Importer
+
+    #if os(iOS)
+    private func handleFileImporterResult(_ result: Result<[URL], Error>, isFolder: Bool) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+
+            // Start security-scoped access
+            guard url.startAccessingSecurityScopedResource() else { return }
+
+            if isFolder {
+                openFolder(url)
+            } else {
+                let folderURL = url.deletingLastPathComponent()
+                // Need access to the parent folder too
+                _ = folderURL.startAccessingSecurityScopedResource()
+                RecentFoldersManager.shared.addFolder(folderURL)
+                openBrowserAndDismiss(BrowserOpenRequest(
+                    folderURL: folderURL,
+                    fileURL: url,
+                    preferSidebarCollapsed: true
+                ))
+            }
+
+        case .failure:
+            break // User cancelled or system error
+        }
+    }
+    #endif
 
     // MARK: - Welcome Folder (Easter Egg)
 

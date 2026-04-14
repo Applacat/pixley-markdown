@@ -563,6 +563,9 @@ public final class DocumentState {
     /// Whether the current file has unseen external changes
     public private(set) var hasChanges: Bool = false
 
+    /// Whether the current file has unresolved iCloud conflicts
+    public private(set) var hasConflict: Bool = false
+
     /// Reload trigger (incremented to force reload)
     public private(set) var reloadTrigger: Int = 0
 
@@ -570,28 +573,23 @@ public final class DocumentState {
 
     /// Loads file content from disk. This is the authoritative load path.
     /// MarkdownView and ChatView both read from `content` after this completes.
+    /// Uses NSFileCoordinator for safe concurrent access (iCloud Drive compatible).
     func loadFile(url: URL) async {
         isLoading = true
         errorMessage = nil
 
         do {
-            let text = try await Task.detached(priority: .userInitiated) {
-                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-                let fileSize = attributes[.size] as? Int ?? 0
+            // Check file size before coordinated read
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            let fileSize = attributes[.size] as? Int ?? 0
+            guard fileSize <= MarkdownConfig.maxTextSize else {
+                throw FileLoadError.fileTooLarge(size: fileSize)
+            }
 
-                guard fileSize <= MarkdownConfig.maxTextSize else {
-                    throw FileLoadError.fileTooLarge(size: fileSize)
-                }
-
-                let data = try Data(contentsOf: url)
-                guard let text = String(data: data, encoding: .utf8) else {
-                    throw FileLoadError.invalidEncoding
-                }
-                return text
-            }.value
-
+            let text = try await CoordinatedFileAccess.readString(url: url)
             content = text
             hasChanges = false
+            hasConflict = ConflictResolver.hasConflicts(url: url)
         } catch {
             errorMessage = error.localizedDescription
             content = ""
@@ -605,6 +603,7 @@ public final class DocumentState {
     func clearContent() {
         content = ""
         hasChanges = false
+        hasConflict = false
         errorMessage = nil
     }
 

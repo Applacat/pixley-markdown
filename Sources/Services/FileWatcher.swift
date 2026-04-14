@@ -124,15 +124,62 @@ final class FileWatcher {
 
 #else
 
-/// Stub FileWatcher for iOS — file watching will be handled by NSFilePresenter in Phase 2 (iCloud).
+/// iOS FileWatcher using NSFilePresenter for iCloud Drive change notifications.
+/// Receives callbacks when the watched file is modified externally (e.g., edited on another device).
 @MainActor
 final class FileWatcher {
 
-    init(onChange: @escaping @MainActor () -> Void) {}
+    private let onChange: @MainActor () -> Void
+    private var presenter: FileChangePresenter?
+    private var suppressUntil: Date?
 
-    func suppressChanges(for duration: TimeInterval = 1.0) {}
-    func watch(_ url: URL) {}
-    func stop() {}
+    init(onChange: @escaping @MainActor () -> Void) {
+        self.onChange = onChange
+    }
+
+    func suppressChanges(for duration: TimeInterval = 1.0) {
+        suppressUntil = Date().addingTimeInterval(duration)
+    }
+
+    func watch(_ url: URL) {
+        stop()
+        let presenter = FileChangePresenter(url: url) { [weak self] in
+            guard let self else { return }
+            if let suppressUntil = self.suppressUntil, Date() < suppressUntil {
+                return
+            }
+            self.suppressUntil = nil
+            self.onChange()
+        }
+        NSFileCoordinator.addFilePresenter(presenter)
+        self.presenter = presenter
+    }
+
+    func stop() {
+        if let presenter {
+            NSFileCoordinator.removeFilePresenter(presenter)
+        }
+        presenter = nil
+    }
+}
+
+/// NSFilePresenter that monitors a single file for external changes.
+private final class FileChangePresenter: NSObject, NSFilePresenter, Sendable {
+    let presentedItemURL: URL?
+    let presentedItemOperationQueue = OperationQueue.main
+    private let onChangeCallback: @MainActor () -> Void
+
+    init(url: URL, onChange: @escaping @MainActor () -> Void) {
+        self.presentedItemURL = url
+        self.onChangeCallback = onChange
+        super.init()
+    }
+
+    func presentedItemDidChange() {
+        Task { @MainActor in
+            onChangeCallback()
+        }
+    }
 }
 
 #endif

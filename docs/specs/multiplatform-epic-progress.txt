@@ -7,12 +7,12 @@ Phase 1: Structure — Target + Build
   [DONE] US-3: Enhanced-only enforcement on iOS
 
 Phase 2: iCloud Drive Integration
-  [PENDING] US-4: iCloud entitlement + container setup
-  [PENDING] US-5: iCloud Drive folder browser (shared)
-  [PENDING] US-6: NSFileCoordinator / NSFilePresenter integration
-  [PENDING] US-7: Reload pill for iCloud sync changes
-  [PENDING] US-8: Conflict detection + resolution banner
-  [PENDING] US-9: macOS StartView — add Browse iCloud Drive
+  [DONE] US-4: iCloud entitlement + container setup
+  [DONE] US-5: iCloud Drive folder browser (shared)
+  [DONE] US-6: NSFileCoordinator / NSFilePresenter integration
+  [DONE] US-7: Reload pill for iCloud sync changes
+  [DONE] US-8: Conflict detection + resolution banner
+  [DONE] US-9: macOS StartView — add Browse iCloud Drive
 
 Phase 3: iOS UI
   [PENDING] US-10: iOS sidebar — List + DisclosureGroup
