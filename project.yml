@@ -54,8 +54,13 @@ targets:
         ENABLE_PREVIEWS: YES
         ENABLE_HARDENED_RUNTIME: YES
         MACOSX_DEPLOYMENT_TARGET: "15.0"
-        ARCHS: [arm64, x86_64]
-        ONLY_ACTIVE_ARCH: NO
+      configs:
+        Debug:
+          ARCHS: arm64
+          ONLY_ACTIVE_ARCH: YES
+        Release:
+          ARCHS: [arm64, x86_64]
+          ONLY_ACTIVE_ARCH: NO
 
   AIMDReader-iOS:
     type: application
@@ -93,46 +98,10 @@ targets:
         IPHONEOS_DEPLOYMENT_TARGET: "26.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
-    info:
-      path: Resources/Info.plist
-      properties:
-        CFBundleName: Pixley Markdown
-        CFBundleDisplayName: Pixley Markdown
-        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
-        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        CFBundleShortVersionString: $(MARKETING_VERSION)
-        CFBundlePackageType: APPL
-        CFBundleExecutable: $(EXECUTABLE_NAME)
-        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
-        NSHighResolutionCapable: true
-        LSApplicationCategoryType: public.app-category.productivity
-        CFBundleDocumentTypes:
-          - CFBundleTypeName: Markdown Document
-            CFBundleTypeRole: Viewer
-            LSHandlerRank: Alternate
-            LSItemContentTypes:
-              - net.daringfireball.markdown
-              - public.markdown
-          - CFBundleTypeName: Folder
-            CFBundleTypeRole: Viewer
-            LSHandlerRank: Alternate
-            LSItemContentTypes:
-              - public.folder
-        UTImportedTypeDeclarations:
-          - UTTypeIdentifier: net.daringfireball.markdown
-            UTTypeDescription: Markdown Document
-            UTTypeConformsTo:
-              - public.plain-text
-            UTTypeTagSpecification:
-              public.filename-extension:
-                - md
-                - markdown
-                - mdown
     entitlements:
-      path: Resources/AIMDReader.entitlements
+      path: Resources/AIMDReader-iOS.entitlements
       properties:
         com.apple.security.app-sandbox: true
-        com.apple.security.files.user-selected.read-write: true
 
 schemes:
   AIMDReader:

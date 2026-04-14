@@ -2,9 +2,9 @@ Multiplatform Epic — Progress Tracker
 ======================================
 
 Phase 1: Structure — Target + Build
-  [PENDING] US-1: Add iOS target to XcodeGen project.yml
-  [PENDING] US-2: Platform conditionals in shared files
-  [PENDING] US-3: Enhanced-only enforcement on iOS
+  [DONE] US-1: Add iOS target to XcodeGen project.yml
+  [DONE] US-2: Platform conditionals in shared files
+  [DONE] US-3: Enhanced-only enforcement on iOS
 
 Phase 2: iCloud Drive Integration
   [PENDING] US-4: iCloud entitlement + container setup
