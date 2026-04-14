@@ -175,7 +175,8 @@ public enum SyntaxThemeSetting: String, CaseIterable, Identifiable, Sendable {
             #if os(macOS)
             isDark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             #else
-            isDark = UITraitCollection.current.userInterfaceStyle == .dark
+            // Fallback: assume light if no colorScheme provided (callers should pass one)
+            isDark = false
             #endif
         }
         return rendererTheme(isDark: isDark)
