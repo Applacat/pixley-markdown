@@ -197,3 +197,16 @@ Open tasks live in GitHub Issues. At session start, check what's open:
 - By milestone: `gh issue list --milestone "v4 Phase 1: Native Rendering"`
 - When completing work, close its issue: `gh issue close <number> -c "Done in <commit>"`
 - When discovering new work: `gh issue create --title "..." --label "..."`
+
+## Cal Pipeline
+
+Brain files in `cal/`:
+- `cal/NOW.md` — Current focus + pipeline state
+- `cal/cal.md` — Permanent learnings journal (DELTAs, AHAs, DECISIONs)
+- `cal/OOD.md` — Code principles
+- `cal/DESIGN.md` — Visual design system
+- `cal/PREFERENCES.md` — Infrastructure stack
+- `cal/agents.md` — Team roster
+- `ideas/hopper.md` — Idea parking lot
+
+Skills: `/cal:next`, `/cal:save`, `/cal:analyze`, `/cal:meet`, `/cal:onboard`, `/cal:check`
