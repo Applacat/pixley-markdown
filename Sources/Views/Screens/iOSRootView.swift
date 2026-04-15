@@ -76,10 +76,8 @@ struct iOSRootView: View {
         if request.preferSidebarCollapsed {
             coordinator.requestSidebarCollapsed()
         }
-        if let question = request.initialChatQuestion {
-            coordinator.ui.initialChatQuestion = question
-            coordinator.ui.isAIChatVisible = true
-        }
+        // Skip auto-opening chat on iOS — small screen, let user discover it.
+        // macOS opens chat via BrowserWindowRoot which isn't used on iOS.
         if request.isFirstLaunchWelcome {
             coordinator.setFirstLaunchWelcome(true)
         }

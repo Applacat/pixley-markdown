@@ -291,12 +291,24 @@ struct NativeDocumentView: View {
 
     // MARK: - Cache + Diff
 
+    /// Parses markdown off the main thread to avoid blocking UI during file open.
+    /// Content guard prevents duplicate parses for the same text.
     private func reparse() {
         guard content != cachedContent else { return }
-        let structure = MarkdownStructureParser.parse(text: content)
-        cachedBlocks = MarkdownBlockParser.parseFlat(content: content, elements: structure.elements)
-        cachedContent = content
-        gutterRows = Self.computeGutterRows(blocks: cachedBlocks, content: content)
+        let textToParse = content
+        cachedContent = textToParse
+
+        Task.detached(priority: .userInitiated) {
+            let structure = MarkdownStructureParser.parse(text: textToParse)
+            let blocks = MarkdownBlockParser.parseFlat(content: textToParse, elements: structure.elements)
+
+            await MainActor.run {
+                guard textToParse == cachedContent else { return }
+                cachedBlocks = blocks
+                // computeGutterRows is main-actor isolated (static on View)
+                gutterRows = Self.computeGutterRows(blocks: blocks, content: textToParse)
+            }
+        }
     }
 
     /// Flattens blocks into per-line rows, emitting blank spacer rows for empty source lines

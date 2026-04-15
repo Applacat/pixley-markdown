@@ -83,12 +83,15 @@ public final class AppCoordinator {
         document.clearContent()
     }
 
-    /// Selects a file for viewing
+    /// Selects a file for viewing.
+    /// Starts loading immediately so content is ready before the
+    /// NavigationSplitView push animation finishes (~300ms).
     public func selectFile(_ url: URL) {
         flushScrollPosition()
         navigation.selectFile(url)
         navigation.clearChanged(for: url)
         document.clearChanges()
+        Task { await document.loadFile(url: url) }
     }
 
     /// Clears file selection (e.g., iPhone back button in NavigationSplitView)
@@ -585,32 +588,36 @@ public final class DocumentState {
     /// MarkdownView and ChatView both read from `content` after this completes.
     /// Uses NSFileCoordinator for safe concurrent access (iCloud Drive compatible).
     func loadFile(url: URL) async {
-        isLoading = true
         errorMessage = nil
 
-        do {
-            // Check file size before read
-            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-            let fileSize = attributes[.size] as? Int ?? 0
-            guard fileSize <= MarkdownConfig.maxTextSize else {
-                throw FileLoadError.fileTooLarge(size: fileSize)
-            }
+        // Delay showing spinner — markdown files are tiny and load in <10ms.
+        // Only show spinner if the load takes longer than 150ms (e.g., large
+        // iCloud file downloading on demand). Avoids single-frame spinner flash.
+        let spinnerTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            isLoading = true
+        }
 
-            // Direct read — fast, no coordination overhead.
-            // NSFileCoordinator handshake with our own NSFilePresenter
-            // adds noticeable latency on iOS. Direct read is safe here:
-            // worst case is a slightly stale read, which the reload pill handles.
+        do {
             let text = try await Task.detached(priority: .userInitiated) {
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                let fileSize = attributes[.size] as? Int ?? 0
+                guard fileSize <= MarkdownConfig.maxTextSize else {
+                    throw FileLoadError.fileTooLarge(size: fileSize)
+                }
                 let data = try Data(contentsOf: url)
                 guard let text = String(data: data, encoding: .utf8) else {
                     throw FileLoadError.invalidEncoding
                 }
                 return text
             }.value
+            spinnerTask.cancel()
             content = text
             hasChanges = false
             hasConflict = ConflictResolver.hasConflicts(url: url)
         } catch {
+            spinnerTask.cancel()
             errorMessage = error.localizedDescription
             content = ""
         }
