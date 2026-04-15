@@ -79,6 +79,11 @@ struct MarkdownView: View {
         .task(id: FileLoadTrigger(file: coordinator.navigation.selectedFile, reload: coordinator.document.reloadTrigger)) {
             await loadFile()
         }
+        .onDisappear {
+            // Stop watching to prevent stale NSFilePresenters accumulating
+            // as the user navigates between files on iPhone
+            fileWatcher?.stop()
+        }
     }
 
     // MARK: - Empty State

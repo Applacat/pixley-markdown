@@ -358,9 +358,34 @@ struct NativeControlView: View {
     // MARK: - Collapsible
 
     private func collapsibleView(_ col: CollapsibleElement) -> some View {
-        let innerBlocks = parseCollapsibleContent(col)
+        CollapsibleBlockView(
+            col: col,
+            documentContent: documentContent,
+            palette: palette,
+            onChanged: onChanged,
+            onClicked: onClicked,
+            onStatusSelected: onStatusSelected
+        )
+    }
 
-        return DisclosureGroup(col.title) {
+}
+
+// MARK: - Collapsible Block View
+
+/// Caches parsed inner blocks to avoid running InteractiveElementDetector + MarkdownBlockParser
+/// in the view body on every scroll/render. Parse runs once on appear.
+struct CollapsibleBlockView: View {
+    let col: CollapsibleElement
+    let documentContent: String
+    let palette: SyntaxPalette
+    let onChanged: (InteractiveElement, Int?, String, String) -> Void
+    let onClicked: (InteractiveElement, Int?) -> Void
+    let onStatusSelected: (StatusElement, String) -> Void
+
+    @State private var innerBlocks: [MarkdownBlock] = []
+
+    var body: some View {
+        DisclosureGroup(col.title) {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(innerBlocks) { block in
                     ContentBlockView(
@@ -375,9 +400,14 @@ struct NativeControlView: View {
             }
         }
         .font(.system(.body, design: .monospaced))
+        .onAppear {
+            if innerBlocks.isEmpty {
+                innerBlocks = parseContent()
+            }
+        }
     }
 
-    private func parseCollapsibleContent(_ col: CollapsibleElement) -> [MarkdownBlock] {
+    private func parseContent() -> [MarkdownBlock] {
         guard col.contentRange.lowerBound < col.contentRange.upperBound,
               col.contentRange.lowerBound >= documentContent.startIndex,
               col.contentRange.upperBound <= documentContent.endIndex else {
@@ -391,6 +421,9 @@ struct NativeControlView: View {
             includeHeadings: true
         )
     }
+}
+
+extension NativeControlView {
 
     // MARK: - Slider (Spec 4)
 
@@ -742,18 +775,18 @@ private struct FillInDatePicker: View {
     let onSubmit: (String) -> Void
     @State private var date: Date
 
+    /// Shared formatter — avoids ~1-2ms allocation per date change.
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
     init(element: FillInElement, onSubmit: @escaping (String) -> Void) {
         self.element = element
         self.onSubmit = onSubmit
-
-        // Parse existing value if present
-        if let value = element.value {
-            let fmt = DateFormatter()
-            fmt.dateFormat = "yyyy-MM-dd"
-            self._date = State(initialValue: fmt.date(from: value) ?? Date())
-        } else {
-            self._date = State(initialValue: Date())
-        }
+        let parsed = element.value.flatMap { Self.dateFormatter.date(from: $0) }
+        self._date = State(initialValue: parsed ?? Date())
     }
 
     var body: some View {
@@ -766,9 +799,7 @@ private struct FillInDatePicker: View {
                 .frame(maxWidth: 300)
                 #endif
                 .onChange(of: date) {
-                    let fmt = DateFormatter()
-                    fmt.dateFormat = "yyyy-MM-dd"
-                    onSubmit(fmt.string(from: date))
+                    onSubmit(Self.dateFormatter.string(from: date))
                 }
         }
     }

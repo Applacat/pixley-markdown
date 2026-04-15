@@ -18,7 +18,9 @@ struct BrowserView: View {
     #endif
 
     // State restoration
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    // .automatic lets NavigationSplitView show sidebar-first on iPhone
+    // (.all forces detail pane even with no selection — broken on iPhone)
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @SceneStorage("lastSelectedFile") private var lastSelectedFilePath: String = ""
 
     // MARK: - Body

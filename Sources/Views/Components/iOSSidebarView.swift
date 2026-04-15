@@ -58,43 +58,10 @@ struct iOSSidebarView: View {
     // MARK: - Filter Bar
 
     private var filterBar: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-                .font(.caption)
-            TextField("Filter files...", text: Binding(
-                get: { coordinator.navigation.sidebarFilterQuery },
-                set: { coordinator.sidebarFilterQuery = $0 }
-            ))
-            .textFieldStyle(.plain)
-            .font(.callout)
-
-            if !coordinator.navigation.sidebarFilterQuery.isEmpty {
-                Button {
-                    coordinator.setSidebarFilter("")
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-                .accessibilityLabel("Clear sidebar filter")
-            }
-
-            Button {
-                showFavoritesOnly.toggle()
-            } label: {
-                Image(systemName: showFavoritesOnly ? "star.fill" : "star")
-                    .foregroundStyle(showFavoritesOnly ? .yellow : .secondary)
-            }
-            .buttonStyle(.plain)
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
-            .accessibilityLabel(showFavoritesOnly ? "Show all files" : "Show favorites only")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        SidebarFilterBar(
+            coordinator: coordinator,
+            showFavoritesOnly: $showFavoritesOnly
+        )
     }
 
     // MARK: - File List
@@ -336,6 +303,60 @@ struct iOSNavigateUpButton: View {
             coordinator.openFolder(parentURL)
         } else {
             coordinator.showError(.error(message: "Cannot access parent folder. Try browsing from iCloud Drive."))
+        }
+    }
+}
+
+// MARK: - Sidebar Filter Bar
+
+/// Isolated filter bar — owns local text state to prevent full sidebar
+/// re-renders per keystroke. Commits to coordinator after typing stops.
+private struct SidebarFilterBar: View {
+    let coordinator: AppCoordinator
+    @Binding var showFavoritesOnly: Bool
+    @State private var localQuery: String = ""
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+            TextField("Filter files...", text: $localQuery)
+                .textFieldStyle(.plain)
+                .font(.callout)
+
+            if !localQuery.isEmpty {
+                Button {
+                    localQuery = ""
+                    coordinator.setSidebarFilter("")
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .accessibilityLabel("Clear sidebar filter")
+            }
+
+            Button {
+                showFavoritesOnly.toggle()
+            } label: {
+                Image(systemName: showFavoritesOnly ? "star.fill" : "star")
+                    .foregroundStyle(showFavoritesOnly ? .yellow : .secondary)
+            }
+            .buttonStyle(.plain)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            .accessibilityLabel(showFavoritesOnly ? "Show all files" : "Show favorites only")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .onAppear {
+            localQuery = coordinator.navigation.sidebarFilterQuery
+        }
+        .onChange(of: localQuery) { _, newValue in
+            coordinator.setSidebarFilter(newValue)
         }
     }
 }

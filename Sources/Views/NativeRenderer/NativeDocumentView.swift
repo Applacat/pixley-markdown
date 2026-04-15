@@ -47,7 +47,12 @@ struct NativeDocumentView: View {
     @State private var cachedBlocks: [MarkdownBlock] = []
     @State private var cachedContent: String = ""
     @State private var gutterRows: [GutterRowModel] = []
+    /// Precomputed comment threads per line — avoids per-row regex + string split during scroll.
+    @State private var commentThreadCache: [Int: [String]] = [:]
     @State private var searchText: String = ""
+    /// Debounced version of searchText — passed to ContentBlockView to avoid per-keystroke re-renders.
+    @State private var debouncedSearchText: String = ""
+    @State private var searchDebounceTask: Task<Void, Never>?
     @State private var isSearching: Bool = false
     @State private var matchCount: Int = 0
     @State private var currentMatchIndex: Int = 0
@@ -138,7 +143,15 @@ struct NativeDocumentView: View {
             .hidden()
         }
         .onChange(of: searchText) {
-            updateMatchCount()
+            // Debounce search highlighting to avoid per-keystroke re-renders
+            // of every visible ContentBlockView (each runs string scans)
+            searchDebounceTask?.cancel()
+            searchDebounceTask = Task {
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled else { return }
+                debouncedSearchText = searchText
+                updateMatchCount()
+            }
         }
         .onAppear {
             reparse()
@@ -186,7 +199,7 @@ struct NativeDocumentView: View {
                 ContentBlockView(
                     block: block,
                     palette: palette,
-                    searchText: searchText,
+                    searchText: debouncedSearchText,
                     documentContent: content,
                     onInteractiveElementChanged: onInteractiveElementChanged,
                     onInteractiveElementClicked: onInteractiveElementClicked,
@@ -209,7 +222,7 @@ struct NativeDocumentView: View {
                 lineNumber: lineNumber,
                 isBookmarked: bookmarkedLines.contains(lineNumber),
                 isCommented: commentedLines.contains(lineNumber),
-                existingComments: extractCommentThread(for: lineNumber),
+                existingComments: commentThreadCache[lineNumber] ?? [],
                 palette: palette,
                 fontSize: fontSize,
                 onToggleBookmark: { onToggleBookmark(lineNumber) },
@@ -260,33 +273,30 @@ struct NativeDocumentView: View {
         }
     }
 
-    // MARK: - Comment Thread Extraction
+    // MARK: - Comment Thread Precomputation
 
-    /// Extracts existing comment texts for a given content line by scanning consecutive
-    /// `<!-- comment: ... -->` tags on the lines following it.
-    private func extractCommentThread(for lineNumber: Int) -> [String] {
+    private static let commentRegex: NSRegularExpression? = {
+        try? NSRegularExpression(pattern: #"<!--\s*feedback\s*(?::\s*(.*?))?\s*-->"#)
+    }()
+
+    /// Precomputes comment threads for all lines in one pass.
+    /// Called from Task.detached in reparse() — must be nonisolated.
+    private nonisolated static func precomputeCommentThreads(from content: String) -> [Int: [String]] {
+        guard let regex = commentRegex else { return [:] }
         let lines = content.components(separatedBy: "\n")
-        guard lineNumber >= 1 && lineNumber <= lines.count else { return [] }
+        var result: [Int: [String]] = [:]
 
-        var comments: [String] = []
-        let commentPattern = #"<!--\s*feedback\s*(?::\s*(.*?))?\s*-->"#
-        let regex = try? NSRegularExpression(pattern: commentPattern)
-
-        // Scan lines after the content line for consecutive comment tags
-        var i = lineNumber // 0-indexed = lineNumber (since lineNumber is 1-based, lines[lineNumber] is the next line)
-        while i < lines.count {
-            let line = lines[i]
+        for (i, line) in lines.enumerated() {
             let nsRange = NSRange(line.startIndex..., in: line)
-            if let match = regex?.firstMatch(in: line, range: nsRange),
+            if let match = regex.firstMatch(in: line, range: nsRange),
                match.numberOfRanges > 1,
                let range = Range(match.range(at: 1), in: line) {
-                comments.append(String(line[range]))
-                i += 1
-            } else {
-                break
+                // Attribute comment to the preceding content line (1-based)
+                let targetLine = i // line i is after the content line at i-1 (0-based)
+                result[targetLine, default: []].append(String(line[range]))
             }
         }
-        return comments
+        return result
     }
 
     // MARK: - Cache + Diff
@@ -302,10 +312,13 @@ struct NativeDocumentView: View {
             let structure = MarkdownStructureParser.parse(text: textToParse)
             let blocks = MarkdownBlockParser.parseFlat(content: textToParse, elements: structure.elements)
 
+            // Precompute comment threads in one pass (was per-row during scroll)
+            let threads = Self.precomputeCommentThreads(from: textToParse)
+
             await MainActor.run {
                 guard textToParse == cachedContent else { return }
                 cachedBlocks = blocks
-                // computeGutterRows is main-actor isolated (static on View)
+                commentThreadCache = threads
                 gutterRows = Self.computeGutterRows(blocks: blocks, content: textToParse)
             }
         }
