@@ -146,7 +146,9 @@ struct BrowserView: View {
             }
         }
         #endif
+        #if os(macOS)
         .quickSwitcherOverlay(allFiles: allMarkdownFiles)
+        #endif
         .errorBannerOverlay()
         .onChange(of: coordinator.navigation.displayItems) { _, newItems in
             allMarkdownFiles = FolderTreeFilter.flattenMarkdownFiles(newItems)
@@ -471,9 +473,10 @@ struct NavigateUpButton: View {
 }
 #endif
 
+#if os(macOS)
 // MARK: - View Mode Picker
 
-/// Toolbar menu for switching rendering mode: Plain / Enhanced.
+/// Toolbar menu for switching rendering mode: Plain / Enhanced. macOS only.
 struct ViewModePicker: View {
     @Environment(\.settings) private var settings
 
@@ -501,6 +504,7 @@ struct ViewModePicker: View {
         .accessibilityValue(settings.behavior.interactiveMode.shortName)
     }
 }
+#endif
 
 // MARK: - Font Size Controls
 

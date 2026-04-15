@@ -75,9 +75,10 @@ struct iOSSidebarView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
-                        .font(.caption)
                 }
                 .buttonStyle(.plain)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
                 .accessibilityLabel("Clear sidebar filter")
             }
 
@@ -86,9 +87,10 @@ struct iOSSidebarView: View {
             } label: {
                 Image(systemName: showFavoritesOnly ? "star.fill" : "star")
                     .foregroundStyle(showFavoritesOnly ? .yellow : .secondary)
-                    .font(.caption)
             }
             .buttonStyle(.plain)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
             .accessibilityLabel(showFavoritesOnly ? "Show all files" : "Show favorites only")
         }
         .padding(.horizontal, 12)
@@ -307,14 +309,14 @@ struct iOSNavigateUpButton: View {
                 Image(systemName: "chevron.left")
                     .font(.caption2.weight(.semibold))
                 Text(rootURL.lastPathComponent)
-                    .font(.caption)
+                    .font(.callout)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
             }
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -328,8 +330,9 @@ struct iOSNavigateUpButton: View {
         if canAccess {
             RecentFoldersManager.shared.addFolder(parentURL)
             coordinator.openFolder(parentURL)
+        } else {
+            coordinator.showError(.error(message: "Cannot access parent folder. Try browsing from iCloud Drive."))
         }
-        // On iOS we can't show NSOpenPanel — just attempt access directly
     }
 }
 

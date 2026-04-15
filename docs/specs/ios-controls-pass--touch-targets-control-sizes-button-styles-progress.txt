@@ -2,10 +2,10 @@ iOS Controls Pass (#74) — Progress Tracker
 ============================================
 
 Phase 1: Functional — Makes the App Usable
-  [PENDING] US-1: Touch targets & control sizes
-  [PENDING] US-3: Inline inputs & iOS sheets
-  [PENDING] US-4: StartView Liquid Glass buttons
-  [PENDING] US-8: Platform fixes & cleanup
+  [DONE] US-1: Touch targets & control sizes
+  [DONE] US-3: Inline inputs & iOS sheets (date picker .compact, fill-in inline, controlSize guards)
+  [DONE] US-4: StartView Liquid Glass buttons
+  [DONE] US-8: Platform fixes & cleanup
 
 Phase 2: Visual — Makes It Beautiful
   [PENDING] US-2: Controls as cards

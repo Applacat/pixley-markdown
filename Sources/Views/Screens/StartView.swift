@@ -546,39 +546,51 @@ private struct RecentItemButton: View {
 
 // MARK: - Launcher Button Style
 
-/// Xcode-welcome-screen style: transparent at rest, subtle fill on hover, darker on press.
-/// Uses semantic ShapeStyles (.quaternary/.quinary) for automatic dark mode / vibrancy adaptation.
+/// macOS: Xcode-welcome-screen style — transparent at rest, subtle fill on hover, darker on press.
+/// iOS: Liquid Glass background with .interactive() press feedback.
 private struct LauncherButtonStyle: ButtonStyle {
+    #if os(macOS)
     @State private var isHovering = false
+    #endif
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
+            #if os(iOS)
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
+            #else
             .background {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(isHovering || configuration.isPressed
                           ? AnyShapeStyle(configuration.isPressed ? .quaternary : .quinary)
                           : AnyShapeStyle(.clear))
             }
-            .contentShape(RoundedRectangle(cornerRadius: 6))
             .onHover { isHovering = $0 }
+            #endif
+            .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 
 // MARK: - Mascot Button Style
 
 private struct MascotButtonStyle: ButtonStyle {
+    #if os(macOS)
     @State private var isHovered = false
+    #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.95 : (isHovered ? 1.02 : 1.0)))
+            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.95 : 1.0))
             .opacity(configuration.isPressed ? 0.9 : 1.0)
-            .animation(reduceMotion ? .none : .easeInOut(duration: 0.15), value: configuration.isPressed)
+            .animation(reduceMotion ? .none : .spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+            #if os(macOS)
+            .scaleEffect(isHovered ? 1.02 : 1.0)
             .animation(reduceMotion ? .none : .easeInOut(duration: 0.15), value: isHovered)
             .onHover { isHovered = $0 }
+            #endif
     }
 }

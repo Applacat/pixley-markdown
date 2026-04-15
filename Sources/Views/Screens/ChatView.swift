@@ -155,10 +155,17 @@ struct ChatView: View {
             Text("Apple Intelligence Required")
                 .font(.headline)
                 .foregroundStyle(.secondary)
+            #if os(macOS)
             Text("Enable Apple Intelligence in System Settings > Apple Intelligence & Siri to use Pixley Chat.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
+            #else
+            Text("Enable Apple Intelligence in Settings > Apple Intelligence to use Pixley Chat.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+            #endif
             Spacer()
         }
         .padding()

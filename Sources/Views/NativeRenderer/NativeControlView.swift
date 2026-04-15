@@ -58,6 +58,24 @@ struct NativeControlView: View {
     // MARK: - Checkbox → Toggle(.checkbox)
 
     private func checkboxView(_ cb: CheckboxElement) -> some View {
+        #if os(iOS)
+        // iOS: full-row tap target, system font, 44pt minimum height
+        Button {
+            onClicked(element, nil)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: cb.isChecked ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(cb.isChecked ? .blue : .secondary)
+                    .font(.title3)
+                Text(cb.label)
+                    .foregroundStyle(cb.isChecked ? .secondary : .primary)
+                Spacer()
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        #else
         HStack(spacing: 8) {
             Toggle(isOn: Binding(
                 get: { cb.isChecked },
@@ -67,10 +85,9 @@ struct NativeControlView: View {
                     .font(.system(.body, design: .monospaced))
                     .foregroundStyle(cb.isChecked ? .secondary : .primary)
             }
-            #if os(macOS)
             .toggleStyle(.checkbox)
-            #endif
         }
+        #endif
     }
 
     // MARK: - Choice → Picker
@@ -79,9 +96,30 @@ struct NativeControlView: View {
         let labels = ch.options.map(\.label)
         let selected = ch.selectedIndex ?? -1
 
+        #if os(iOS)
+        // iOS: full-row tappable radio buttons, 44pt per row
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(labels.indices, id: \.self) { i in
+                Button {
+                    onClicked(element, i)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: i == selected ? "largecircle.fill.circle" : "circle")
+                            .foregroundStyle(i == selected ? .blue : .secondary)
+                            .font(.title3)
+                        Text(labels[i])
+                            .foregroundStyle(.primary)
+                        Spacer()
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        #else
         return VStack(alignment: .leading, spacing: 4) {
             if labels.count <= 4 {
-                // Segmented picker for small option counts
                 Picker("", selection: Binding(
                     get: { selected },
                     set: { newIndex in
@@ -96,7 +134,6 @@ struct NativeControlView: View {
                 }
                 .pickerStyle(.segmented)
             } else {
-                // Menu picker for many options
                 Picker("Select", selection: Binding(
                     get: { selected },
                     set: { newIndex in
@@ -112,6 +149,7 @@ struct NativeControlView: View {
                 .pickerStyle(.menu)
             }
         }
+        #endif
     }
 
     // MARK: - Fill-In → TextField / DatePicker / Button
@@ -174,7 +212,9 @@ struct NativeControlView: View {
                 }
             }
             .pickerStyle(.menu)
+            #if os(macOS)
             .frame(maxWidth: 200)
+            #endif
         }
     }
 
@@ -213,14 +253,17 @@ struct NativeControlView: View {
                     onClicked(element, nil)
                 }
                 .buttonStyle(.bordered)
+                #if os(macOS)
                 .controlSize(.small)
+                #endif
             } else if conf.level == .low || conf.level == .medium {
                 Button("Challenge") {
-                    // Show challenge input
                     onChanged(element, nil, "challenge", "")
                 }
                 .buttonStyle(.bordered)
+                #if os(macOS)
                 .controlSize(.small)
+                #endif
             }
         }
     }
@@ -265,13 +308,17 @@ struct NativeControlView: View {
                     onChanged(element, nil, "suggestion", "accept")
                 }
                 .buttonStyle(.borderedProminent)
+                #if os(macOS)
                 .controlSize(.small)
+                #endif
 
                 Button("Reject") {
                     onChanged(element, nil, "suggestion", "reject")
                 }
                 .buttonStyle(.bordered)
+                #if os(macOS)
                 .controlSize(.small)
+                #endif
             }
         }
         .padding(10)
@@ -387,7 +434,11 @@ private struct SliderControl: View {
                     }
                 }
             )
+            #if os(macOS)
             .frame(width: 160)
+            #else
+            .frame(maxWidth: .infinity)
+            #endif
 
             Text("\(Int(draftValue.rounded()))")
                 .font(.system(.body, design: .monospaced).monospacedDigit())
@@ -438,9 +489,8 @@ private struct ToggleControl: View {
     @State private var isOn: Bool = false
 
     var body: some View {
-        Toggle("", isOn: $isOn)
+        Toggle("Toggle", isOn: $isOn)
             .toggleStyle(.switch)
-            .labelsHidden()
             .onChange(of: isOn) { _, newValue in
                 onChanged(parent, nil, "state", newValue ? "on" : "off")
             }
@@ -540,7 +590,11 @@ private struct AuditableCheckboxControl: View {
                 TextField("Note…", text: $noteText)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.body, design: .monospaced))
+                    #if os(macOS)
                     .frame(width: 240)
+                    #else
+                    .frame(maxWidth: .infinity)
+                    #endif
 
                 HStack {
                     Button("Cancel") {
@@ -612,13 +666,17 @@ private struct FilePathBadge: View {
         .help(path ?? emptyLabel)
     }
 
-    /// Abbreviates home directory to `~`.
+    /// Abbreviates home directory to `~` on macOS. On iOS, shows parent folder name.
     private func abbreviatedParent(_ path: String) -> String {
+        #if os(macOS)
         let home = NSHomeDirectory()
         if path.hasPrefix(home) {
             return "~" + String(path.dropFirst(home.count))
         }
         return path
+        #else
+        return URL(fileURLWithPath: path).lastPathComponent
+        #endif
     }
 }
 
@@ -640,7 +698,9 @@ private struct FillInTextField: View {
             TextField(element.hint, text: $value)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
+                #if os(macOS)
                 .frame(maxWidth: 300)
+                #endif
                 .onSubmit {
                     onSubmit(value)
                 }
@@ -650,7 +710,9 @@ private struct FillInTextField: View {
                     onSubmit(value)
                 }
                 .buttonStyle(.bordered)
+                #if os(macOS)
                 .controlSize(.small)
+                #endif
             }
         }
     }
@@ -680,8 +742,12 @@ private struct FillInDatePicker: View {
     var body: some View {
         HStack(spacing: 8) {
             DatePicker(element.hint, selection: $date, displayedComponents: .date)
+                #if os(iOS)
+                .datePickerStyle(.compact)
+                #else
                 .datePickerStyle(.graphical)
                 .frame(maxWidth: 300)
+                #endif
                 .onChange(of: date) {
                     let fmt = DateFormatter()
                     fmt.dateFormat = "yyyy-MM-dd"
@@ -725,7 +791,9 @@ private struct FeedbackTextEditor: View {
                     onSubmit(text)
                 }
                 .buttonStyle(.bordered)
+                #if os(macOS)
                 .controlSize(.small)
+                #endif
                 .disabled(text.isEmpty)
             }
         }
@@ -786,7 +854,9 @@ private struct ReviewControlView: View {
                         onChanged(parentElement, selectedIndex, "review", notes)
                     }
                     .buttonStyle(.bordered)
+                    #if os(macOS)
                     .controlSize(.small)
+                    #endif
                 }
             }
         }
