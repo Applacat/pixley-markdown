@@ -3,13 +3,13 @@ iOS Controls Pass (#74) — Progress Tracker
 
 Phase 1: Functional — Makes the App Usable
   [DONE] US-1: Touch targets & control sizes
-  [DONE] US-3: Inline inputs & iOS sheets (date picker .compact, fill-in inline, controlSize guards)
+  [DONE] US-3: Inline inputs & iOS sheets
   [DONE] US-4: StartView Liquid Glass buttons
   [DONE] US-8: Platform fixes & cleanup
 
 Phase 2: Visual — Makes It Beautiful
-  [PENDING] US-2: Controls as cards
-  [PENDING] US-5: Material → Liquid Glass migration
+  [DONE] US-2: Controls as cards (system font, .quaternary rounded background on iOS)
+  [DONE] US-5: Material → Liquid Glass migration (materials auto-glass on iOS 26, chat styling done)
 
 Phase 3: Compliance — Makes It Correct
   [PENDING] US-6: Accessibility labels & VoiceOver

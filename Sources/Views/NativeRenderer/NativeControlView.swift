@@ -17,42 +17,53 @@ struct NativeControlView: View {
     let onStatusSelected: (StatusElement, String) -> Void
 
     var body: some View {
-        Group {
-            switch element {
-            case .checkbox(let cb):
-                checkboxView(cb)
-            case .choice(let ch):
-                choiceView(ch)
-            case .fillIn(let fi):
-                fillInView(fi)
-            case .feedback(let fb):
-                feedbackView(fb)
-            case .status(let st):
-                statusView(st)
-            case .confidence(let conf):
-                confidenceView(conf)
-            case .suggestion(let sug):
-                suggestionView(sug)
-            case .review(let rv):
-                reviewView(rv)
-            case .collapsible(let col):
-                collapsibleView(col)
-            case .conditional:
-                EmptyView()
-            case .slider(let s):
-                sliderView(s)
-            case .stepper(let s):
-                stepperView(s)
-            case .toggle(let t):
-                toggleView(t)
-            case .colorPicker(let cp):
-                colorPickerView(cp)
-            case .auditableCheckbox(let ac):
-                auditableCheckboxView(ac)
-            }
+        controlContent
+            .focusable()
+            #if os(iOS)
+            // iOS: controls render as cards — system font, rounded background,
+            // visual break from the monospace document text to signal interactivity.
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+            #else
+            .padding(.vertical, 2)
+            #endif
+    }
+
+    @ViewBuilder
+    private var controlContent: some View {
+        switch element {
+        case .checkbox(let cb):
+            checkboxView(cb)
+        case .choice(let ch):
+            choiceView(ch)
+        case .fillIn(let fi):
+            fillInView(fi)
+        case .feedback(let fb):
+            feedbackView(fb)
+        case .status(let st):
+            statusView(st)
+        case .confidence(let conf):
+            confidenceView(conf)
+        case .suggestion(let sug):
+            suggestionView(sug)
+        case .review(let rv):
+            reviewView(rv)
+        case .collapsible(let col):
+            collapsibleView(col)
+        case .conditional:
+            EmptyView()
+        case .slider(let s):
+            sliderView(s)
+        case .stepper(let s):
+            stepperView(s)
+        case .toggle(let t):
+            toggleView(t)
+        case .colorPicker(let cp):
+            colorPickerView(cp)
+        case .auditableCheckbox(let ac):
+            auditableCheckboxView(ac)
         }
-        .focusable()
-        .padding(.vertical, 2)
     }
 
     // MARK: - Checkbox → Toggle(.checkbox)

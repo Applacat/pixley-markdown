@@ -86,6 +86,8 @@ struct ChatView: View {
                 Button("Forget", systemImage: "eraser.line.dashed") {
                     clearChat()
                 }
+                .buttonStyle(.bordered)
+                .tint(.red)
                 .disabled(messages.isEmpty)
             }
         }
@@ -304,7 +306,7 @@ struct ChatView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
-                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(prompt.text)
@@ -535,7 +537,16 @@ struct MessageBubble: View {
                 .font(.callout)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12))
+                .background {
+                    if message.role == .user {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.accentColor)
+                    } else {
+                        // Assistant bubbles use material — gets Liquid Glass on iOS 26
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.regularMaterial)
+                    }
+                }
                 .foregroundStyle(message.role == .user ? .white : .primary)
                 .textSelection(.enabled)
 
@@ -545,14 +556,5 @@ struct MessageBubble: View {
         }
         .padding(.horizontal, 12)
         .accessibilityValue(message.role == .user ? "Your message" : "Assistant response")
-    }
-
-    private var backgroundColor: Color {
-        switch message.role {
-        case .user:
-            return .accentColor
-        case .assistant:
-            return Color.primary.opacity(0.08)
-        }
     }
 }

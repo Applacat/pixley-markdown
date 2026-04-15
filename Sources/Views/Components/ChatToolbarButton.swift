@@ -36,6 +36,8 @@ struct ChatToolbarButton: View {
                     }
                 }
         }
+        .buttonStyle(.borderedProminent)
+        .tint(.accentColor)
         .accessibilityLabel(hasHistory ? "Pixley Chat (has history)" : "Pixley Chat")
         .accessibilityHint("Opens AI chat about the current document")
     }
