@@ -162,13 +162,19 @@ final class InteractionHandler {
         }.value
 
         // Step 3: Write atomically with security-scoped access
+        fileWatcher?.suppressChanges(for: 2.0)
         do {
             try await secureWrite(newContent, to: url)
         } catch {
             throw WriteError.writeFailed(url, error)
         }
 
-        // Step 4: Update in-memory state (main actor)
+        // Step 4: Tell the watcher "we wrote this" so it ignores the
+        // next NSFilePresenter notification regardless of timing.
+        // Time-based suppression alone is unreliable on iOS.
+        fileWatcher?.acknowledgeWrite(at: url.path)
+
+        // Step 5: Update in-memory state (main actor)
         onContentUpdated?(newContent)
     }
 

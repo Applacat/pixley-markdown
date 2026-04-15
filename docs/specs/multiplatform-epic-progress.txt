@@ -15,10 +15,10 @@ Phase 2: iCloud Drive Integration
   [DONE] US-9: macOS StartView — add Browse iCloud Drive
 
 Phase 3: iOS UI
-  [PENDING] US-10: iOS sidebar — List + DisclosureGroup
-  [PENDING] US-11: iOS app lifecycle — Scene-based windows
-  [PENDING] US-12: iOS StartView adaptation
-  [PENDING] US-13: iOS navigation polish
+  [DONE] US-10: iOS sidebar — List + DisclosureGroup
+  [DONE] US-11: iOS app lifecycle — Scene-based windows
+  [DONE] US-12: iOS StartView adaptation
+  [DONE] US-13: iOS navigation polish
 
 Phase 4: visionOS
   [PENDING] US-14: Add visionOS target

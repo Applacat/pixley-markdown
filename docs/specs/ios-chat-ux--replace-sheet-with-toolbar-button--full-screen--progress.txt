@@ -1,0 +1,16 @@
+iOS Chat UX (#72) — Progress Tracker
+=====================================
+
+Phase 1: Chat toolbar button + push navigation
+  [DONE] Create ChatToolbarButton with history dot indicator
+  [DONE] Add NavigationDestination for ChatView in iOS detail column
+  [DONE] Add chat button to iOS toolbar (trailing position)
+  [DONE] Wire push state
+
+Phase 2: ChatView iOS adaptation + cleanup
+  [DONE] Hide chatHeader on iOS
+  [DONE] Add Forget as toolbar trailing button on iOS
+  [DONE] Remove iOSChatModifier from ContentView
+  [DONE] Both targets build, macOS unchanged
+  [NEEDS MANUAL TEST] Verify suggested prompts display
+  [NEEDS MANUAL TEST] Verify AI edit tool works from chat

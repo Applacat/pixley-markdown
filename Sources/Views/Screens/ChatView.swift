@@ -13,7 +13,7 @@ import aimdRenderer
 /// Uses Apple Foundation Models for on-device AI inference.
 /// Shows "Thinking..." while awaiting, then full response at once
 /// (plain text respond(to:) doesn't support token streaming).
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 struct ChatView: View {
 
     @Environment(\.coordinator) private var coordinator
@@ -33,8 +33,10 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            #if os(macOS)
             chatHeader
             Divider()
+            #endif
 
             // Content based on FM availability
             if SystemLanguageModel.default.availability != .available {
@@ -78,6 +80,16 @@ struct ChatView: View {
             // Configure edit tool for voice commands
             configureEditTool()
         }
+        #if os(iOS)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Forget", systemImage: "eraser.line.dashed") {
+                    clearChat()
+                }
+                .disabled(messages.isEmpty)
+            }
+        }
+        #endif
     }
 
     // MARK: - Header
@@ -501,7 +513,7 @@ struct ChatView: View {
 
 // MARK: - Message Bubble
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 struct MessageBubble: View {
 
     let message: ChatMessage

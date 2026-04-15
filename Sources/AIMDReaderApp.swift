@@ -97,6 +97,10 @@ struct PixleyMarkdownApp: App {
     #endif
     @FocusedValue(\.activeCoordinator) private var activeCoordinator
 
+    #if os(iOS)
+    @Environment(\.scenePhase) private var scenePhase
+    #endif
+
     /// Settings repository — injected into Environment for all views
     private let settings = UserDefaultsSettingsRepository.shared
 
@@ -127,23 +131,28 @@ struct PixleyMarkdownApp: App {
         .defaultPosition(.center)
         .restorationBehavior(.disabled)
         #else
-        // iOS uses WindowGroup
-        WindowGroup("Pixley Markdown", id: "start") {
-            StartView()
+        // iOS: single window — iOSRootView handles start/browser switching internally.
+        // iPhone doesn't support multiple windows; iPad can open additional scenes
+        // via the system, but the primary flow must be single-window.
+        WindowGroup("Pixley Markdown") {
+            iOSRootView()
                 .environment(\.settings, settings)
                 .modelContainer(modelContainer)
                 .preferredColorScheme(settings.appearance.colorScheme)
+                .onChange(of: scenePhase) { _, newPhase in
+                    handleScenePhase(newPhase)
+                }
         }
         #endif
 
-        // Browser window — per-window coordinator via BrowserWindowRoot
+        #if os(macOS)
+        // Browser window — per-window coordinator via BrowserWindowRoot (macOS only)
         WindowGroup("Pixley Markdown", id: "browser", for: BrowserOpenRequest.self) { $request in
             BrowserWindowRoot(request: request)
                 .environment(\.settings, settings)
                 .modelContainer(modelContainer)
                 .preferredColorScheme(settings.appearance.colorScheme)
         }
-        #if os(macOS)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
         .defaultSize(width: 1200, height: 800)
@@ -314,6 +323,27 @@ struct PixleyMarkdownApp: App {
         }
         #endif
     }
+
+    #if os(iOS)
+    // MARK: - iOS Scene Phase Handling
+
+    /// Handles iOS app lifecycle transitions.
+    /// Flushes state on background, resumes folder watchers on foreground.
+    private func handleScenePhase(_ phase: ScenePhase) {
+        switch phase {
+        case .background:
+            CoordinatorRegistry.shared.flushAll()
+            FolderService.shared.flushCacheIfNeeded()
+        case .active:
+            // Nothing special needed on active — views handle their own refresh
+            break
+        case .inactive:
+            break
+        @unknown default:
+            break
+        }
+    }
+    #endif
 
     // MARK: - Find Panel
 

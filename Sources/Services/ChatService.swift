@@ -24,7 +24,7 @@ import aimdRenderer
 /// 1. Catch ALL GenerationError types (context exceeded, guardrail, language)
 /// 2. Timeout — races respond() against a sleep; if sleep wins, cancelled + reset
 /// 3. Fresh session per conversation — never reuse across "Forget" resets
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 @MainActor
 final class ChatService {
 
@@ -451,7 +451,7 @@ final class ChatService {
 // MARK: - Chat Result
 
 /// Result of a chat request, covering all outcomes.
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 enum ChatResult {
     /// Successful response
     case success(String)

@@ -4,22 +4,28 @@ Work is tracked in GitHub Issues: `gh issue list --state open`
 
 ## Active: Multiplatform Epic (#23)
 
-**Branch:** `multiplatform/phase-1-target`
-**Status:** Phase 1 + Phase 2 complete. Phase 3 next.
+**Branch:** `multiplatform/ios`
+**Status:** Phase 3 wrapping up, Phase 3.5 next.
 
 | Phase | Status | Tickets |
 |-------|--------|---------|
 | Phase 1: Target + Build | DONE | #56, #62, #63 (closed) |
 | Phase 2: iCloud Drive | DONE | #57, #58, #64, #65, #66, #67 (closed) |
-| Phase 3: iOS UI | PENDING | #59, #60, #68, #69 |
+| Phase 3: iOS UI | IN PROGRESS | #59, #60, #68, #69 (closed), #70, #71, #72 |
+| Phase 3.5: iOS Controls Pass | PENDING | #74 (epic) |
 | Phase 4: visionOS | PENDING | #61 |
 
-## Phase 3 Stories (Next)
+## Phase 3 — Remaining
 
-- **US-10:** iOS sidebar — List + DisclosureGroup folder browser (#59)
-- **US-11:** iOS app lifecycle — Scene-based window management (#60)
-- **US-12:** iOS StartView adaptation (#68)
-- **US-13:** iOS navigation polish (#69)
+- **#70:** Spurious reload pill (fix landed, needs device verification)
+- **#71:** Chat auto-opens on iOS first launch (bug — not yet fixed)
+- **#72:** iOS chat UX — toolbar button + full-screen push (implemented, needs device test)
+
+## Phase 3.5 — iOS Controls Pass (#74)
+
+5 critical, 10 high, 9 medium findings from Axiom audit.
+Core issue: controls layer is macOS, needs iOS adaptation.
+Feature stories to be broken out from the epic.
 
 ## Backlog
 

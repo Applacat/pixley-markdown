@@ -13,6 +13,9 @@ struct BrowserView: View {
 
     @State private var isDropTargeted = false
     @State private var allMarkdownFiles: [FolderItem] = []
+    #if os(iOS)
+    @State private var isChatPresented = false
+    #endif
 
     // State restoration
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -44,9 +47,9 @@ struct BrowserView: View {
             if browserWindows.count <= 1 {
                 openWindow(id: "start")
             }
-            #else
-            openWindow(id: "start")
             #endif
+            // iOS: iOSRootView handles navigation back to StartView
+            // when coordinator.navigation.rootFolderURL becomes nil
         }
     }
 
@@ -58,15 +61,42 @@ struct BrowserView: View {
             OutlineFileListWrapper()
                 .navigationSplitViewColumnWidth(min: 280, ideal: 400, max: 600)
             #else
-            Text("Sidebar — iOS implementation pending")
-                .foregroundStyle(.secondary)
+            iOSSidebarView()
             #endif
         } detail: {
+            #if os(iOS)
+            // iOS: NavigationSplitView on iPhone already provides a NavigationStack.
+            // Detail is level 2 (sidebar is level 1). Chat pushes as level 3.
+            // No extra NavigationStack needed — navigationDestination works directly.
+            if coordinator.navigation.selectedFile != nil {
+                MarkdownView()
+                    .navigationTitle(coordinator.navigation.selectedFile?.deletingPathExtension().lastPathComponent ?? "")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            if #available(iOS 26, *) {
+                                ChatToolbarButton(isChatPresented: $isChatPresented)
+                            }
+                        }
+                    }
+                    .refreshable {
+                        coordinator.reloadDocument()
+                    }
+                    .navigationDestination(isPresented: $isChatPresented) {
+                        if #available(iOS 26, *) {
+                            iOSChatDetailView()
+                        }
+                    }
+            } else {
+                noSelectionView
+            }
+            #else
             if coordinator.navigation.selectedFile != nil {
                 MarkdownView()
             } else {
                 noSelectionView
             }
+            #endif
         }
         .onAppear {
             // Consume the flag if it was set by menu commands
@@ -105,6 +135,7 @@ struct BrowserView: View {
             }
         }
         #endif
+        // iOS toolbar is inside the NavigationStack in the detail column above
         #if os(macOS)
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers)
@@ -135,9 +166,13 @@ struct BrowserView: View {
     private var noFolderView: some View {
         Color.clear
             .onAppear {
+                #if os(macOS)
                 // Auto-redirect to start screen
                 openWindow(id: "start")
                 dismissWindow(id: "browser")
+                #endif
+                // iOS: iOSRootView observes coordinator state and
+                // switches back to StartView when rootFolderURL is nil
             }
     }
 
@@ -172,8 +207,11 @@ struct BrowserView: View {
 
     private func closeAndReturnToStart() {
         coordinator.closeFolder()
+        #if os(macOS)
         openWindow(id: "start")
         dismissWindow(id: "browser")
+        #endif
+        // iOS: iOSRootView observes rootFolderURL becoming nil
     }
 
     #if os(macOS)
@@ -552,3 +590,20 @@ struct AIChatModifier: ViewModifier {
         }
     }
 }
+
+#if os(iOS)
+// MARK: - iOS Chat Detail View
+
+/// Level 3 in the iPhone nav stack: Sidebar → Document → Chat.
+/// System back button pops back to document automatically.
+@available(iOS 26, *)
+struct iOSChatDetailView: View {
+
+    var body: some View {
+        ChatView()
+            .navigationTitle("Pixley Chat")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+#endif

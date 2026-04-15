@@ -38,6 +38,11 @@ final class FileWatcher {
         suppressUntil = Date().addingTimeInterval(duration)
     }
 
+    /// Snapshot the file's current modification date after a self-write.
+    func acknowledgeWrite(at path: String) {
+        lastModificationDate = Self.modificationDate(for: path)
+    }
+
     /// Start watching a file at the given URL.
     /// Stops any previous watch automatically.
     func watch(_ url: URL) {
@@ -126,30 +131,42 @@ final class FileWatcher {
 
 /// iOS FileWatcher using NSFilePresenter for iCloud Drive change notifications.
 /// Receives callbacks when the watched file is modified externally (e.g., edited on another device).
+///
+/// NSFilePresenter fires presentedItemDidChange() for ALL file changes — content,
+/// metadata, extended attributes, iCloud sync markers. To avoid false positives
+/// (e.g., reload pill after our own writes), we:
+/// 1. Check the file's modification date before triggering (skip metadata-only changes)
+/// 2. Support suppressChanges(for:) — called by InteractionHandler before self-writes
 @MainActor
 final class FileWatcher {
 
     private let onChange: @MainActor () -> Void
     private var presenter: FileChangePresenter?
     private var suppressUntil: Date?
+    private var lastModificationDate: Date?
 
     init(onChange: @escaping @MainActor () -> Void) {
         self.onChange = onChange
     }
 
+    /// Time-based suppression (kept for compatibility with macOS callers).
     func suppressChanges(for duration: TimeInterval = 1.0) {
         suppressUntil = Date().addingTimeInterval(duration)
     }
 
+    /// Snapshot the file's current modification date so the next
+    /// presentedItemDidChange is ignored. Call this AFTER a self-write.
+    /// Unlike time-based suppression, this is reliable regardless of
+    /// how long iOS delays the NSFilePresenter notification.
+    func acknowledgeWrite(at path: String) {
+        lastModificationDate = Self.modificationDate(for: path)
+    }
+
     func watch(_ url: URL) {
         stop()
+        lastModificationDate = Self.modificationDate(for: url.path)
         let presenter = FileChangePresenter(url: url) { [weak self] in
-            guard let self else { return }
-            if let suppressUntil = self.suppressUntil, Date() < suppressUntil {
-                return
-            }
-            self.suppressUntil = nil
-            self.onChange()
+            self?.handleChange(path: url.path)
         }
         NSFileCoordinator.addFilePresenter(presenter)
         self.presenter = presenter
@@ -160,6 +177,23 @@ final class FileWatcher {
             NSFileCoordinator.removeFilePresenter(presenter)
         }
         presenter = nil
+    }
+
+    private func handleChange(path: String) {
+        let currentDate = Self.modificationDate(for: path)
+        guard currentDate != lastModificationDate else { return }
+        lastModificationDate = currentDate
+
+        if let suppressUntil, Date() < suppressUntil {
+            return
+        }
+        suppressUntil = nil
+
+        onChange()
+    }
+
+    private static func modificationDate(for path: String) -> Date? {
+        try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date
     }
 }
 

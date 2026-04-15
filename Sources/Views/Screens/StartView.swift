@@ -8,8 +8,14 @@ import UniformTypeIdentifiers
 /// Click app icon to open Welcome tour (easter egg).
 struct StartView: View {
 
+    #if os(macOS)
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
+    #else
+    /// iOS callback — replaces openWindow/dismissWindow since iPhone is single-window.
+    /// Provided by iOSRootView to navigate in-place.
+    var onOpenBrowser: ((BrowserOpenRequest) -> Void)?
+    #endif
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -49,8 +55,7 @@ struct StartView: View {
                 hasPerformedLaunch = true
 
                 if let request = determineLaunchRequest() {
-                    openWindow(id: "browser", value: request)
-                    dismissWindow(id: "start")
+                    openBrowserAndDismiss(request)
                     return
                 }
             }
@@ -108,6 +113,7 @@ struct StartView: View {
             VStack(spacing: 24) {
                 mascotHeader
 
+                #if os(macOS)
                 if hasRecents {
                     HStack(alignment: .top, spacing: 16) {
                         entryPointsColumn
@@ -117,6 +123,13 @@ struct StartView: View {
                 } else {
                     entryPointsColumn
                 }
+                #else
+                // iOS: vertical layout — entry points then recents below
+                entryPointsColumn
+                if hasRecents {
+                    recentsColumn
+                }
+                #endif
             }
 
             Spacer()
@@ -191,7 +204,12 @@ struct StartView: View {
             #endif
             launcherButton("Sample Files", icon: "book.circle", color: .orange, action: openWelcomeFolderWithPrompt)
         }
+        #if os(macOS)
         .frame(width: 220)
+        #else
+        .frame(maxWidth: 300)
+        .padding(.horizontal, 24)
+        #endif
     }
 
     private func launcherButton(_ title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
@@ -267,7 +285,12 @@ struct StartView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 4)
         }
+        #if os(macOS)
         .frame(width: 280)
+        #else
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        #endif
     }
 
     // MARK: - Drop Overlay
@@ -406,20 +429,23 @@ struct StartView: View {
     // MARK: - iOS File Importer
 
     #if os(iOS)
+    /// Handles file/folder selection from iOS fileImporter.
+    /// Security-scoped access is started here and released after the coordinator
+    /// takes ownership via its own bookmark lifecycle in NavigationState.openFolder().
     private func handleFileImporterResult(_ result: Result<[URL], Error>, isFolder: Bool) {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
-
-            // Start security-scoped access
             guard url.startAccessingSecurityScopedResource() else { return }
+            defer { url.stopAccessingSecurityScopedResource() }
 
             if isFolder {
                 openFolder(url)
             } else {
                 let folderURL = url.deletingLastPathComponent()
-                // Need access to the parent folder too
-                _ = folderURL.startAccessingSecurityScopedResource()
+                guard folderURL.startAccessingSecurityScopedResource() else { return }
+                defer { folderURL.stopAccessingSecurityScopedResource() }
+
                 RecentFoldersManager.shared.addFolder(folderURL)
                 openBrowserAndDismiss(BrowserOpenRequest(
                     folderURL: folderURL,
@@ -468,8 +494,12 @@ struct StartView: View {
     // MARK: - Window Management
 
     private func openBrowserAndDismiss(_ request: BrowserOpenRequest) {
+        #if os(macOS)
         openWindow(id: "browser", value: request)
         dismissWindow(id: "start")
+        #else
+        onOpenBrowser?(request)
+        #endif
     }
 }
 

@@ -8,7 +8,7 @@ import FoundationModels
 
 /// FM tool that lets the AI edit interactive elements in the current document.
 /// The AI can toggle checkboxes, select choices, fill in placeholders, etc.
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
     let name = "editInteractiveElements"
     let description = """

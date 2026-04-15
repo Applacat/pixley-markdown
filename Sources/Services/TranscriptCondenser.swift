@@ -14,7 +14,7 @@ import os.log
 ///
 /// Retry-with-backoff: after FM summarizer failure, skip 2 turns on heuristic,
 /// then retry FM.
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 @MainActor
 final class TranscriptCondenser {
 

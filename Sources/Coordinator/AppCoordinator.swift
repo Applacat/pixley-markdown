@@ -91,6 +91,12 @@ public final class AppCoordinator {
         document.clearChanges()
     }
 
+    /// Clears file selection (e.g., iPhone back button in NavigationSplitView)
+    public func deselectFile() {
+        flushScrollPosition()
+        navigation.deselectFile()
+    }
+
     /// Sets the first-launch welcome flag (auto-select first file)
     public func setFirstLaunchWelcome(_ value: Bool) {
         navigation.isFirstLaunchWelcome = value
@@ -471,6 +477,10 @@ public final class NavigationState {
         sidebarExpandedPaths.removeAll()
     }
 
+    func deselectFile() {
+        selectedFile = nil
+    }
+
     func selectFile(_ url: URL) {
         selectedFile = url
     }
@@ -579,14 +589,24 @@ public final class DocumentState {
         errorMessage = nil
 
         do {
-            // Check file size before coordinated read
+            // Check file size before read
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             let fileSize = attributes[.size] as? Int ?? 0
             guard fileSize <= MarkdownConfig.maxTextSize else {
                 throw FileLoadError.fileTooLarge(size: fileSize)
             }
 
-            let text = try await CoordinatedFileAccess.readString(url: url)
+            // Direct read — fast, no coordination overhead.
+            // NSFileCoordinator handshake with our own NSFilePresenter
+            // adds noticeable latency on iOS. Direct read is safe here:
+            // worst case is a slightly stale read, which the reload pill handles.
+            let text = try await Task.detached(priority: .userInitiated) {
+                let data = try Data(contentsOf: url)
+                guard let text = String(data: data, encoding: .utf8) else {
+                    throw FileLoadError.invalidEncoding
+                }
+                return text
+            }.value
             content = text
             hasChanges = false
             hasConflict = ConflictResolver.hasConflicts(url: url)
