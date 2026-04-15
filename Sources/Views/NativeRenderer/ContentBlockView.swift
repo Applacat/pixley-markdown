@@ -72,12 +72,13 @@ struct ContentBlockView: View {
     // MARK: - Heading
 
     private func headingView(level: Int, text: String) -> some View {
+        // Semantic font styles — scale with Dynamic Type on both platforms.
         let font: Font = switch level {
-        case 1: .system(size: 24, weight: .bold, design: .monospaced)
-        case 2: .system(size: 20, weight: .bold, design: .monospaced)
-        case 3: .system(size: 17, weight: .semibold, design: .monospaced)
-        case 4: .system(size: 15, weight: .semibold, design: .monospaced)
-        default: .system(size: 14, weight: .semibold, design: .monospaced)
+        case 1: .system(.largeTitle, design: .monospaced).bold()
+        case 2: .system(.title2, design: .monospaced).bold()
+        case 3: .system(.title3, design: .monospaced).weight(.semibold)
+        case 4: .system(.headline, design: .monospaced)
+        default: .system(.subheadline, design: .monospaced).weight(.semibold)
         }
 
         return highlightedText(text)
@@ -171,9 +172,8 @@ struct ContentBlockView: View {
                 VStack(alignment: .trailing, spacing: 0) {
                     ForEach(codeLines.indices, id: \.self) { idx in
                         Text("\(firstCodeLine + idx)")
-                            .font(.system(size: 10, design: .monospaced).monospacedDigit())
+                            .font(.system(.caption2, design: .monospaced).monospacedDigit())
                             .foregroundStyle(palette.lineNumber)
-                            .frame(height: 16)
                     }
                 }
                 .frame(width: 28)
@@ -189,9 +189,8 @@ struct ContentBlockView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(codeLines.indices, id: \.self) { idx in
                         highlightedText(codeLines[idx])
-                            .font(.system(size: 12, weight: .regular, design: .monospaced))
+                            .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(palette.foreground)
-                            .frame(height: 16, alignment: .leading)
                     }
                 }
                 .textSelection(.enabled)

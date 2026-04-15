@@ -279,6 +279,10 @@ private struct FileRow: View {
             }
         }
         .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(item.name)\(isChanged ? ", modified" : "")\(coordinator.isFavorite(item.url) ? ", favorite" : "")")
+        .accessibilityHint("Open file")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button {
                 coordinator.toggleFavorite(for: item.url)

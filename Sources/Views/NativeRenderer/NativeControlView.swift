@@ -86,6 +86,9 @@ struct NativeControlView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(cb.label)
+        .accessibilityValue(cb.isChecked ? "Checked" : "Unchecked")
+        .accessibilityHint("Double tap to toggle")
         #else
         HStack(spacing: 8) {
             Toggle(isOn: Binding(
@@ -97,6 +100,8 @@ struct NativeControlView: View {
                     .foregroundStyle(cb.isChecked ? .secondary : .primary)
             }
             .toggleStyle(.checkbox)
+            .accessibilityLabel(cb.label)
+            .accessibilityValue(cb.isChecked ? "Checked" : "Unchecked")
         }
         #endif
     }
@@ -126,6 +131,9 @@ struct NativeControlView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(labels[i])
+                .accessibilityValue(i == selected ? "Selected" : "")
+                .accessibilityHint("Double tap to select")
             }
         }
         #else
@@ -502,6 +510,8 @@ private struct ToggleControl: View {
     var body: some View {
         Toggle("Toggle", isOn: $isOn)
             .toggleStyle(.switch)
+            .accessibilityLabel("Toggle switch")
+            .accessibilityHint("Double tap to switch")
             .onChange(of: isOn) { _, newValue in
                 onChanged(parent, nil, "state", newValue ? "on" : "off")
             }
@@ -517,15 +527,11 @@ private struct ColorPickerControl: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            ColorPicker("", selection: $selectedColor, supportsOpacity: false)
-                .labelsHidden()
+            ColorPicker("Color", selection: $selectedColor, supportsOpacity: false)
+                .accessibilityLabel("Color picker")
                 .onChange(of: selectedColor) { _, newColor in
                     onChanged(parent, nil, "hex", hexString(from: newColor))
                 }
-
-            Text("pick color")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 

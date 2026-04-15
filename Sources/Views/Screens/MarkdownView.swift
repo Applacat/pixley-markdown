@@ -791,5 +791,6 @@ struct ReadingProgressBadge: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
+            .accessibilityHidden(true)
     }
 }

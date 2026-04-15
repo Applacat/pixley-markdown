@@ -555,6 +555,7 @@ struct MessageBubble: View {
             }
         }
         .padding(.horizontal, 12)
-        .accessibilityValue(message.role == .user ? "Your message" : "Assistant response")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(message.role == .user ? "You" : "Pixley"): \(message.content)")
     }
 }

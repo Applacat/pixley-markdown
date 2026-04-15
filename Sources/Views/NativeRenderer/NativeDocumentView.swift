@@ -521,7 +521,7 @@ private struct GutterLineView: View {
             .frame(width: 10)
 
             Text("\(lineNumber)")
-                .font(.system(size: max(9, fontSize * 0.78)).monospacedDigit())
+                .font(.system(.caption2, design: .monospaced).monospacedDigit())
                 .foregroundStyle(palette.lineNumber)
         }
         .frame(width: GutterView.width, alignment: .trailing)
@@ -537,6 +537,15 @@ private struct GutterLineView: View {
             Button(isBookmarked ? "Remove Bookmark" : "Add Bookmark") {
                 onToggleBookmark()
             }
+        }
+        .accessibilityLabel("Line \(lineNumber)")
+        .accessibilityValue(isBookmarked ? "Bookmarked" : "")
+        .accessibilityHint("Tap to toggle bookmark")
+        .accessibilityAction(named: "Toggle Bookmark") {
+            onToggleBookmark()
+        }
+        .accessibilityAction(named: "Add Comment") {
+            showCommentPopover = true
         }
         .popover(isPresented: $showCommentPopover, arrowEdge: .trailing) {
             CommentPopoverView(

@@ -8,9 +8,9 @@ Phase 1: Functional — Makes the App Usable
   [DONE] US-8: Platform fixes & cleanup
 
 Phase 2: Visual — Makes It Beautiful
-  [DONE] US-2: Controls as cards (system font, .quaternary rounded background on iOS)
-  [DONE] US-5: Material → Liquid Glass migration (materials auto-glass on iOS 26, chat styling done)
+  [DONE] US-2: Controls as cards
+  [DONE] US-5: Material → Liquid Glass migration
 
 Phase 3: Compliance — Makes It Correct
-  [PENDING] US-6: Accessibility labels & VoiceOver
-  [PENDING] US-7: Dynamic Type (both platforms)
+  [DONE] US-6: Accessibility labels & VoiceOver
+  [DONE] US-7: Dynamic Type (both platforms)

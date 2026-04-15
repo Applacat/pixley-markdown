@@ -172,6 +172,8 @@ struct AppearanceSettingsTab: View {
                                 )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Pixley facing \(direction.id)")
+                        .accessibilityAddTraits(settings.appearance.mascotDirection == direction ? .isSelected : [])
                     }
                 }
             }
