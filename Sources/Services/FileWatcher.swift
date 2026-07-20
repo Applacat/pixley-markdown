@@ -32,8 +32,29 @@ final class FileWatcher {
     /// Call this before writing to the watched file to prevent reload pills.
     /// Default of 1.0 second handles atomic writes which can trigger multiple
     /// file system events (write + rename + delete) that may be delayed/coalesced by macOS.
+    /// Pair with `selfWriteCompleted()` / `selfWriteFailed()` so the window
+    /// doesn't outlive the write it was armed for.
     func suppressChanges(for duration: TimeInterval = 1.0) {
         suppressUntil = Date().addingTimeInterval(duration)
+    }
+
+    /// Call after a self-initiated write to the watched file succeeds.
+    /// Records the write's modification date (so its trailing FS events are
+    /// deduplicated) and lifts the suppression window, so any *later* external
+    /// change is delivered immediately instead of being swallowed.
+    func selfWriteCompleted() {
+        suppressUntil = nil
+        guard let watchedPath else { return }
+        lastModificationDate = Self.modificationDate(for: watchedPath)
+    }
+
+    /// Call when a self-initiated write fails after `suppressChanges` was armed.
+    /// Nothing was written by us, so any modification-date change since the last
+    /// delivered event is external — lift suppression and deliver it.
+    func selfWriteFailed() {
+        suppressUntil = nil
+        guard let watchedPath else { return }
+        checkForChange(path: watchedPath)
     }
 
     /// Start watching a file at the given URL.
@@ -56,21 +77,27 @@ final class FileWatcher {
 
     // MARK: - Private
 
-    private func startSource(path: String) {
-        // Close previous fd if any
-        if fileDescriptor >= 0 {
-            let oldFD = fileDescriptor
-            source?.cancel()
-            source = nil
-            // setCancelHandler closes it, but if no source was set, close manually
-            close(oldFD)
-            fileDescriptor = -1
+    private func startSource(path: String, isRewatch: Bool = false) {
+        // Tear down the previous watch if any. Once a source exists, its cancel
+        // handler owns the fd — closing it here too would double-close: the
+        // manual close frees the fd number before open() below, open() reuses
+        // it, and the queued cancel handler then closes the *new* watch's fd,
+        // silently killing the watcher.
+        if let source {
+            source.cancel()
+            self.source = nil
+        } else if fileDescriptor >= 0 {
+            close(fileDescriptor)
         }
+        fileDescriptor = -1
 
         fileDescriptor = open(path, O_EVTONLY)
         guard fileDescriptor >= 0 else { return }
 
-        lastModificationDate = Self.modificationDate(for: path)
+        if !isRewatch {
+            // Fresh watch: current disk state is the baseline.
+            lastModificationDate = Self.modificationDate(for: path)
+        }
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fileDescriptor,
@@ -104,20 +131,31 @@ final class FileWatcher {
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(50))
                 guard let self, self.watchedPath == path else { return }
-                self.startSource(path: path)
+                self.startSource(path: path, isRewatch: true)
+                // The new source won't report changes that landed before it was
+                // armed — deliver anything that slipped into the gap.
+                self.checkForChange(path: path)
             }
         }
 
+        checkForChange(path: path)
+    }
+
+    /// Compares the file's modification date against the last *delivered* one
+    /// and fires `onChange` when it differs. Suppressed changes are deliberately
+    /// NOT recorded as seen: if a suppressed event was an external write rather
+    /// than our own, a later event (or `selfWriteFailed`) must still surface it.
+    /// Self-writes record their date via `selfWriteCompleted` instead.
+    private func checkForChange(path: String) {
         let currentDate = Self.modificationDate(for: path)
         guard currentDate != lastModificationDate else { return }
-        lastModificationDate = currentDate
 
-        // Check time-based suppression window
         if let suppressUntil, Date() < suppressUntil {
             return
         }
         suppressUntil = nil
 
+        lastModificationDate = currentDate
         onChange()
     }
 

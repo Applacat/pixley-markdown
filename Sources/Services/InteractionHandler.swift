@@ -110,6 +110,8 @@ final class InteractionHandler {
         // and macOS may buffer/delay these events, so we need a generous window.
         // Extended to 1.0 second to handle slow disk I/O and event coalescing.
         fileWatcher?.suppressChanges(for: 1.0)
+        var writeSucceeded = false
+        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
 
         // Step 2: Read + compute edit off main thread (no file write yet)
         let newContent = try await Task.detached(priority: .userInitiated) {
@@ -159,6 +161,8 @@ final class InteractionHandler {
         } catch {
             throw WriteError.writeFailed(url, error)
         }
+        fileWatcher?.selfWriteCompleted()
+        writeSucceeded = true
 
         // Step 4: Update in-memory state (main actor)
         onContentUpdated?(newContent)
@@ -192,6 +196,8 @@ final class InteractionHandler {
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         fileWatcher?.suppressChanges(for: 1.0)
+        var writeSucceeded = false
+        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
 
         let (freshChoice, currentContent) = try await redetectElement(
             staleBlockquoteRange: choice.blockquoteRange,
@@ -213,6 +219,8 @@ final class InteractionHandler {
         }
 
         try await secureWrite(modified, to: url)
+        fileWatcher?.selfWriteCompleted()
+        writeSucceeded = true
         await MainActor.run { onContentUpdated?(modified) }
     }
 
@@ -254,6 +262,8 @@ final class InteractionHandler {
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         fileWatcher?.suppressChanges(for: 1.0)
+        var writeSucceeded = false
+        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
 
         // Re-detect the element on fresh file content using offset-based matching
         let (freshRange, currentContent) = try await redetectSpec4ElementRange(
@@ -267,6 +277,8 @@ final class InteractionHandler {
         modified.replaceSubrange(freshRange, with: value)
 
         try await secureWrite(modified, to: url)
+        fileWatcher?.selfWriteCompleted()
+        writeSucceeded = true
         await MainActor.run { onContentUpdated?(modified) }
     }
 
@@ -328,6 +340,8 @@ final class InteractionHandler {
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         fileWatcher?.suppressChanges(for: 1.0)
+        var writeSucceeded = false
+        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
 
         // Re-detect the element on fresh file content using offset-based matching
         let (fresh, currentContent) = try await redetectElement(
@@ -369,6 +383,8 @@ final class InteractionHandler {
         newContent.replaceSubrange(fresh.range, with: newLine)
 
         try await secureWrite(newContent, to: url)
+        fileWatcher?.selfWriteCompleted()
+        writeSucceeded = true
         await MainActor.run {
             onContentUpdated?(newContent)
         }
@@ -421,6 +437,8 @@ final class InteractionHandler {
     ) async throws {
         let dateString = Self.todayString()
         fileWatcher?.suppressChanges(for: 1.0)
+        var writeSucceeded = false
+        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
 
         let (freshReview, currentContent) = try await redetectElement(
             staleBlockquoteRange: review.blockquoteRange,
@@ -452,6 +470,8 @@ final class InteractionHandler {
         }
 
         try await secureWrite(modified, to: url)
+        fileWatcher?.selfWriteCompleted()
+        writeSucceeded = true
         await MainActor.run { onContentUpdated?(modified) }
     }
 
@@ -464,6 +484,8 @@ final class InteractionHandler {
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         fileWatcher?.suppressChanges(for: 1.0)
+        var writeSucceeded = false
+        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
 
         let (freshReview, currentContent) = try await redetectElement(
             staleBlockquoteRange: review.blockquoteRange,
@@ -482,6 +504,8 @@ final class InteractionHandler {
         }
 
         try await secureWrite(modified, to: url)
+        fileWatcher?.selfWriteCompleted()
+        writeSucceeded = true
         await MainActor.run { onContentUpdated?(modified) }
     }
 
@@ -594,6 +618,8 @@ final class InteractionHandler {
     ) async throws {
         // Re-detect from fresh file content to avoid stale range corruption
         fileWatcher?.suppressChanges(for: 1.0)
+        var writeSucceeded = false
+        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
 
         let newContent = try await Task.detached(priority: .userInitiated) {
             let data = try Data(contentsOf: url)
@@ -618,6 +644,8 @@ final class InteractionHandler {
         }.value
 
         try await secureWrite(newContent, to: url)
+        fileWatcher?.selfWriteCompleted()
+        writeSucceeded = true
 
         await MainActor.run {
             onContentUpdated?(newContent)
