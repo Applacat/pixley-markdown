@@ -197,8 +197,11 @@ struct MarkdownView: View {
             onScrollProgressChanged: { progress in
                 readingProgress = progress
                 coordinator.saveScrollPosition(progress)
-            }
+            },
+            restoreScrollProgress: pendingScrollPosition
         )
+        // Fresh view state (scroll restore, search, parse cache) per document
+        .id(coordinator.navigation.selectedFile)
     }
 
     // MARK: - Load File

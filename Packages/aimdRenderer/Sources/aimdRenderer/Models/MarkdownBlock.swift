@@ -1,21 +1,31 @@
 import Foundation
-import aimdRenderer
 
 // MARK: - Markdown Block
 
 /// A renderable block of markdown content for the native SwiftUI renderer.
 /// Produced by `MarkdownBlockParser` from raw markdown text within a section.
-/// Each block carries a stable `index` assigned during parsing for ForEach identity,
-/// plus its source line range for gutter line numbers.
-struct MarkdownBlock: Identifiable {
-    let id: Int // sequential index assigned at parse time
-    let kind: Kind
+///
+/// `id` is content-stable: kind signature + ordinal among same-signature
+/// blocks. Inserting or removing a block elsewhere in the document does not
+/// change other blocks' identity, so SwiftUI preserves control state and
+/// scroll anchors across re-parses. Only identical-content duplicates
+/// re-ordinal when one of them is added or removed.
+public struct MarkdownBlock: Identifiable {
+    public let id: String
+    public let kind: Kind
     /// 1-based starting line number in the source markdown file
-    let startLine: Int
+    public let startLine: Int
     /// 1-based ending line number in the source markdown file (inclusive)
-    let endLine: Int
+    public let endLine: Int
 
-    enum Kind {
+    public init(id: String, kind: Kind, startLine: Int, endLine: Int) {
+        self.id = id
+        self.kind = kind
+        self.startLine = startLine
+        self.endLine = endLine
+    }
+
+    public enum Kind {
         case heading(level: Int, text: String)
         case paragraph(runs: [InlineRun])
         case codeBlock(language: String?, code: String)
@@ -33,8 +43,8 @@ struct MarkdownBlock: Identifiable {
 // MARK: - Inline Run
 
 /// An inline span of styled text within a paragraph.
-struct InlineRun: Hashable {
-    enum Style: Hashable {
+public struct InlineRun: Hashable {
+    public enum Style: Hashable {
         case plain
         case bold
         case italic
@@ -45,37 +55,49 @@ struct InlineRun: Hashable {
         case image(url: String)
     }
 
-    let text: String
-    let style: Style
+    public let text: String
+    public let style: Style
+
+    public init(text: String, style: Style) {
+        self.text = text
+        self.style = style
+    }
 }
 
 // MARK: - List Item Block
 
-struct ListItemBlock: Identifiable {
-    let id = UUID()
-    let runs: [InlineRun]
-    let children: [MarkdownBlock]
+public struct ListItemBlock: Identifiable {
+    /// Content-stable id: item text + ordinal among identical items in the list.
+    public let id: String
+    public let runs: [InlineRun]
+    public let children: [MarkdownBlock]
+
+    public init(id: String, runs: [InlineRun], children: [MarkdownBlock]) {
+        self.id = id
+        self.runs = runs
+        self.children = children
+    }
 }
 
 // MARK: - Markdown Block Parser
 
 /// Parses raw markdown section content into an array of `MarkdownBlock` values.
 /// Uses line-level regex parsing (not swift-markdown AST) for speed and simplicity.
-enum MarkdownBlockParser {
+public enum MarkdownBlockParser {
 
     /// Parse the full document into a flat block array (headings included).
-    static func parseFlat(content: String, elements: [InteractiveElement]) -> [MarkdownBlock] {
+    public static func parseFlat(content: String, elements: [InteractiveElement]) -> [MarkdownBlock] {
         let range = content.startIndex..<content.endIndex
         return parse(content: content, sectionRange: range, elements: elements, includeHeadings: true, lineOffset: 0)
     }
 
     /// Parse a section's raw text content (below its heading) into blocks.
     /// `lineOffset` is the 0-based line offset of the section's first line within the full document.
-    static func parse(content: String, sectionRange: Range<String.Index>, elements: [InteractiveElement], includeHeadings: Bool = false, lineOffset: Int = 0) -> [MarkdownBlock] {
+    public static func parse(content: String, sectionRange: Range<String.Index>, elements: [InteractiveElement], includeHeadings: Bool = false, lineOffset: Int = 0) -> [MarkdownBlock] {
         let text = String(content[sectionRange])
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
 
-        var blocks: [MarkdownBlock] = []
+        var parsed: [(kind: MarkdownBlock.Kind, startLine: Int, endLine: Int)] = []
         let lines = text.components(separatedBy: "\n")
         var i = 0
 
@@ -96,16 +118,15 @@ enum MarkdownBlockParser {
             // Heading (only in flat parse mode)
             if includeHeadings, let headingLevel = parseHeadingLevel(trimmed) {
                 let headingText = String(trimmed.dropFirst(headingLevel + 1))
-                blocks.append(MarkdownBlock(id: blocks.count, kind: .heading(level: headingLevel, text: headingText), startLine: absLine, endLine: absLine))
+                parsed.append((.heading(level: headingLevel, text: headingText), absLine, absLine))
                 i += 1
                 continue
             }
 
             // Check if this line starts an interactive element
-            let prevI = i
             if let elementKind = matchInteractiveElement(lineIndex: i, lines: lines, sectionStart: sectionStart, content: content, elements: elements, consumed: &i) {
                 let endAbsLine = lineOffset + (i - 1) + 1
-                blocks.append(MarkdownBlock(id: blocks.count, kind: elementKind, startLine: absLine, endLine: endAbsLine))
+                parsed.append((elementKind, absLine, endAbsLine))
                 continue
             }
 
@@ -113,23 +134,23 @@ enum MarkdownBlockParser {
             if trimmed.hasPrefix("```") {
                 let result = parseCodeBlock(from: lines, startIndex: i)
                 let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
-                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
+                parsed.append((result.kind, absLine, endAbsLine))
                 i = result.nextIndex
                 continue
             }
 
             // Horizontal rule
             if isHorizontalRule(trimmed) {
-                blocks.append(MarkdownBlock(id: blocks.count, kind: .horizontalRule, startLine: absLine, endLine: absLine))
+                parsed.append((.horizontalRule, absLine, absLine))
                 i += 1
                 continue
             }
 
             // Blockquote
             if trimmed.hasPrefix("> ") || trimmed == ">" {
-                let result = parseBlockquote(from: lines, startIndex: i, lineOffset: lineOffset, content: content, sectionRange: sectionRange, elements: elements)
+                let result = parseBlockquote(from: lines, startIndex: i, lineOffset: lineOffset)
                 let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
-                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
+                parsed.append((result.kind, absLine, endAbsLine))
                 i = result.nextIndex
                 continue
             }
@@ -138,7 +159,7 @@ enum MarkdownBlockParser {
             if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("+ ") {
                 let result = parseUnorderedList(from: lines, startIndex: i)
                 let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
-                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
+                parsed.append((result.kind, absLine, endAbsLine))
                 i = result.nextIndex
                 continue
             }
@@ -147,7 +168,7 @@ enum MarkdownBlockParser {
             if let _ = trimmed.range(of: #"^\d+\.\s"#, options: .regularExpression) {
                 let result = parseOrderedList(from: lines, startIndex: i)
                 let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
-                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
+                parsed.append((result.kind, absLine, endAbsLine))
                 i = result.nextIndex
                 continue
             }
@@ -156,7 +177,7 @@ enum MarkdownBlockParser {
             if trimmed.hasPrefix("|") {
                 let result = parseTable(from: lines, startIndex: i)
                 let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
-                blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
+                parsed.append((result.kind, absLine, endAbsLine))
                 i = result.nextIndex
                 continue
             }
@@ -166,7 +187,7 @@ enum MarkdownBlockParser {
                 let imageText = String(trimmed[imageMatch])
                 if let alt = extractGroup(from: imageText, pattern: #"!\[([^\]]*)\]"#),
                    let url = extractGroup(from: imageText, pattern: #"\(([^)]+)\)"#) {
-                    blocks.append(MarkdownBlock(id: blocks.count, kind: .image(alt: alt, url: url), startLine: absLine, endLine: absLine))
+                    parsed.append((.image(alt: alt, url: url), absLine, absLine))
                     i += 1
                     continue
                 }
@@ -175,11 +196,80 @@ enum MarkdownBlockParser {
             // Default: paragraph (collect consecutive non-blank non-special lines)
             let result = parseParagraph(from: lines, startIndex: i)
             let endAbsLine = lineOffset + (result.nextIndex - 1) + 1
-            blocks.append(MarkdownBlock(id: blocks.count, kind: result.kind, startLine: absLine, endLine: endAbsLine))
+            parsed.append((result.kind, absLine, endAbsLine))
             i = result.nextIndex
         }
 
-        return blocks
+        return assignStableIDs(parsed)
+    }
+
+    // MARK: - Stable IDs
+
+    /// Builds blocks whose ids are content-derived: kind signature + ordinal
+    /// among blocks sharing that signature. Insertion/removal elsewhere in
+    /// the document leaves every other block's id unchanged.
+    private static func assignStableIDs(_ parsed: [(kind: MarkdownBlock.Kind, startLine: Int, endLine: Int)]) -> [MarkdownBlock] {
+        var counts: [String: Int] = [:]
+        return parsed.map { entry in
+            let sig = signature(for: entry.kind)
+            let ordinal = counts[sig, default: 0]
+            counts[sig] = ordinal + 1
+            return MarkdownBlock(id: "\(sig)#\(ordinal)", kind: entry.kind, startLine: entry.startLine, endLine: entry.endLine)
+        }
+    }
+
+    /// Short content signature per kind. Hashes are stable within a process
+    /// run, which is all SwiftUI identity and in-session scroll anchors need.
+    static func signature(for kind: MarkdownBlock.Kind) -> String {
+        func h(_ s: String) -> String { String(UInt(bitPattern: s.hashValue), radix: 36) }
+        switch kind {
+        case .heading(let level, let text):
+            return "h\(level)-\(h(text))"
+        case .paragraph(let runs):
+            return "p-\(h(runs.map(\.text).joined()))"
+        case .codeBlock(let language, let code):
+            return "c-\(h((language ?? "") + code))"
+        case .blockquote(let blocks):
+            return "q-\(h(blocks.map { signature(for: $0.kind) }.joined(separator: "|")))"
+        case .unorderedList(let items):
+            return "ul-\(h(items.map { $0.runs.map(\.text).joined() }.joined(separator: "|")))"
+        case .orderedList(let items, let startIndex):
+            return "ol\(startIndex)-\(h(items.map { $0.runs.map(\.text).joined() }.joined(separator: "|")))"
+        case .horizontalRule:
+            return "hr"
+        case .table(let headers, let rows):
+            return "t-\(h((headers + rows.flatMap { $0 }).joined(separator: "|")))"
+        case .interactiveElement(let element):
+            return "ie-\(h(elementSignature(element)))"
+        case .image(let alt, let url):
+            return "img-\(h(alt + url))"
+        case .rawText(let text):
+            return "r-\(h(text))"
+        }
+    }
+
+    /// Identity signature for interactive elements. Deliberately excludes
+    /// mutable state where the anchor text is stable (checkbox checked state,
+    /// choice/review selection), so toggling a control keeps its identity and
+    /// its in-flight UI state.
+    private static func elementSignature(_ element: InteractiveElement) -> String {
+        switch element {
+        case .checkbox(let e): return "cb:\(e.label)"
+        case .auditableCheckbox(let e): return "acb:\(e.label)"
+        case .choice(let e): return "ch:\(e.options.map(\.label).joined(separator: "|"))"
+        case .review(let e): return "rv:\(e.options.map(\.status.rawValue).joined(separator: "|"))"
+        case .fillIn(let e): return "fi:\(e.hint)"
+        case .feedback(let e): return "fb:\(e.existingText ?? "")"
+        case .suggestion(let e): return "sg:\(e.oldText ?? "")|\(e.newText ?? "")"
+        case .status(let e): return "st:\(e.states.joined(separator: "/"))"
+        case .confidence(let e): return "cf:\(e.text)"
+        case .conditional(let e): return "cd:\(e.key)=\(e.value)"
+        case .collapsible(let e): return "cl:\(e.title)"
+        case .slider(let e): return "sl:\(e.keyword):\(e.minValue)-\(e.maxValue)"
+        case .stepper(let e): return "sp:\(e.minValue ?? 0)-\(e.maxValue ?? 0)"
+        case .toggle: return "tg"
+        case .colorPicker: return "cp"
+        }
     }
 
     // MARK: - Code Block
@@ -204,7 +294,7 @@ enum MarkdownBlockParser {
 
     // MARK: - Blockquote
 
-    private static func parseBlockquote(from lines: [String], startIndex: Int, lineOffset: Int, content: String, sectionRange: Range<String.Index>, elements: [InteractiveElement]) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
+    private static func parseBlockquote(from lines: [String], startIndex: Int, lineOffset: Int) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
         var quoteLines: [String] = []
         var i = startIndex
 
@@ -224,33 +314,41 @@ enum MarkdownBlockParser {
         let absEnd = lineOffset + (i - 1) + 1
         let innerText = quoteLines.joined(separator: "\n")
         let innerRuns = parseInlineRuns(innerText)
-        return (.blockquote(blocks: [MarkdownBlock(id: 0, kind: .paragraph(runs: innerRuns), startLine: absStart, endLine: absEnd)]), i)
+        let innerKind = MarkdownBlock.Kind.paragraph(runs: innerRuns)
+        let inner = MarkdownBlock(id: "\(signature(for: innerKind))#q0", kind: innerKind, startLine: absStart, endLine: absEnd)
+        return (.blockquote(blocks: [inner]), i)
     }
 
     // MARK: - Lists
 
+    private static func makeListItems(_ texts: [String]) -> [ListItemBlock] {
+        var counts: [String: Int] = [:]
+        return texts.map { text in
+            let ordinal = counts[text, default: 0]
+            counts[text] = ordinal + 1
+            return ListItemBlock(id: "li-\(String(UInt(bitPattern: text.hashValue), radix: 36))#\(ordinal)", runs: parseInlineRuns(text), children: [])
+        }
+    }
+
     private static func parseUnorderedList(from lines: [String], startIndex: Int) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
-        var items: [ListItemBlock] = []
+        var texts: [String] = []
         var i = startIndex
 
         while i < lines.count {
             let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("+ ") {
-                let text = String(trimmed.dropFirst(2))
-                items.append(ListItemBlock(runs: parseInlineRuns(text), children: []))
+                texts.append(String(trimmed.dropFirst(2)))
                 i += 1
-            } else if trimmed.isEmpty {
-                break
             } else {
                 break
             }
         }
 
-        return (.unorderedList(items: items), i)
+        return (.unorderedList(items: makeListItems(texts)), i)
     }
 
     private static func parseOrderedList(from lines: [String], startIndex: Int) -> (kind: MarkdownBlock.Kind, nextIndex: Int) {
-        var items: [ListItemBlock] = []
+        var texts: [String] = []
         var i = startIndex
         var firstNum = 1
 
@@ -259,21 +357,19 @@ enum MarkdownBlockParser {
             if let match = trimmed.range(of: #"^(\d+)\.\s(.+)$"#, options: .regularExpression) {
                 let matchStr = String(trimmed[match])
                 if let numStr = extractGroup(from: matchStr, pattern: #"^(\d+)\."#),
-                   let num = Int(numStr), items.isEmpty {
+                   let num = Int(numStr), texts.isEmpty {
                     firstNum = num
                 }
                 if let text = extractGroup(from: matchStr, pattern: #"^\d+\.\s(.+)$"#) {
-                    items.append(ListItemBlock(runs: parseInlineRuns(text), children: []))
+                    texts.append(text)
                 }
                 i += 1
-            } else if trimmed.isEmpty {
-                break
             } else {
                 break
             }
         }
 
-        return (.orderedList(items: items, startIndex: firstNum), i)
+        return (.orderedList(items: makeListItems(texts), startIndex: firstNum), i)
     }
 
     // MARK: - Paragraph
@@ -341,7 +437,7 @@ enum MarkdownBlockParser {
 
     // MARK: - Inline Runs
 
-    static func parseInlineRuns(_ text: String) -> [InlineRun] {
+    public static func parseInlineRuns(_ text: String) -> [InlineRun] {
         guard !text.isEmpty else { return [] }
 
         var runs: [InlineRun] = []

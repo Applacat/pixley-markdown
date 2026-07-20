@@ -27,6 +27,8 @@ struct NativeDocumentView: View {
     let onToggleBookmark: (Int) -> Void
     let onAddComment: (Int, String) -> Void
     var onScrollProgressChanged: ((Double) -> Void)? = nil
+    /// Saved reading progress (0...1) to restore once on first parse.
+    var restoreScrollProgress: Double? = nil
 
     @State private var cachedBlocks: [MarkdownBlock] = []
     @State private var cachedContent: String = ""
@@ -35,9 +37,10 @@ struct NativeDocumentView: View {
     @State private var matchCount: Int = 0
     @State private var currentMatchIndex: Int = 0
     @State private var isGoToLineVisible: Bool = false
-    @State private var scrollTarget: Int? = nil
+    @State private var scrollTarget: String? = nil
     @State private var currentScrollOffset: CGFloat = 0
-    @State private var blockOffsets: [Int: CGFloat] = [:]
+    @State private var blockOffsets: [String: CGFloat] = [:]
+    @State private var didRestoreScroll = false
     @FocusState private var searchFieldFocused: Bool
 
     var body: some View {
@@ -194,10 +197,36 @@ struct NativeDocumentView: View {
 
     private func reparse() {
         guard content != cachedContent else { return }
+        // Remember the reader's place: block ids are content-stable, so the
+        // topmost visible block usually survives the re-parse and we can
+        // scroll straight back to it after the swap.
+        let anchorID = topmostVisibleBlockID()
+
         let structure = MarkdownStructureParser.parse(text: content)
         cachedBlocks = MarkdownBlockParser.parseFlat(content: content, elements: structure.elements)
         cachedContent = content
         blockOffsets = [:]
+
+        if !didRestoreScroll {
+            // First parse for this document: restore the saved reading position.
+            didRestoreScroll = true
+            if let progress = restoreScrollProgress, progress > 0, !cachedBlocks.isEmpty {
+                let index = Int((Double(cachedBlocks.count - 1) * progress).rounded())
+                scrollTarget = cachedBlocks[min(max(index, 0), cachedBlocks.count - 1)].id
+            }
+        } else if let anchorID, cachedBlocks.contains(where: { $0.id == anchorID }) {
+            // Interactive edit / external reload: keep the same block on screen.
+            scrollTarget = anchorID
+        }
+    }
+
+    /// The block whose top edge is nearest the viewport top — the reader's
+    /// current place. Also used by Cmd+B bookmarking.
+    private func topmostVisibleBlockID() -> String? {
+        cachedBlocks
+            .filter { blockOffsets[$0.id] != nil }
+            .min(by: { abs(blockOffsets[$0.id]!) < abs(blockOffsets[$1.id]!) })?
+            .id
     }
 
     // MARK: - Scroll Progress
@@ -226,12 +255,9 @@ struct NativeDocumentView: View {
     // MARK: - Bookmark at Current Position
 
     private func toggleBookmarkAtCurrentPosition() {
-        // Find the block whose top is nearest to (but not far below) the viewport top
-        let nearestBlock = cachedBlocks
-            .filter { blockOffsets[$0.id] != nil }
-            .min(by: { abs(blockOffsets[$0.id]!) < abs(blockOffsets[$1.id]!) })
-
-        let line = nearestBlock?.startLine ?? cachedBlocks.first?.startLine ?? 1
+        let nearestID = topmostVisibleBlockID()
+        let line = cachedBlocks.first(where: { $0.id == nearestID })?.startLine
+            ?? cachedBlocks.first?.startLine ?? 1
         onToggleBookmark(line)
     }
 

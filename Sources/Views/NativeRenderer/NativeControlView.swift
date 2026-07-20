@@ -630,6 +630,11 @@ private struct FillInTextField: View {
                 .onSubmit {
                     onSubmit(value)
                 }
+                // External/AI edits at unchanged identity must show through —
+                // init-seeded @State never re-runs on its own.
+                .onChange(of: element.value) { _, newValue in
+                    value = newValue ?? ""
+                }
 
             if !value.isEmpty && value != element.value {
                 Button("Save") {
@@ -697,6 +702,9 @@ private struct FeedbackTextEditor: View {
                 .foregroundStyle(.secondary)
 
             TextEditor(text: $text)
+                .onChange(of: element.existingText) { _, newValue in
+                    text = newValue ?? ""
+                }
                 .font(.system(.body, design: .monospaced))
                 .frame(minHeight: 60, maxHeight: 120)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -753,10 +761,20 @@ private struct ReviewControlView: View {
             .onChange(of: selectedIndex) { _, newIndex in
                 guard newIndex >= 0, newIndex < element.options.count else { return }
                 let option = element.options[newIndex]
+                // Already selected in the source: this change is an external
+                // refresh syncing the picker, not a user action — don't resubmit.
+                guard !option.isSelected else { return }
                 if option.status.promptsForNotes {
                     // Wait for notes input
                 } else {
                     onChanged(parentElement, newIndex, "review", "")
+                }
+            }
+            // External/AI edits at unchanged identity must show through.
+            .onChange(of: element.options.map(\.isSelected)) { _, _ in
+                selectedIndex = element.options.firstIndex(where: { $0.isSelected }) ?? -1
+                if let selected = element.options.first(where: { $0.isSelected }), let n = selected.notes {
+                    notes = n
                 }
             }
 

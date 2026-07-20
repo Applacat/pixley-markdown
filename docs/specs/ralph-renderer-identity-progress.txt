@@ -1,0 +1,57 @@
+Ralph Mission: Renderer Identity + Scroll Restoration (#81, #84)
+================================================================
+
+Design decisions:
+- MarkdownBlock/parser MOVED to the aimdRenderer package (public API) so
+  identity tests run against the real parser — same precedent as
+  ElementRelocator. App-target file deleted; consumers unchanged (all three
+  already imported aimdRenderer).
+- Block identity: id is String = kind signature (short content hash, stable
+  within a process run) + ordinal among same-signature blocks. Invariant
+  under insertion/removal elsewhere; only identical-content duplicates
+  re-ordinal. Interactive element signatures deliberately EXCLUDE mutable
+  state where the anchor is stable (checkbox label not checked-state,
+  choice/review option lists not selection) so toggling keeps identity.
+- ListItemBlock.id: item text hash + ordinal (was UUID-per-parse).
+- Control state refresh at unchanged identity: onChange added to
+  FillInTextField (element.value), FeedbackTextEditor (existingText),
+  ReviewControlView (options.isSelected map, with a guard so the external
+  sync never resubmits an already-selected option). Exempt by design:
+  FillInDatePicker (value change changes hint → identity changes → fresh
+  init; onChange would loop through its auto-submit), slider/stepper/toggle/
+  color (markers consumed on any write → block kind changes anyway).
+- Scroll restore: NativeDocumentView gains restoreScrollProgress (fed from
+  MarkdownView.pendingScrollPosition, same source as Plain mode). First
+  parse maps progress → block index → scrollTo(stable id). Subsequent
+  reparses capture the topmost visible block id before the swap and scroll
+  back to it (exact, thanks to stable ids). MarkdownView applies
+  .id(selectedFile) to the renderer so per-document view state (didRestore,
+  search, cache) resets on file switch.
+
+Tasks:
+[DONE] T1: Read renderer files + scroll plumbing
+[DONE] T2: Stable String ids in MarkdownBlockParser + ListItemBlock (#81)
+[DONE] T3: Migrate id consumers (blockOffsets/scrollTarget → String,
+       topmostVisibleBlockID shared with Cmd+B)
+[DONE] T4: onChange refresh in FillInTextField/FeedbackTextEditor/
+       ReviewControlView (#81)
+[DONE] T5: Scroll restore on open via restoreScrollProgress (#84)
+[DONE] T6: Scroll preservation across reparse via block anchor (#84)
+[DONE] T7: 8 identity tests in package (insertion top/middle, removal,
+       toggle keeps id, duplicates ordinal, determinism, uniqueness,
+       list-item stability) — all pass
+[DONE] T8: Build green; app suite 320/320; package identity tests 8/8
+       (12 pre-existing package failures remain, tracked #102, untouched)
+[DONE] T9: Manual test doc ralph-renderer-identity-manual-test.md (5 tests)
+[DONE] T10: Committed + progress comments on #81/#84 (left OPEN pending
+       human manual test, per spec)
+
+Grep verification (exit criterion a): no `id: blocks.count` or sequential-id
+comment remains; no UUID() ids in MarkdownBlock/ListItemBlock. Remaining
+UUID() ids are in MarkdownAST/DocumentModel/MarkdownTheme — legacy types
+outside the Enhanced renderer ForEach path, out of this mission's scope.
+
+Iteration log:
+- iter 1: full implementation — parser moved to package with stable ids,
+  consumers migrated, control refreshes, scroll restore + reparse anchor,
+  8 identity tests green, app suite 320/320, manual test doc written.
