@@ -95,6 +95,13 @@ final class RecentFoldersManager {
     private var cachedFolders: [RecentFolder]?
     private var cachedFiles: [RecentItem]?
 
+    /// URL instances whose security scope we started, keyed by path.
+    /// The scope only exists on the exact instance returned by bookmark
+    /// resolution — round-tripping through Codable (BrowserOpenRequest)
+    /// strips it — so these instances must stay alive for the process
+    /// lifetime to keep sandbox access to the folder.
+    private var activeScopedURLs: [String: URL] = [:]
+
     private init() {}
 
     // MARK: - Storage Paths
@@ -222,8 +229,17 @@ final class RecentFoldersManager {
         saveFolders(folders)
     }
 
-    /// Resolve a bookmark to get a usable URL (starts security scope)
-    func resolveBookmark(_ folder: RecentFolder) -> URL? {
+    /// Resolve a bookmark to get a usable URL, starting its security scope.
+    ///
+    /// The scope must be started here, on the resolved instance: consumers pass
+    /// the URL through `BrowserOpenRequest` (Codable), which strips the scope,
+    /// so a later `startAccessingSecurityScopedResource()` on the round-tripped
+    /// URL returns false and sandbox access is denied. The started instance is
+    /// retained in `activeScopedURLs` for the process lifetime.
+    ///
+    /// - Parameter startingScope: Pass `false` for validation-only resolution
+    ///   (e.g. pruning) that shouldn't consume a sandbox extension.
+    func resolveBookmark(_ folder: RecentFolder, startingScope: Bool = true) -> URL? {
         var isStale = false
 
         guard let url = try? URL(
@@ -235,8 +251,6 @@ final class RecentFoldersManager {
             return nil
         }
 
-        // Don't start security scope here - caller (AppState.setRootFolder) handles it
-        // Just validate the URL exists
         guard FileManager.default.fileExists(atPath: url.path) else {
             return nil
         }
@@ -244,6 +258,11 @@ final class RecentFoldersManager {
         // If bookmark is stale, refresh it in-place (preserves order)
         if isStale {
             refreshStaleBookmark(folder, url: url)
+        }
+
+        if startingScope, activeScopedURLs[url.path] == nil,
+           url.startAccessingSecurityScopedResource() {
+            activeScopedURLs[url.path] = url
         }
 
         return url
@@ -401,10 +420,10 @@ final class RecentFoldersManager {
     /// Folders: checks bookmark resolution. Files: checks file existence on disk.
     /// Called once when the recents list is first displayed.
     func pruneStaleItems() {
-        // Prune folders with invalid bookmarks
+        // Prune folders with invalid bookmarks (validation only — no scope)
         let folders = getRecentFolders()
         for folder in folders {
-            if resolveBookmark(folder) == nil {
+            if resolveBookmark(folder, startingScope: false) == nil {
                 removeFolderByPath(folder.path)
                 log.info("Pruned stale folder: \(folder.name)")
             }

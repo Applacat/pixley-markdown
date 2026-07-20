@@ -440,14 +440,26 @@ public final class NavigationState {
     /// Storing expansion state here ensures it survives those recreations.
     internal var sidebarExpandedPaths = Set<String>()
 
+    /// Whether we successfully started a security scope on `rootFolderURL`.
+    /// Stop must only be called when a matching start succeeded — an
+    /// unbalanced stop over-releases and can revoke access held elsewhere
+    /// in the process for the same path (e.g. RecentFoldersManager's
+    /// bookmark-resolved scope).
+    private var didStartScopeForRoot = false
+
     // MARK: - Actions
 
     func openFolder(_ url: URL) {
-        // Stop accessing previous folder if any
-        rootFolderURL?.stopAccessingSecurityScopedResource()
+        // Stop accessing previous folder if we started its scope
+        if didStartScopeForRoot {
+            rootFolderURL?.stopAccessingSecurityScopedResource()
+        }
 
-        // Start accessing new folder's security scope
-        _ = url.startAccessingSecurityScopedResource()
+        // Start accessing new folder's security scope. URLs round-tripped
+        // through BrowserOpenRequest carry no scope (start returns false);
+        // access for those is held by RecentFoldersManager's resolved instance
+        // or by the NSOpenPanel grant.
+        didStartScopeForRoot = url.startAccessingSecurityScopedResource()
 
         rootFolderURL = url
         selectedFile = nil
@@ -456,7 +468,10 @@ public final class NavigationState {
     }
 
     func closeFolder() {
-        rootFolderURL?.stopAccessingSecurityScopedResource()
+        if didStartScopeForRoot {
+            rootFolderURL?.stopAccessingSecurityScopedResource()
+        }
+        didStartScopeForRoot = false
         rootFolderURL = nil
         selectedFile = nil
         changedPaths.removeAll()
