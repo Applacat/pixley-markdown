@@ -14,9 +14,16 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
     MACOSX_DEPLOYMENT_TARGET: "15.0"
+    # Release MUST stay universal (arm64 + x86_64) for App Store submission.
     ARCHS: [arm64, x86_64]
     ONLY_ACTIVE_ARCH: NO
     SWIFT_VERSION: "6.0"
+  configs:
+    # Debug is arm64-only so local SPM packages (aimdRenderer) resolve/link.
+    # Previously this was a hand-edit to the generated pbxproj; encoding it
+    # here keeps `xcodegen generate` from reintroducing the break.
+    Debug:
+      ARCHS: [arm64]
 
 localPackages:
   - Packages/aimdRenderer
