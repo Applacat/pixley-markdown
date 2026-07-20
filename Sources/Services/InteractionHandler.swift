@@ -4,6 +4,8 @@ import aimdRenderer
 // MARK: - Interactive Edit
 
 /// A structured edit to apply to a markdown file.
+/// Retained for SelfDescribingElement's protocol surface; live write paths
+/// use typed element methods with re-detection instead of raw ranges.
 enum InteractiveEdit: Sendable {
     /// Replace a range of text with new content
     case replace(range: Range<String.Index>, newText: String)
@@ -17,10 +19,15 @@ enum InteractiveEdit: Sendable {
 /// Safely writes interactive element changes back to markdown files.
 ///
 /// Design principles:
-/// 1. Always reads fresh from disk before modifying (never from NSTextStorage)
-/// 2. Uses atomic writes to prevent corruption
-/// 3. Suppresses FileWatcher to avoid reload pill for self-initiated writes
-/// 4. Handles concurrent writes by re-reading disk
+/// 1. Writes to the same file are serialized through a per-URL chain — two
+///    rapid interactions never interleave their read-modify-write cycles.
+/// 2. Every write re-reads the file and re-locates its target element via
+///    `ElementRelocator` (same identity signature, nearest offset). Ranges
+///    computed against displayed content are never applied to disk content.
+/// 3. If the element can no longer be found, the write fails with
+///    `rangeMismatch` ("Document changed externally") instead of writing blind.
+/// 4. Atomic writes, with FileWatcher suppression settled on every path
+///    (`selfWriteCompleted` / `selfWriteFailed`).
 @MainActor
 final class InteractionHandler {
 
@@ -45,6 +52,73 @@ final class InteractionHandler {
         }
     }
 
+    // MARK: - Serialized Write Funnel
+
+    /// Tail of the in-flight write chain per file path. Static so writes to
+    /// the same document serialize across handler instances (multi-window,
+    /// chat + view). MainActor-confined.
+    private static var writeChains: [String: Task<Void, Never>] = [:]
+
+    /// The single write path: enqueues behind any in-flight write to the same
+    /// URL, reads fresh content, computes the new content via `compute`
+    /// (which re-locates its element and throws `rangeMismatch` on failure),
+    /// writes atomically, and settles FileWatcher suppression.
+    private func serializedWrite(
+        to url: URL,
+        fileWatcher: FileWatcher?,
+        onContentUpdated: ((String) -> Void)?,
+        compute: @escaping @Sendable (String) throws -> String
+    ) async throws {
+        let key = url.path
+        let previous = Self.writeChains[key]
+
+        let work = Task { () throws -> String in
+            await previous?.value
+
+            fileWatcher?.suppressChanges(for: 1.0)
+            var settled = false
+            defer { if !settled { fileWatcher?.selfWriteFailed() } }
+
+            let newContent = try await Task.detached(priority: .userInitiated) {
+                let data: Data
+                do {
+                    data = try Data(contentsOf: url)
+                } catch {
+                    throw WriteError.readFailed(url, error)
+                }
+                guard let currentContent = String(data: data, encoding: .utf8) else {
+                    throw WriteError.readFailed(url, NSError(
+                        domain: "InteractionHandler", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"]
+                    ))
+                }
+                return try compute(currentContent)
+            }.value
+
+            do {
+                try await self.secureWrite(newContent, to: url)
+            } catch let error as WriteError {
+                throw error
+            } catch {
+                throw WriteError.writeFailed(url, error)
+            }
+            fileWatcher?.selfWriteCompleted()
+            settled = true
+            return newContent
+        }
+
+        let chain = Task { _ = try? await work.value }
+        Self.writeChains[key] = chain
+        defer {
+            if Self.writeChains[key] == chain {
+                Self.writeChains[key] = nil
+            }
+        }
+
+        let newContent = try await work.value
+        onContentUpdated?(newContent)
+    }
+
     /// Writes content to a file with security-scoped access on the parent directory.
     /// Ensures write permission for files in subfolders of the sandbox-granted directory.
     private func secureWrite(_ content: String, to url: URL) async throws {
@@ -57,133 +131,28 @@ final class InteractionHandler {
         }.value
     }
 
-    /// Reads fresh content from disk, re-detects elements, and returns the element
-    /// closest to the stale element's position along with the current file content.
-    /// Prevents stale-range corruption when multiple elements share the same structure.
-    private func redetectElement<T: Sendable>(
-        staleBlockquoteRange: Range<String.Index>,
-        displayedContent: String,
-        url: URL,
-        extract: @escaping @Sendable (InteractiveElement) -> T?,
-        isCompatible: @escaping @Sendable (T) -> Bool,
-        blockquoteRange: @escaping @Sendable (T) -> Range<String.Index>
-    ) async throws -> (T, String) {
-        let staleOffset = displayedContent.distance(from: displayedContent.startIndex, to: staleBlockquoteRange.lowerBound)
+    // MARK: - Core Patterns
 
-        return try await Task.detached(priority: .userInitiated) {
-            let data = try Data(contentsOf: url)
-            guard let currentContent = String(data: data, encoding: .utf8) else {
-                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"]))
-            }
-
-            let elements = InteractiveElementDetector.detect(in: currentContent)
-            let candidates = elements.compactMap(extract).filter(isCompatible)
-
-            guard let fresh = candidates.min(by: {
-                let aOff = currentContent.distance(from: currentContent.startIndex, to: blockquoteRange($0).lowerBound)
-                let bOff = currentContent.distance(from: currentContent.startIndex, to: blockquoteRange($1).lowerBound)
-                return abs(aOff - staleOffset) < abs(bOff - staleOffset)
-            }) else {
-                throw WriteError.rangeMismatch
-            }
-
-            return (fresh, currentContent)
-        }.value
-    }
-
-    /// Applies an edit to a file on disk.
-    ///
-    /// - Parameters:
-    ///   - edit: The structured edit to apply
-    ///   - url: The file URL to modify
-    ///   - fileWatcher: Optional FileWatcher to suppress reload for this write
-    ///   - onContentUpdated: Callback with the new file content (for updating in-memory state)
-    /// - Throws: `WriteError` if the operation fails
-    func apply(
-        edit: InteractiveEdit,
-        to url: URL,
-        fileWatcher: FileWatcher? = nil,
-        onContentUpdated: ((String) -> Void)? = nil
-    ) async throws {
-        // Step 1: Suppress FileWatcher EARLY with longer window to cover atomic writes
-        // Atomic writes can trigger multiple DispatchSource events (write + rename + delete),
-        // and macOS may buffer/delay these events, so we need a generous window.
-        // Extended to 1.0 second to handle slow disk I/O and event coalescing.
-        fileWatcher?.suppressChanges(for: 1.0)
-        var writeSucceeded = false
-        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
-
-        // Step 2: Read + compute edit off main thread (no file write yet)
-        let newContent = try await Task.detached(priority: .userInitiated) {
-            let currentContent: String
-            do {
-                let data = try Data(contentsOf: url)
-                guard let text = String(data: data, encoding: .utf8) else {
-                    throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"]))
-                }
-                currentContent = text
-            } catch let error as WriteError {
-                throw error
-            } catch {
-                throw WriteError.readFailed(url, error)
-            }
-
-            let newContent: String
-            switch edit {
-            case .replace(let range, let newText):
-                guard range.lowerBound >= currentContent.startIndex,
-                      range.upperBound <= currentContent.endIndex else {
-                    throw WriteError.rangeMismatch
-                }
-                var modified = currentContent
-                modified.replaceSubrange(range, with: newText)
-                newContent = modified
-
-            case .replaceMultiple(let replacements):
-                var modified = currentContent
-                let sorted = replacements.sorted { $0.range.lowerBound > $1.range.lowerBound }
-                for (range, newText) in sorted {
-                    guard range.lowerBound >= modified.startIndex,
-                          range.upperBound <= modified.endIndex else {
-                        throw WriteError.rangeMismatch
-                    }
-                    modified.replaceSubrange(range, with: newText)
-                }
-                newContent = modified
-            }
-
-            return newContent
-        }.value
-
-        // Step 3: Write atomically with security-scoped access
-        do {
-            try await secureWrite(newContent, to: url)
-        } catch {
-            throw WriteError.writeFailed(url, error)
-        }
-        fileWatcher?.selfWriteCompleted()
-        writeSucceeded = true
-
-        // Step 4: Update in-memory state (main actor)
-        onContentUpdated?(newContent)
-    }
-
-    // MARK: - Convenience Methods
-
-    /// Toggles a checkbox in a markdown file.
+    /// Toggles a checkbox. `displayedContent` is the content the element was
+    /// detected in — used to anchor re-location in the fresh file content.
     func toggleCheckbox(
         _ checkbox: CheckboxElement,
+        displayedContent: String,
         in url: URL,
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        let newChar = checkbox.isChecked ? " " : "x"
-        try await apply(
-            edit: .replace(range: checkbox.checkRange, newText: newChar),
-            to: url,
-            fileWatcher: fileWatcher,
-            onContentUpdated: onContentUpdated
-        )
+        let wasChecked = checkbox.isChecked
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.checkbox(
+                checkbox, displayed: displayedContent, fresh: current
+            ) else {
+                throw WriteError.rangeMismatch
+            }
+            var modified = current
+            modified.replaceSubrange(fresh.checkRange, with: wasChecked ? " " : "x")
+            return modified
+        }
     }
 
     /// Selects a choice option (radio behavior — deselects others).
@@ -195,39 +164,30 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        fileWatcher?.suppressChanges(for: 1.0)
-        var writeSucceeded = false
-        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
-
-        let (freshChoice, currentContent) = try await redetectElement(
-            staleBlockquoteRange: choice.blockquoteRange,
-            displayedContent: displayedContent,
-            url: url,
-            extract: { if case .choice(let ch) = $0 { return ch }; return nil },
-            isCompatible: { $0.options.count == choice.options.count },
-            blockquoteRange: { $0.blockquoteRange }
-        )
-
-        var modified = currentContent
-        for i in (0..<freshChoice.options.count).reversed() {
-            let option = freshChoice.options[i]
-            let newChar = (i == optionIndex) ? "x" : " "
-            let currentChar = option.isSelected ? "x" : " "
-            if String(newChar) != String(currentChar) {
-                modified.replaceSubrange(option.checkRange, with: String(newChar))
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.choice(
+                choice, displayed: displayedContent, fresh: current
+            ) else {
+                throw WriteError.rangeMismatch
             }
+            var modified = current
+            for i in (0..<fresh.options.count).reversed() {
+                let option = fresh.options[i]
+                let newChar = (i == optionIndex) ? "x" : " "
+                let currentChar = option.isSelected ? "x" : " "
+                if newChar != currentChar {
+                    modified.replaceSubrange(option.checkRange, with: newChar)
+                }
+            }
+            return modified
         }
-
-        try await secureWrite(modified, to: url)
-        fileWatcher?.selfWriteCompleted()
-        writeSucceeded = true
-        await MainActor.run { onContentUpdated?(modified) }
     }
 
     /// Replaces a fill-in placeholder with a value.
     func fillIn(
         _ element: FillInElement,
         value: String,
+        displayedContent: String,
         in url: URL,
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
@@ -242,17 +202,45 @@ final class InteractionHandler {
         case .text, .date:
             wrapped = "[[\(value)]]"
         }
-        try await apply(
-            edit: .replace(range: element.range, newText: wrapped),
-            to: url,
-            fileWatcher: fileWatcher,
-            onContentUpdated: onContentUpdated
-        )
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.fillIn(
+                element, displayed: displayedContent, fresh: current
+            ) else {
+                throw WriteError.rangeMismatch
+            }
+            var modified = current
+            modified.replaceSubrange(fresh.range, with: wrapped)
+            return modified
+        }
     }
 
+    /// Sets feedback text in a feedback comment.
+    func setFeedback(
+        _ element: FeedbackElement,
+        text: String,
+        displayedContent: String,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        let sanitized = Self.sanitizeNoteText(text)
+        let newComment = "<!-- feedback: \(sanitized) -->"
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.feedback(
+                element, displayed: displayedContent, fresh: current
+            ) else {
+                throw WriteError.rangeMismatch
+            }
+            var modified = current
+            modified.replaceSubrange(fresh.range, with: newComment)
+            return modified
+        }
+    }
+
+    // MARK: - Spec 4 Controls
+
     /// Spec 4: Replaces a Spec 4 control element (slider, stepper, toggle, color picker)
-    /// with a raw value, using offset-based re-detection to survive external edits.
-    /// The pattern is consumed — controls are empty-state only (MVP).
+    /// with a raw value. The pattern is consumed — controls are empty-state only (MVP).
     func replaceSpec4Element(
         _ element: InteractiveElement,
         with value: String,
@@ -261,75 +249,20 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        fileWatcher?.suppressChanges(for: 1.0)
-        var writeSucceeded = false
-        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
-
-        // Re-detect the element on fresh file content using offset-based matching
-        let (freshRange, currentContent) = try await redetectSpec4ElementRange(
-            staleRange: element.range,
-            displayedContent: displayedContent,
-            url: url,
-            matchesElement: element
-        )
-
-        var modified = currentContent
-        modified.replaceSubrange(freshRange, with: value)
-
-        try await secureWrite(modified, to: url)
-        fileWatcher?.selfWriteCompleted()
-        writeSucceeded = true
-        await MainActor.run { onContentUpdated?(modified) }
-    }
-
-    /// Helper: re-detects a Spec 4 element in fresh file content using character offset
-    /// as the stable identifier. Returns the fresh range and the current content.
-    private func redetectSpec4ElementRange(
-        staleRange: Range<String.Index>,
-        displayedContent: String,
-        url: URL,
-        matchesElement: InteractiveElement
-    ) async throws -> (Range<String.Index>, String) {
-        let staleOffset = displayedContent.distance(from: displayedContent.startIndex, to: staleRange.lowerBound)
-
-        // Capture the kind discriminator for the Sendable closure
-        let kindMatcher: @Sendable (InteractiveElement) -> Bool = { element in
-            switch (element, matchesElement) {
-            case (.slider, .slider),
-                 (.stepper, .stepper),
-                 (.toggle, .toggle),
-                 (.colorPicker, .colorPicker):
-                return true
-            default:
-                return false
-            }
-        }
-
-        return try await Task.detached(priority: .userInitiated) {
-            let data = try Data(contentsOf: url)
-            guard let currentContent = String(data: data, encoding: .utf8) else {
-                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"]))
-            }
-
-            let elements = InteractiveElementDetector.detect(in: currentContent)
-            let candidates = elements.filter(kindMatcher)
-
-            guard let fresh = candidates.min(by: {
-                let aOff = currentContent.distance(from: currentContent.startIndex, to: $0.range.lowerBound)
-                let bOff = currentContent.distance(from: currentContent.startIndex, to: $1.range.lowerBound)
-                return abs(aOff - staleOffset) < abs(bOff - staleOffset)
-            }) else {
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.spec4(
+                element, displayed: displayedContent, fresh: current
+            ) else {
                 throw WriteError.rangeMismatch
             }
-
-            return (fresh.range, currentContent)
-        }.value
+            var modified = current
+            modified.replaceSubrange(fresh.range, with: value)
+            return modified
+        }
     }
 
     /// Spec 4: Toggles an auditable checkbox. Action is "check" (appends date + optional note)
     /// or "uncheck" (removes date + note).
-    /// `displayedContent` is the content the user is viewing — needed to compute stable offsets
-    /// since the on-disk file may have changed since the element was detected.
     func toggleAuditableCheckbox(
         _ element: AuditableCheckboxElement,
         action: String,
@@ -339,54 +272,39 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        fileWatcher?.suppressChanges(for: 1.0)
-        var writeSucceeded = false
-        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
-
-        // Re-detect the element on fresh file content using offset-based matching
-        let (fresh, currentContent) = try await redetectElement(
-            staleBlockquoteRange: element.range,
-            displayedContent: displayedContent,
-            url: url,
-            extract: { if case .auditableCheckbox(let ac) = $0 { return ac }; return nil },
-            isCompatible: { _ in true },
-            blockquoteRange: { $0.range }
-        )
-
-        // Sanitize note text (defense in depth: strip newlines, HTML comment sequences, cap length)
         let sanitizedNote = Self.sanitizeNoteText(note)
+        let today = Self.todayString()
 
-        // Build new line content
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        let today = formatter.string(from: Date())
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.auditableCheckbox(
+                element, displayed: displayedContent, fresh: current
+            ) else {
+                throw WriteError.rangeMismatch
+            }
 
-        // Reconstruct the line: preserve the original list marker prefix (e.g. `- [`)
-        let lineText = String(currentContent[fresh.range])
-        guard let openBracket = lineText.firstIndex(of: "[") else { return }
-        let prefix = String(lineText[lineText.startIndex...openBracket])
-        let suffix = "] " // closing bracket + space
+            // Reconstruct the line: preserve the original list marker prefix (e.g. `- [`)
+            let lineText = String(current[fresh.range])
+            guard let openBracket = lineText.firstIndex(of: "[") else {
+                throw WriteError.rangeMismatch
+            }
+            let prefix = String(lineText[lineText.startIndex...openBracket])
+            let suffix = "] " // closing bracket + space
 
-        let labelWithMarker = "\(fresh.label) (notes)"
-        let newLine: String
-        switch action {
-        case "check":
-            let stamp = sanitizedNote.isEmpty ? "— \(today)" : "— \(today): \(sanitizedNote)"
-            newLine = "\(prefix)x\(suffix)\(labelWithMarker) \(stamp)"
-        case "uncheck":
-            newLine = "\(prefix) \(suffix)\(labelWithMarker)"
-        default:
-            return
-        }
+            let labelWithMarker = "\(fresh.label) (notes)"
+            let newLine: String
+            switch action {
+            case "check":
+                let stamp = sanitizedNote.isEmpty ? "— \(today)" : "— \(today): \(sanitizedNote)"
+                newLine = "\(prefix)x\(suffix)\(labelWithMarker) \(stamp)"
+            case "uncheck":
+                newLine = "\(prefix) \(suffix)\(labelWithMarker)"
+            default:
+                throw WriteError.rangeMismatch
+            }
 
-        var newContent = currentContent
-        newContent.replaceSubrange(fresh.range, with: newLine)
-
-        try await secureWrite(newContent, to: url)
-        fileWatcher?.selfWriteCompleted()
-        writeSucceeded = true
-        await MainActor.run {
-            onContentUpdated?(newContent)
+            var modified = current
+            modified.replaceSubrange(fresh.range, with: newLine)
+            return modified
         }
     }
 
@@ -403,29 +321,9 @@ final class InteractionHandler {
         return clean
     }
 
-    /// Sets feedback text in a feedback comment.
-    func setFeedback(
-        _ element: FeedbackElement,
-        text: String,
-        in url: URL,
-        fileWatcher: FileWatcher? = nil,
-        onContentUpdated: ((String) -> Void)? = nil
-    ) async throws {
-        let newComment = "<!-- feedback: \(text) -->"
-        try await apply(
-            edit: .replace(range: element.range, newText: newComment),
-            to: url,
-            fileWatcher: fileWatcher,
-            onContentUpdated: onContentUpdated
-        )
-    }
-
     // MARK: - Phase 3: Advanced Patterns
 
     /// Selects a review option (radio behavior) with date stamp and optional notes.
-    ///
-    /// The selected option gets `[x] STATUS — YYYY-MM-DD` (plus `: notes` if provided).
-    /// Other options are deselected and their date/notes are cleared.
     func selectReview(
         optionIndex: Int,
         notes: String? = nil,
@@ -436,43 +334,29 @@ final class InteractionHandler {
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         let dateString = Self.todayString()
-        fileWatcher?.suppressChanges(for: 1.0)
-        var writeSucceeded = false
-        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
-
-        let (freshReview, currentContent) = try await redetectElement(
-            staleBlockquoteRange: review.blockquoteRange,
-            displayedContent: displayedContent,
-            url: url,
-            extract: { if case .review(let rv) = $0 { return rv }; return nil },
-            isCompatible: { $0.options.count == review.options.count },
-            blockquoteRange: { $0.blockquoteRange }
-        )
-
-        guard optionIndex < freshReview.options.count else {
-            throw WriteError.rangeMismatch
-        }
-
-        var modified = currentContent
-        for i in (0..<freshReview.options.count).reversed() {
-            let option = freshReview.options[i]
-            if i == optionIndex {
-                var suffix = " \(option.status.rawValue) — \(dateString)"
-                if let notes, !notes.isEmpty {
-                    suffix += ": \(notes)"
-                }
-                let newLine = "[x]\(suffix)"
-                modified.replaceSubrange(option.range, with: newLine)
-            } else {
-                let newLine = "[ ] \(option.status.rawValue)"
-                modified.replaceSubrange(option.range, with: newLine)
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.review(
+                review, displayed: displayedContent, fresh: current
+            ) else {
+                throw WriteError.rangeMismatch
             }
+            var modified = current
+            for i in (0..<fresh.options.count).reversed() {
+                let option = fresh.options[i]
+                if i == optionIndex {
+                    var suffix = " \(option.status.rawValue) — \(dateString)"
+                    if let notes, !notes.isEmpty {
+                        suffix += ": \(notes)"
+                    }
+                    let newLine = "[x]\(suffix)"
+                    modified.replaceSubrange(option.range, with: newLine)
+                } else {
+                    let newLine = "[ ] \(option.status.rawValue)"
+                    modified.replaceSubrange(option.range, with: newLine)
+                }
+            }
+            return modified
         }
-
-        try await secureWrite(modified, to: url)
-        fileWatcher?.selfWriteCompleted()
-        writeSucceeded = true
-        await MainActor.run { onContentUpdated?(modified) }
     }
 
     /// Clears all review selections (deselects every option, removes date/notes).
@@ -483,35 +367,26 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        fileWatcher?.suppressChanges(for: 1.0)
-        var writeSucceeded = false
-        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
-
-        let (freshReview, currentContent) = try await redetectElement(
-            staleBlockquoteRange: review.blockquoteRange,
-            displayedContent: displayedContent,
-            url: url,
-            extract: { if case .review(let rv) = $0 { return rv }; return nil },
-            isCompatible: { $0.options.count == review.options.count },
-            blockquoteRange: { $0.blockquoteRange }
-        )
-
-        var modified = currentContent
-        for i in (0..<freshReview.options.count).reversed() {
-            let option = freshReview.options[i]
-            let newLine = "[ ] \(option.status.rawValue)"
-            modified.replaceSubrange(option.range, with: newLine)
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.review(
+                review, displayed: displayedContent, fresh: current
+            ) else {
+                throw WriteError.rangeMismatch
+            }
+            var modified = current
+            for i in (0..<fresh.options.count).reversed() {
+                let option = fresh.options[i]
+                let newLine = "[ ] \(option.status.rawValue)"
+                modified.replaceSubrange(option.range, with: newLine)
+            }
+            return modified
         }
-
-        try await secureWrite(modified, to: url)
-        fileWatcher?.selfWriteCompleted()
-        writeSucceeded = true
-        await MainActor.run { onContentUpdated?(modified) }
     }
 
     /// Accepts a CriticMarkup suggestion — applies the change to the file.
     func acceptSuggestion(
         _ suggestion: SuggestionElement,
+        displayedContent: String,
         in url: URL,
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
@@ -531,18 +406,14 @@ final class InteractionHandler {
             // {==text==}{>>comment<<} → text
             replacement = suggestion.oldText ?? ""
         }
-
-        try await apply(
-            edit: .replace(range: suggestion.range, newText: replacement),
-            to: url,
-            fileWatcher: fileWatcher,
-            onContentUpdated: onContentUpdated
-        )
+        try await replaceSuggestion(suggestion, with: replacement, displayedContent: displayedContent,
+                                    in: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated)
     }
 
     /// Rejects a CriticMarkup suggestion — removes the markup, keeps original.
     func rejectSuggestion(
         _ suggestion: SuggestionElement,
+        displayedContent: String,
         in url: URL,
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
@@ -562,31 +433,8 @@ final class InteractionHandler {
             // {==text==}{>>comment<<} → text (keep highlighted text)
             replacement = suggestion.oldText ?? ""
         }
-
-        try await apply(
-            edit: .replace(range: suggestion.range, newText: replacement),
-            to: url,
-            fileWatcher: fileWatcher,
-            onContentUpdated: onContentUpdated
-        )
-    }
-
-    /// Adds a CriticMarkup comment to a text range. Wraps the selected text in `{==text==}{>>comment<<}`.
-    func addComment(
-        selectedText: String,
-        comment: String,
-        range: Range<String.Index>,
-        in url: URL,
-        fileWatcher: FileWatcher? = nil,
-        onContentUpdated: ((String) -> Void)? = nil
-    ) async throws {
-        let replacement = "{==\(selectedText)==}{>>\(comment)<<}"
-        try await apply(
-            edit: .replace(range: range, newText: replacement),
-            to: url,
-            fileWatcher: fileWatcher,
-            onContentUpdated: onContentUpdated
-        )
+        try await replaceSuggestion(suggestion, with: replacement, displayedContent: displayedContent,
+                                    in: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated)
     }
 
     /// Edits the comment text of a CriticMarkup highlight.
@@ -594,96 +442,179 @@ final class InteractionHandler {
     func editComment(
         _ suggestion: SuggestionElement,
         newComment: String,
+        displayedContent: String,
         in url: URL,
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         let highlightedText = suggestion.oldText ?? ""
         let replacement = "{==\(highlightedText)==}{>>\(newComment)<<}"
-        try await apply(
-            edit: .replace(range: suggestion.range, newText: replacement),
-            to: url,
-            fileWatcher: fileWatcher,
-            onContentUpdated: onContentUpdated
-        )
+        try await replaceSuggestion(suggestion, with: replacement, displayedContent: displayedContent,
+                                    in: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated)
     }
 
-    /// Advances a status to the next state. Appends date for terminal states.
-    func advanceStatus(
-        _ status: StatusElement,
-        to newState: String,
+    /// Shared suggestion write path: re-locates by type + old/new text, nearest offset.
+    private func replaceSuggestion(
+        _ suggestion: SuggestionElement,
+        with replacement: String,
+        displayedContent: String,
+        in url: URL,
+        fileWatcher: FileWatcher?,
+        onContentUpdated: ((String) -> Void)?
+    ) async throws {
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.suggestion(
+                suggestion, displayed: displayedContent, fresh: current
+            ) else {
+                throw WriteError.rangeMismatch
+            }
+            var modified = current
+            modified.replaceSubrange(fresh.range, with: replacement)
+            return modified
+        }
+    }
+
+    /// Adds a CriticMarkup comment to a text range. Wraps the selected text in `{==text==}{>>comment<<}`.
+    /// The selection is re-anchored by its text: exact position if unchanged,
+    /// else the nearest occurrence of the same text in the fresh content.
+    func addComment(
+        selectedText: String,
+        comment: String,
+        range: Range<String.Index>,
+        displayedContent: String,
         in url: URL,
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        // Re-detect from fresh file content to avoid stale range corruption
-        fileWatcher?.suppressChanges(for: 1.0)
-        var writeSucceeded = false
-        defer { if !writeSucceeded { fileWatcher?.selfWriteFailed() } }
-
-        let newContent = try await Task.detached(priority: .userInitiated) {
-            let data = try Data(contentsOf: url)
-            guard let currentContent = String(data: data, encoding: .utf8) else {
-                throw WriteError.readFailed(url, NSError(domain: "InteractionHandler", code: 1))
-            }
-
-            // Re-detect status elements from fresh content
-            let elements = InteractiveElementDetector.detect(in: currentContent)
-            guard let freshStatus = elements.compactMap({ element -> StatusElement? in
-                if case .status(let st) = element { return st }
-                return nil
-            }).first(where: { $0.states == status.states }) else {
+        let replacement = "{==\(selectedText)==}{>>\(comment)<<}"
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let freshRange = ElementRelocator.selection(
+                text: selectedText, staleRange: range, displayed: displayedContent, fresh: current
+            ) else {
                 throw WriteError.rangeMismatch
             }
-
-            let label = "**Status:** \(newState)"
-
-            var modified = currentContent
-            modified.replaceSubrange(freshStatus.labelRange, with: label)
+            var modified = current
+            modified.replaceSubrange(freshRange, with: replacement)
             return modified
-        }.value
+        }
+    }
 
-        try await secureWrite(newContent, to: url)
-        fileWatcher?.selfWriteCompleted()
-        writeSucceeded = true
-
-        await MainActor.run {
-            onContentUpdated?(newContent)
+    /// Advances a status to the next state.
+    func advanceStatus(
+        _ status: StatusElement,
+        to newState: String,
+        displayedContent: String,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.status(
+                status, displayed: displayedContent, fresh: current
+            ) else {
+                throw WriteError.rangeMismatch
+            }
+            let label = "**Status:** \(newState)"
+            var modified = current
+            modified.replaceSubrange(fresh.labelRange, with: label)
+            return modified
         }
     }
 
     /// Confirms a confidence indicator (sets to confirmed, preserves text).
     func confirmConfidence(
         _ element: ConfidenceElement,
+        displayedContent: String,
         in url: URL,
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         let newMarker = "> [confidence: confirmed] \(element.text)"
-        try await apply(
-            edit: .replace(range: element.range, newText: newMarker),
-            to: url,
-            fileWatcher: fileWatcher,
-            onContentUpdated: onContentUpdated
-        )
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.confidence(
+                element, displayed: displayedContent, fresh: current
+            ) else {
+                throw WriteError.rangeMismatch
+            }
+            var modified = current
+            modified.replaceSubrange(fresh.range, with: newMarker)
+            return modified
+        }
     }
 
     /// Challenges a low-confidence indicator by appending a feedback comment after it.
     func challengeConfidence(
         _ element: ConfidenceElement,
         feedback: String,
+        displayedContent: String,
         in url: URL,
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        let comment = "\n<!-- feedback: \(feedback) -->"
-        // Insert the comment right after the confidence element's range
-        try await apply(
-            edit: .replace(range: element.range.upperBound..<element.range.upperBound, newText: comment),
-            to: url,
-            fileWatcher: fileWatcher,
-            onContentUpdated: onContentUpdated
-        )
+        let comment = "\n<!-- feedback: \(Self.sanitizeNoteText(feedback)) -->"
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.confidence(
+                element, displayed: displayedContent, fresh: current
+            ) else {
+                throw WriteError.rangeMismatch
+            }
+            var modified = current
+            modified.insert(contentsOf: comment, at: fresh.range.upperBound)
+            return modified
+        }
+    }
+
+    // MARK: - Gutter Comments
+
+    /// Sets, replaces, or removes a gutter comment (`<!-- feedback: ... -->` on
+    /// the line after the anchor). `commentText == nil` removes the comment.
+    /// The anchor is re-located by its line text in the fresh content, so a
+    /// document that shifted since render still gets the comment on the line
+    /// the user clicked.
+    func setGutterComment(
+        lineNumber: Int,
+        commentText: String?,
+        displayedContent: String,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        let displayedLines = displayedContent.components(separatedBy: "\n")
+        // lineNumber is 1-based
+        let staleLineIndex = lineNumber - 1
+        guard staleLineIndex >= 0, staleLineIndex < displayedLines.count else {
+            throw WriteError.rangeMismatch
+        }
+        let anchorText = displayedLines[staleLineIndex]
+        let sanitized = commentText.map { Self.sanitizeNoteText($0) }
+
+        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            var lines = current.components(separatedBy: "\n")
+            guard let anchorIndex = ElementRelocator.anchorLine(
+                text: anchorText,
+                staleIndex: staleLineIndex,
+                displayedLines: displayedLines,
+                freshLines: lines
+            ) else {
+                throw WriteError.rangeMismatch
+            }
+
+            let nextIndex = anchorIndex + 1
+            let nextIsComment = nextIndex < lines.count
+                && lines[nextIndex].trimmingCharacters(in: .whitespaces).hasPrefix("<!-- feedback")
+
+            if let text = sanitized {
+                let commentTag = "<!-- feedback: \(text) -->"
+                if nextIsComment {
+                    lines[nextIndex] = commentTag
+                } else {
+                    lines.insert(commentTag, at: nextIndex)
+                }
+            } else if nextIsComment {
+                lines.remove(at: nextIndex)
+            }
+            return lines.joined(separator: "\n")
+        }
     }
 
     // MARK: - Helpers

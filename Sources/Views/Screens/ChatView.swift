@@ -25,6 +25,7 @@ struct ChatView: View {
 
     // Service for business logic — @State ensures single instance per view identity
     @State private var chatService = ChatService()
+    @State private var interactionHandler = InteractionHandler()
     @State private var cachedPrompts: [SuggestedPrompt] = []
 
     // MARK: - Body
@@ -431,29 +432,49 @@ struct ChatView: View {
     }
 
     /// Configures the edit tool with the current file URL and an edit handler
-    /// that writes back through the InteractionHandler path.
+    /// that routes through InteractionHandler — the same serialized,
+    /// re-detecting write path as UI interactions, with watcher suppression.
     private func configureEditTool() {
+        let handler = interactionHandler
         chatService.configureEditTool(
             fileURL: coordinator.navigation.selectedFile
-        ) { [weak coordinator] edit, url in
+        ) { [weak coordinator] edit, snapshot, url in
             guard let coordinator else { return "Error: coordinator unavailable" }
-            // Read fresh from disk, apply edit, write back
-            let data = try Data(contentsOf: url)
-            guard var content = String(data: data, encoding: .utf8) else {
-                return "Error: invalid encoding"
+            let watcher = coordinator.activeFileWatcher
+            var newContent = snapshot
+            let onUpdate: (String) -> Void = { updated in
+                coordinator.updateDocumentContent(updated)
+                newContent = updated
             }
             switch edit {
-            case .replace(let range, let newText):
-                content.replaceSubrange(range, with: newText)
-            case .replaceMultiple(let replacements):
-                let sorted = replacements.sorted { $0.range.lowerBound > $1.range.lowerBound }
-                for (range, newText) in sorted {
-                    content.replaceSubrange(range, with: newText)
-                }
+            case .checkbox(let cb, _):
+                // ChatTools only forwards state-changing requests, so toggle == set
+                try await handler.toggleCheckbox(
+                    cb, displayedContent: snapshot, in: url,
+                    fileWatcher: watcher, onContentUpdated: onUpdate
+                )
+            case .choice(let ch, let optionIndex):
+                try await handler.selectChoice(
+                    optionIndex: optionIndex, in: ch, displayedContent: snapshot,
+                    url: url, fileWatcher: watcher, onContentUpdated: onUpdate
+                )
+            case .review(let rv, let optionIndex):
+                try await handler.selectReview(
+                    optionIndex: optionIndex, in: rv, displayedContent: snapshot,
+                    url: url, fileWatcher: watcher, onContentUpdated: onUpdate
+                )
+            case .fillIn(let fi, let value):
+                try await handler.fillIn(
+                    fi, value: value, displayedContent: snapshot, in: url,
+                    fileWatcher: watcher, onContentUpdated: onUpdate
+                )
+            case .feedback(let fb, let text):
+                try await handler.setFeedback(
+                    fb, text: text, displayedContent: snapshot, in: url,
+                    fileWatcher: watcher, onContentUpdated: onUpdate
+                )
             }
-            try content.write(to: url, atomically: true, encoding: .utf8)
-            coordinator.updateDocumentContent(content)
-            return content
+            return newContent
         }
     }
 

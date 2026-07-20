@@ -68,7 +68,7 @@ final class ChatService {
 
     /// Sets up the edit tool with file URL and edit handler.
     /// Call when the document changes or on first load.
-    func configureEditTool(fileURL: URL?, onEdit: (@Sendable @MainActor (InteractiveEdit, URL) async throws -> String)?) {
+    func configureEditTool(fileURL: URL?, onEdit: (@Sendable @MainActor (ElementEdit, String, URL) async throws -> String)?) {
         editTool.fileURL = fileURL
         editTool.onEdit = onEdit
     }

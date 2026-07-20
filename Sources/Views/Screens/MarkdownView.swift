@@ -263,65 +263,15 @@ struct MarkdownView: View {
 
         Task {
             do {
-                let content = coordinator.document.content
-                let lines = content.components(separatedBy: "\n")
-                // lineNumber is 1-based; the "next line" index is lineNumber (0-based)
-                let nextLineIndex = lineNumber
-
-                if let text = commentText {
-                    // Insert or update a comment
-                    let commentTag = "<!-- feedback: \(text) -->"
-
-                    if nextLineIndex < lines.count,
-                       lines[nextLineIndex].trimmingCharacters(in: .whitespaces).hasPrefix("<!-- feedback") {
-                        // Replace existing comment line
-                        let lineStart = lines[0..<nextLineIndex].joined(separator: "\n").count + 1 // +1 for newline
-                        let lineEnd = lineStart + lines[nextLineIndex].count
-                        let startIdx = content.index(content.startIndex, offsetBy: lineStart)
-                        let endIdx = content.index(content.startIndex, offsetBy: lineEnd)
-
-                        try await interactionHandler.apply(
-                            edit: .replace(range: startIdx..<endIdx, newText: commentTag),
-                            to: fileURL,
-                            fileWatcher: fileWatcher
-                        ) { newContent in
-                            coordinator.updateDocumentContent(newContent)
-                            refreshCommentedLines(in: newContent)
-                        }
-                    } else {
-                        // Insert new comment after the line
-                        let insertionOffset = lines[0..<lineNumber].joined(separator: "\n").count
-                        let insertIdx = content.index(content.startIndex, offsetBy: insertionOffset)
-                        let insertion = "\n\(commentTag)"
-
-                        try await interactionHandler.apply(
-                            edit: .replace(range: insertIdx..<insertIdx, newText: insertion),
-                            to: fileURL,
-                            fileWatcher: fileWatcher
-                        ) { newContent in
-                            coordinator.updateDocumentContent(newContent)
-                            refreshCommentedLines(in: newContent)
-                        }
-                    }
-                } else {
-                    // Remove existing comment (commentText is nil = remove)
-                    if nextLineIndex < lines.count,
-                       lines[nextLineIndex].trimmingCharacters(in: .whitespaces).hasPrefix("<!-- feedback") {
-                        // Remove the comment line (including preceding newline)
-                        let lineStart = lines[0..<nextLineIndex].joined(separator: "\n").count // offset before newline
-                        let lineEnd = lineStart + 1 + lines[nextLineIndex].count // +1 for newline itself
-                        let startIdx = content.index(content.startIndex, offsetBy: lineStart)
-                        let endIdx = content.index(content.startIndex, offsetBy: min(lineEnd, content.count))
-
-                        try await interactionHandler.apply(
-                            edit: .replace(range: startIdx..<endIdx, newText: ""),
-                            to: fileURL,
-                            fileWatcher: fileWatcher
-                        ) { newContent in
-                            coordinator.updateDocumentContent(newContent)
-                            refreshCommentedLines(in: newContent)
-                        }
-                    }
+                try await interactionHandler.setGutterComment(
+                    lineNumber: lineNumber,
+                    commentText: commentText,
+                    displayedContent: coordinator.document.content,
+                    in: fileURL,
+                    fileWatcher: fileWatcher
+                ) { newContent in
+                    coordinator.updateDocumentContent(newContent)
+                    refreshCommentedLines(in: newContent)
                 }
             } catch {
                 coordinator.showError(.error(message: error.localizedDescription))
@@ -363,7 +313,7 @@ struct MarkdownView: View {
                 switch element {
                 case .checkbox(let cb):
                     try await interactionHandler.toggleCheckbox(
-                        cb, in: fileURL, fileWatcher: fileWatcher
+                        cb, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
                     ) { newContent in
                         coordinator.updateDocumentContent(newContent)
                     }
@@ -404,7 +354,7 @@ struct MarkdownView: View {
                 case .status(let st):
                     if let nextState = st.nextStates.first, st.nextStates.count == 1 {
                         try await interactionHandler.advanceStatus(
-                            st, to: nextState, in: fileURL, fileWatcher: fileWatcher
+                            st, to: nextState, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
                         ) { newContent in
                             coordinator.updateDocumentContent(newContent)
                         }
@@ -413,7 +363,7 @@ struct MarkdownView: View {
                 case .confidence(let conf):
                     if conf.level == .high {
                         try await interactionHandler.confirmConfidence(
-                            conf, in: fileURL, fileWatcher: fileWatcher
+                            conf, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
                         ) { newContent in
                             coordinator.updateDocumentContent(newContent)
                         }
@@ -466,16 +416,17 @@ struct MarkdownView: View {
                     coordinator.showError(.error(message: "This text already has a comment."))
                     return
                 }
-                showAddCommentPopover(selectedText: selectedText, swiftRange: swiftRange, nsRange: nsRange, fileURL: fileURL)
+                showAddCommentPopover(selectedText: selectedText, swiftRange: swiftRange, in: content, nsRange: nsRange, fileURL: fileURL)
             }
         }
     }
 
-    private func showAddCommentPopover(selectedText: String, swiftRange: Range<String.Index>, nsRange: NSRange, fileURL: URL) {
+    private func showAddCommentPopover(selectedText: String, swiftRange: Range<String.Index>, in content: String, nsRange: NSRange, fileURL: URL) {
         // Store context for the comment submission
         pendingCommentRange = swiftRange
         pendingCommentText = selectedText
         pendingCommentFileURL = fileURL
+        pendingCommentContent = content
 
         // Show inline input popover at the selection (reuses existing InputPopoverController pattern)
         if let textView = findMarkdownTextView() {
@@ -496,6 +447,10 @@ struct MarkdownView: View {
     @State private var pendingCommentRange: Range<String.Index>?
     @State private var pendingCommentText: String?
     @State private var pendingCommentFileURL: URL?
+    /// Content snapshot the pending range was computed against — the document
+    /// may update between popover show and submit, and the range's indices are
+    /// only meaningful in the string that produced them.
+    @State private var pendingCommentContent: String?
 
     /// Finds the MarkdownNSTextView in the view hierarchy
     private func findMarkdownTextView() -> MarkdownNSTextView? {
@@ -524,12 +479,15 @@ struct MarkdownView: View {
             pendingCommentRange = nil
             pendingCommentText = nil
             pendingCommentFileURL = nil
+            let commentSnapshot = pendingCommentContent
+            pendingCommentContent = nil
             Task {
                 do {
                     try await interactionHandler.addComment(
                         selectedText: selectedText,
                         comment: value,
                         range: range,
+                        displayedContent: commentSnapshot ?? coordinator.document.content,
                         in: url,
                         fileWatcher: fileWatcher
                     ) { newContent in
@@ -550,14 +508,14 @@ struct MarkdownView: View {
                 switch element {
                 case .fillIn(let fi):
                     try await interactionHandler.fillIn(
-                        fi, value: value, in: fileURL, fileWatcher: fileWatcher
+                        fi, value: value, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
                     ) { newContent in
                         coordinator.updateDocumentContent(newContent)
                     }
 
                 case .feedback(let fb):
                     try await interactionHandler.setFeedback(
-                        fb, text: value, in: fileURL, fileWatcher: fileWatcher
+                        fb, text: value, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
                     ) { newContent in
                         coordinator.updateDocumentContent(newContent)
                     }
@@ -565,19 +523,19 @@ struct MarkdownView: View {
                 case .suggestion(let s):
                     if fieldName == "editComment" {
                         try await interactionHandler.editComment(
-                            s, newComment: value, in: fileURL, fileWatcher: fileWatcher
+                            s, newComment: value, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
                         ) { newContent in
                             coordinator.updateDocumentContent(newContent)
                         }
                     } else if value == "accept" {
                         try await interactionHandler.acceptSuggestion(
-                            s, in: fileURL, fileWatcher: fileWatcher
+                            s, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
                         ) { newContent in
                             coordinator.updateDocumentContent(newContent)
                         }
                     } else {
                         try await interactionHandler.rejectSuggestion(
-                            s, in: fileURL, fileWatcher: fileWatcher
+                            s, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
                         ) { newContent in
                             coordinator.updateDocumentContent(newContent)
                         }
@@ -609,7 +567,7 @@ struct MarkdownView: View {
 
                 case .confidence(let conf):
                     try await interactionHandler.challengeConfidence(
-                        conf, feedback: value, in: fileURL, fileWatcher: fileWatcher
+                        conf, feedback: value, displayedContent: content, in: fileURL, fileWatcher: fileWatcher
                     ) { newContent in
                         coordinator.updateDocumentContent(newContent)
                     }
@@ -645,7 +603,7 @@ struct MarkdownView: View {
         Task {
             do {
                 try await interactionHandler.advanceStatus(
-                    status, to: newState, in: fileURL, fileWatcher: fileWatcher
+                    status, to: newState, displayedContent: coordinator.document.content, in: fileURL, fileWatcher: fileWatcher
                 ) { newContent in
                     coordinator.updateDocumentContent(newContent)
                 }
@@ -677,7 +635,8 @@ struct MarkdownView: View {
             Task { @MainActor in
                 do {
                     try await interactionHandler.fillIn(
-                        fillIn, value: selectedURL.path, in: fileURL, fileWatcher: fileWatcher
+                        fillIn, value: selectedURL.path, displayedContent: coordinator.document.content,
+                        in: fileURL, fileWatcher: fileWatcher
                     ) { newContent in
                         coordinator.updateDocumentContent(newContent)
                     }
@@ -706,7 +665,8 @@ struct MarkdownView: View {
             Task { @MainActor in
                 do {
                     try await interactionHandler.fillIn(
-                        fillIn, value: selectedURL.path, in: fileURL, fileWatcher: fileWatcher
+                        fillIn, value: selectedURL.path, displayedContent: coordinator.document.content,
+                        in: fileURL, fileWatcher: fileWatcher
                     ) { newContent in
                         coordinator.updateDocumentContent(newContent)
                     }
@@ -726,6 +686,8 @@ struct MarkdownView: View {
             }
         }
         fileWatcher?.watch(url)
+        // Expose to other write paths (AI chat edits) for suppression
+        coordinator.activeFileWatcher = fileWatcher
     }
 }
 

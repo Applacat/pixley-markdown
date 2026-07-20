@@ -4,6 +4,20 @@ import aimdRenderer
 import FoundationModels
 #endif
 
+// MARK: - Element Edit
+
+/// A typed edit request produced by the AI tool: the element (as detected in
+/// the tool's content snapshot) plus the intent. Routed through
+/// InteractionHandler, which re-locates the element in fresh disk content —
+/// the snapshot's ranges are never applied to the file directly.
+enum ElementEdit: Sendable {
+    case checkbox(CheckboxElement, check: Bool)
+    case choice(ChoiceElement, optionIndex: Int)
+    case review(ReviewElement, optionIndex: Int)
+    case fillIn(FillInElement, value: String)
+    case feedback(FeedbackElement, text: String)
+}
+
 // MARK: - Edit Interactive Elements Tool
 
 /// FM tool that lets the AI edit interactive elements in the current document.
@@ -44,8 +58,10 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
     /// File URL for write-back
     var fileURL: URL?
 
-    /// Callback to apply edits — must be called on MainActor
-    var onEdit: (@Sendable @MainActor (InteractiveEdit, URL) async throws -> String)?
+    /// Callback to apply edits — must be called on MainActor.
+    /// Receives the typed edit, the content snapshot the element was detected
+    /// in (for re-location anchoring), and the file URL. Returns new content.
+    var onEdit: (@Sendable @MainActor (ElementEdit, String, URL) async throws -> String)?
 
     func call(arguments: Arguments) async throws -> String {
         // Snapshot mutable state on MainActor before doing work
@@ -70,9 +86,7 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
             }
             let shouldCheck = arguments.value.lowercased() == "true" || arguments.value == "x"
             if cb.isChecked != shouldCheck {
-                let newChar = shouldCheck ? "x" : " "
-                let edit = InteractiveEdit.replace(range: cb.checkRange, newText: newChar)
-                return await applyEdit(edit, to: url, handler: editHandler)
+                return await applyEdit(.checkbox(cb, check: shouldCheck), snapshot: content, to: url, handler: editHandler)
             } else {
                 return "Checkbox already \(shouldCheck ? "checked" : "unchecked")"
             }
@@ -85,20 +99,10 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
                   optionIndex >= 0, optionIndex < ch.options.count else {
                 return "Error: Invalid option index '\(arguments.value)' (choice has \(ch.options.count) options)"
             }
-            var replacements: [(range: Range<String.Index>, newText: String)] = []
-            for (i, option) in ch.options.enumerated() {
-                let newChar = (i == optionIndex) ? "x" : " "
-                let currentChar = option.isSelected ? "x" : " "
-                if String(newChar) != String(currentChar) {
-                    replacements.append((range: option.checkRange, newText: String(newChar)))
-                }
-            }
-            if !replacements.isEmpty {
-                let edit = InteractiveEdit.replaceMultiple(replacements)
-                return await applyEdit(edit, to: url, handler: editHandler)
-            } else {
+            if ch.selectedIndex == optionIndex {
                 return "Option already selected"
             }
+            return await applyEdit(.choice(ch, optionIndex: optionIndex), snapshot: content, to: url, handler: editHandler)
 
         case .review:
             guard case .review(let rv) = element else {
@@ -108,57 +112,40 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
                   optionIndex >= 0, optionIndex < rv.options.count else {
                 return "Error: Invalid option index '\(arguments.value)' (review has \(rv.options.count) options)"
             }
-            let dateString = Self.todayString()
-            var replacements: [(range: Range<String.Index>, newText: String)] = []
-            for (i, option) in rv.options.enumerated() {
-                if i == optionIndex {
-                    let newLine = "[x] \(option.status.rawValue) — \(dateString)"
-                    replacements.append((range: option.range, newText: newLine))
-                } else if option.isSelected {
-                    let newLine = "[ ] \(option.status.rawValue)"
-                    replacements.append((range: option.range, newText: newLine))
-                }
-            }
-            if !replacements.isEmpty {
-                let edit = InteractiveEdit.replaceMultiple(replacements)
-                return await applyEdit(edit, to: url, handler: editHandler)
-            } else {
+            if rv.options[optionIndex].isSelected {
                 return "Review already set"
             }
+            return await applyEdit(.review(rv, optionIndex: optionIndex), snapshot: content, to: url, handler: editHandler)
 
         case .fillIn:
             guard case .fillIn(let fi) = element else {
                 return "Error: Element at index \(arguments.elementIndex) is not a fill-in"
             }
-            let edit = InteractiveEdit.replace(range: fi.range, newText: arguments.value)
-            return await applyEdit(edit, to: url, handler: editHandler)
+            return await applyEdit(.fillIn(fi, value: arguments.value), snapshot: content, to: url, handler: editHandler)
 
         case .feedback:
             guard case .feedback(let fb) = element else {
                 return "Error: Element at index \(arguments.elementIndex) is not a feedback element"
             }
-            let newComment = "<!-- feedback: \(arguments.value) -->"
-            let edit = InteractiveEdit.replace(range: fb.range, newText: newComment)
-            return await applyEdit(edit, to: url, handler: editHandler)
+            return await applyEdit(.feedback(fb, text: arguments.value), snapshot: content, to: url, handler: editHandler)
         }
     }
 
-    private func applyEdit(_ edit: InteractiveEdit, to url: URL, handler: (@Sendable @MainActor (InteractiveEdit, URL) async throws -> String)?) async -> String {
+    private func applyEdit(
+        _ edit: ElementEdit,
+        snapshot: String,
+        to url: URL,
+        handler: (@Sendable @MainActor (ElementEdit, String, URL) async throws -> String)?
+    ) async -> String {
         guard let handler else {
             return "Error: Edit handler not configured"
         }
         do {
-            let newContent = try await handler(edit, url)
+            let newContent = try await handler(edit, snapshot, url)
             await MainActor.run { documentContent = newContent }
             return "Edit applied successfully"
         } catch {
             return "Error applying edit: \(error.localizedDescription)"
         }
-    }
-
-    private static func todayString() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
     }
 }

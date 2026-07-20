@@ -44,6 +44,11 @@ public final class AppCoordinator {
     /// Watches the open folder for file system changes (new/modified/deleted files)
     private var folderWatcher: FolderWatcher?
 
+    /// The active document FileWatcher, owned by MarkdownView. Exposed so
+    /// other write paths (AI chat edits) can arm suppression on self-writes.
+    @ObservationIgnored
+    weak var activeFileWatcher: FileWatcher?
+
     /// Coalesces rapid FSEvent-triggered reloads into a single tree reload
     private var folderReloadTask: Task<Void, Never>?
 

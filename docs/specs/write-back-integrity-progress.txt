@@ -1,0 +1,59 @@
+Write-Back Integrity — #77 (stale ranges), #80 (unserialized writes), #90 (AI routing)
+======================================================================================
+
+Design decisions:
+- Serialization: per-URL write chains keyed by url.path (static registry on
+  @MainActor InteractionHandler → multi-window + chat writes to the same doc
+  serialize). Each write awaits the previous chain entry.
+- Re-detection: ElementRelocator (aimdRenderer package, pure + unit-testable)
+  re-locates every element in freshly-read content before replacing.
+  Matching: ORDINAL among same-signature candidates when counts match
+  (shift-invariant — survives large upstream insertions), else nearest
+  offset. Signatures per type (label+state, hint+type, state list, etc.).
+  Free-text anchors: selection (Add Comment) and line text (gutter) use the
+  same ordinal-first strategy.
+- On relocation failure: WriteError.rangeMismatch → existing error banner
+  ("Document changed externally. Please try again."). Never writes blind.
+- AI routing: ChatTools emits typed ElementEdit (element + intent) instead of
+  raw ranges; ChatView routes through InteractionHandler with the tool's
+  content snapshot as the relocation anchor and coordinator.activeFileWatcher
+  for suppression. The parallel write path in ChatView is gone.
+- Gutter comments moved from MarkdownView's inline offset arithmetic into
+  InteractionHandler.setGutterComment (line-anchor relocation + array-based
+  line editing — the old Character/joined() offset math is gone).
+- apply(edit:)/InteractiveEdit raw-range write path removed from live code.
+  The InteractiveEdit enum remains only for dead SelfDescribingElement
+  (#90 format-divergence work, still open).
+
+Tasks:
+[DONE] T1: Trace all write paths + call sites
+[DONE] T2: Per-URL serialization funnel (#80)
+[DONE] T3: Checkbox re-detection (#77)
+[DONE] T4: Fill-in re-detection (#77)
+[DONE] T5: Feedback re-detection (#77)
+[DONE] T6: Comments (add/edit), CriticMarkup accept/reject, confidence,
+       gutter comments, status (ordinal fix also removes duplicate-machine
+       mis-targeting from #87's second half)
+[DONE] T7: AI edits routed through InteractionHandler (#90 routing + missing
+       watcher suppression from #90 item 3)
+[DONE] T8: Tests — 14 ElementRelocator stale-content tests (package, real
+       detector), 3 WriteSerializationTests incl. interleaved-write (app)
+[DONE] T9: Full app suite 320/320 green; grep-verified: no secureWrite/
+       replaceSubrange/document write(to:) outside InteractionHandler
+[DONE] T10: Issues closed with commit refs
+
+Known residual (documented, out of scope):
+- aimdRenderer package suite has 12 PRE-EXISTING failures at HEAD (confidence
+  detection deliberately disabled, status terminal-state expectations) —
+  swift test was never in the loop for the package. Filed as a follow-up
+  issue. My 14 new relocator tests all pass.
+- Element structs detected from an older displayed snapshot could still
+  carry indices foreign to the current coordinator content in rare reload
+  races; relocation reads only offsets from them (distance), same exposure
+  as the previous redetect paths, now confined to one code path.
+
+Iteration log:
+- iter 1: traced pipeline; built ElementRelocator (ordinal-first after
+  nearest-offset failed duplicate tests — tests caught the audit's predicted
+  wrong-sibling weakness); rewrote InteractionHandler on serialized funnel;
+  rewired MarkdownView + ChatTools/ChatService/ChatView; all green.
