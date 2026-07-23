@@ -114,10 +114,11 @@ your AI is Pro."*
   (order-of-magnitude more volume than "reader" terms — the largest ASO win
   of the migration). Screenshots lead with edit-in-place beside live
   controls — the shot no competitor can take.
-- **Tension to resolve (see §10):** risk workstream recommends keeping
-  reader-first copy and shipping editing as labeled beta to protect the
-  rating; product recommends claiming "editor" immediately for ASO. Staging
-  of the repositioning is a Lisa question.
+- **DECIDED (Jose, 2026-07-23): repositioning waits for the product.** No
+  ASO/copy changes until editing has shipped and stabilized — editing lands
+  first as a beta-labeled feature under the current reader-first copy. The
+  "editor" claim, subtitle, and keyword switch happen only once Phase 1+2
+  are shipped and holding up in reviews.
 
 ## 8. Risk Register (abridged — top items)
 
@@ -170,10 +171,12 @@ drops below pre-migration) → freeze editor work.
    roadmap by months.)
 6. **Undo scope:** does undo survive external reloads and AI edits (shared
    stack?), and app relaunch?
-7. **Repositioning staging:** beta-labeled editing with reader-first copy
-   vs immediate "editor" ASO claim — sequence and trigger for the switch.
-8. **Text-surface spike:** TextKit 2 vs SwiftUI TextEditor vs block-local
+7. **Text-surface spike:** TextKit 2 vs SwiftUI TextEditor vs block-local
    fields — spike exit criteria and time box (guardrail: 4 weeks).
+
+*(Resolved pre-interview: repositioning staging — decided 2026-07-23,
+editing ships beta-labeled under reader-first copy; ASO switch only after
+Phase 1+2 ship and hold. See §7.)*
 
 ## 11. Success Metrics
 
