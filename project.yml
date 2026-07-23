@@ -103,7 +103,31 @@ targets:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-write: true
 
+  # Gate G0 spike (editor epic) — isolated from the main app
+  TextKit2Spike:
+    type: application
+    platform: macOS
+    sources:
+      - path: Spikes/TextKit2Spike
+    settings:
+      base:
+        PRODUCT_NAME: TextKit2Spike
+        PRODUCT_BUNDLE_IDENTIFIER: com.aimd.textkit2spike
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: NO
+        CODE_SIGN_IDENTITY: "-"
+        # Spike-only: TextKit 2 provider APIs aren't actor-annotated; the
+        # Swift 6 isolation pattern is a G0 finding to solve properly in G4.
+        SWIFT_VERSION: "5"
+
 schemes:
+  TextKit2Spike:
+    build:
+      targets:
+        TextKit2Spike: all
+    run:
+      config: Debug
+
   AIMDReader:
     build:
       targets:

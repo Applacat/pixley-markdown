@@ -1,0 +1,20 @@
+Editor Epic — Progress
+======================
+Spec: docs/specs/editor-epic.md (v1.0, 2026-07-23)
+
+Gate G0: TextKit 2 spike (4-week kill box) [IN PROGRESS — started 2026-07-23]
+  US-0.1 type-save-reload-undo + checkbox attachment: building
+  US-0.2 Typora reveal + perf: pending
+  Approach: separate app target Spikes/TextKit2Spike (main app untouched).
+  Storage is a projection of model source (checkbox token → attachment) with an
+  explicit bidirectional mapping; round-trip assert source == serialize(storage)
+  every cycle — the mapping fidelity IS the spike question.
+Gate G1: Document model + detector fixes   [PENDING]
+Gate G2: Plain mode editable               [PENDING]
+Gate G3: Conflict engine                   [PENDING]
+Gate G4: Enhanced WYSIWYG surface          [PENDING]
+Gate G5: Insert palette + polish           [PENDING]
+Gate G6: Done bar / 2-week soak            [PENDING]
+
+Iteration log:
+- (none yet)

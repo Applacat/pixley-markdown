@@ -1,0 +1,43 @@
+{
+  "feature": "Editor Epic",
+  "version": "1.0",
+  "date": "2026-07-23",
+  "status": "spec",
+  "epic_issue": 107,
+  "milestone": "v5: The Editor",
+  "parent_brd": "docs/specs/pixley-editor-migration-brd.md",
+  "decisions": {
+    "D1": "Full WYSIWYG or bust — launch is continuous Enhanced editing",
+    "D2": "Nothing ships until complete — single v5 release, phases are internal gates",
+    "D3": "Typora-style syntax reveal at caret for text markdown",
+    "D4": "Interactive elements are atomic OOD objects: part-editing inside, object select/move/delete, Insert palette; file stays plain markdown",
+    "D5": "Plain mode becomes the editable raw-source escape hatch",
+    "D6": "Debounced autosave (1-2s), Cmd+S forces immediate",
+    "D7": "External/AI changes 3-way auto-merge; same-region clash raises keep-mine/take-theirs pill",
+    "D8": "Undo covers user's actions only, session-scoped, never AI merges",
+    "D9": "TextKit 2 + attachment view providers spiked first, 4-week kill box, block-stack fallback",
+    "D10": "Insert palette v1: checkbox, fill-in, date, status machine",
+    "D11": "Ralph 3 view-layer fixes folded into rebuild as requirements; detector-level fixes done in G1",
+    "D12": "Done bar: all gates + dogfood both modes + keystroke-exact round-trip corpus + 2-week zero-loss soak"
+  },
+  "gates": [
+    {"id": "G0", "title": "TextKit 2 spike", "stories": ["US-0.1", "US-0.2"], "kill_box_weeks": 4},
+    {"id": "G1", "title": "Document model + detector fixes", "stories": ["US-1.1", "US-1.2", "US-1.3", "US-1.4"], "closes_issues": [86, 87, 88, 89, 75, 106, 102]},
+    {"id": "G2", "title": "Plain mode editable", "stories": ["US-2.1", "US-2.2", "US-2.3", "US-2.4"], "closes_issues": [91]},
+    {"id": "G3", "title": "Conflict engine", "stories": ["US-3.1", "US-3.2"]},
+    {"id": "G4", "title": "Enhanced WYSIWYG surface", "stories": ["US-4.1", "US-4.2", "US-4.3", "US-4.4"], "closes_issues": [82, 83, 94, 104, 105]},
+    {"id": "G5", "title": "Insert palette + polish", "stories": ["US-5.1", "US-5.2", "US-5.3"], "closes_issues": [103, 85]},
+    {"id": "G6", "title": "Done bar / soak", "stories": []}
+  ],
+  "verification": [
+    "xcodebuild test -project AIMDReader.xcodeproj -scheme AIMDReader -configuration Debug",
+    "cd Packages/aimdRenderer && swift test"
+  ],
+  "guardrails": [
+    "never lose a keystroke",
+    "reader smoke tests green at every gate",
+    "one write path (SaveCoordinator only)",
+    "edit source render display",
+    "corruption-class + round-trip corpus suites gate merges from G1"
+  ]
+}
