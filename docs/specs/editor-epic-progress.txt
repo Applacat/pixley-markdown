@@ -24,8 +24,18 @@ Gate G0: TextKit 2 spike (4-week kill box) [EXIT TESTS GREEN — 2026-07-23, day
         the affirmative architecture decision for G4).
 Gate G1: Document model + detector fixes   [IN PROGRESS — started 2026-07-23]
   TextKit 2 GO recorded (Jose launched G1 past the G0 gate).
-  Plan: US-1.4 package suite green → US-1.3 detector fixes (test-driven)
-        → US-1.1 MarkdownDocument+SaveCoordinator refactor → US-1.2 verify.
+  US-1.3 DONE: detector fixes shipped + issues closed (#86 same-line
+    choices, #87/#75 multi-word status, #88 typed-prefix filled values,
+    #89 grammar + sanitization, #106 data-half — UI half stays G5).
+  US-1.4 DONE: package suite green 139/139 (#102 closed); swift test
+    documented as required gate in CLAUDE.md. App suite 320/320.
+  US-1.1 NEXT: MarkdownDocument + SaveCoordinator; reroute
+    InteractionHandler's serializedWrite to read/mutate the model instead
+    of disk (keep the per-URL chain as the save queue); ChatTools mutates
+    the model. AC: zero behavior change, both suites green, no
+    Data(contentsOf:) in interaction paths.
+  US-1.2 AFTER: detector reads model; instrument toggle path to assert
+    no disk read.
 Gate G2: Plain mode editable               [PENDING]
 Gate G3: Conflict engine                   [PENDING]
 Gate G4: Enhanced WYSIWYG surface          [PENDING]
