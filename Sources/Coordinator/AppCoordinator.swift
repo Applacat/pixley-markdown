@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import Foundation
+import aimdRenderer
 
 // MARK: - App Coordinator
 
@@ -604,6 +605,10 @@ public final class DocumentState {
 
             content = text
             hasChanges = false
+            // Disk truth flows into the live document model (editor epic G1)
+            // so interaction write-backs compute against current content
+            // without their own disk reads.
+            MarkdownDocumentRegistry.syncFromDisk(url: url, content: text)
         } catch {
             errorMessage = error.localizedDescription
             content = ""

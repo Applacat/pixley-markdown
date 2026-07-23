@@ -85,6 +85,7 @@
 		DF2644809B674011702FD2C7 /* ErrorBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5582C99D27644F5CB3FC69C /* ErrorBanner.swift */; };
 		E14EC177606005F83A46DE9C /* GutterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB5636F94F4A1906E62F568 /* GutterView.swift */; };
 		E5E300FEB131BE8C39834293 /* FolderWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7838CF7D4E3E4E3537D06749 /* FolderWatcher.swift */; };
+		E85EDF07CF9FE049D9CB80D5 /* SaveCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A660996842CE9ACB33E6162 /* SaveCoordinator.swift */; };
 		F13DF6DBB6CA4C7DA407EBA9 /* WelcomeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70857F60DB5FFA670F7BD668 /* WelcomeManager.swift */; };
 		F1735D44AA4881A7EBD8B737 /* MarkdownEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F528FFCD63F5222C991B12C2 /* MarkdownEditor.swift */; };
 		F18E74EA9365CCC7B955CB3E /* SyntaxThemeSettingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9CCD8590E8EDEFCF146FE6E /* SyntaxThemeSettingTests.swift */; };
@@ -100,6 +101,7 @@
 		03F7CDD30F6CDC0ADA956A5B /* BrowserOpenRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserOpenRequest.swift; sourceTree = "<group>"; };
 		0867112C3234D8356712867A /* SpikeTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpikeTextView.swift; sourceTree = "<group>"; };
 		09FA8652D62524559DFB8FEF /* FolderServiceCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderServiceCacheTests.swift; sourceTree = "<group>"; };
+		0A660996842CE9ACB33E6162 /* SaveCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveCoordinator.swift; sourceTree = "<group>"; };
 		0CFFE9253A9E7353197A04FA /* MarkdownHighlighterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownHighlighterTests.swift; sourceTree = "<group>"; };
 		0E829AB1C1DC61172A97135F /* ChatConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatConfiguration.swift; sourceTree = "<group>"; };
 		0F7D6B42FE2CAF577653F387 /* MarkdownTextViewPopovers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTextViewPopovers.swift; sourceTree = "<group>"; };
@@ -299,6 +301,7 @@
 				7838CF7D4E3E4E3537D06749 /* FolderWatcher.swift */,
 				5E4AD4FFB98B7E0EBB9BE043 /* InteractionHandler.swift */,
 				D5EDAF12A053E7D98F82C853 /* RecentFoldersManager.swift */,
+				0A660996842CE9ACB33E6162 /* SaveCoordinator.swift */,
 				587E8CF1BFF12ECB2250C093 /* SectionResolver.swift */,
 				BB81EE3FB70820E95B314A5B /* SecurityScopedBookmarkManager.swift */,
 				423C10E48871F0F3985B2387 /* SelfDescribingElement.swift */,
@@ -642,6 +645,7 @@
 				BF44B15895467314278C594F /* PopoverControllers.swift in Sources */,
 				43CDFF554DF839BB7391A61E /* QuickSwitcher.swift in Sources */,
 				DC66F69416DB06DAB5CFE2B2 /* RecentFoldersManager.swift in Sources */,
+				E85EDF07CF9FE049D9CB80D5 /* SaveCoordinator.swift in Sources */,
 				0BEA5CA3C28DF79C38788886 /* SectionResolver.swift in Sources */,
 				B38F2D5327EDE837D4695F8D /* SecurityScopedBookmarkManager.swift in Sources */,
 				B473B7448C92F68579071D23 /* SelfDescribingElement.swift in Sources */,

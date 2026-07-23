@@ -54,81 +54,22 @@ final class InteractionHandler {
 
     // MARK: - Serialized Write Funnel
 
-    /// Tail of the in-flight write chain per file path. Static so writes to
-    /// the same document serialize across handler instances (multi-window,
-    /// chat + view). MainActor-confined.
-    private static var writeChains: [String: Task<Void, Never>] = [:]
-
-    /// The single write path: enqueues behind any in-flight write to the same
-    /// URL, reads fresh content, computes the new content via `compute`
-    /// (which re-locates its element and throws `rangeMismatch` on failure),
-    /// writes atomically, and settles FileWatcher suppression.
+    /// The single write path (editor epic G1): resolves the live
+    /// `MarkdownDocument` for the URL (created from the displayed content on
+    /// first touch, synced by the load path thereafter) and performs the
+    /// mutation through `SaveCoordinator` — serialized per document, computed
+    /// against the MODEL's source (never a disk read), committed to the model,
+    /// then written atomically with FileWatcher settlement.
     private func serializedWrite(
         to url: URL,
+        displayedContent: String,
         fileWatcher: FileWatcher?,
         onContentUpdated: ((String) -> Void)?,
         compute: @escaping @Sendable (String) throws -> String
     ) async throws {
-        let key = url.path
-        let previous = Self.writeChains[key]
-
-        let work = Task { () throws -> String in
-            await previous?.value
-
-            fileWatcher?.suppressChanges(for: 1.0)
-            var settled = false
-            defer { if !settled { fileWatcher?.selfWriteFailed() } }
-
-            let newContent = try await Task.detached(priority: .userInitiated) {
-                let data: Data
-                do {
-                    data = try Data(contentsOf: url)
-                } catch {
-                    throw WriteError.readFailed(url, error)
-                }
-                guard let currentContent = String(data: data, encoding: .utf8) else {
-                    throw WriteError.readFailed(url, NSError(
-                        domain: "InteractionHandler", code: 1,
-                        userInfo: [NSLocalizedDescriptionKey: "Invalid UTF-8 encoding"]
-                    ))
-                }
-                return try compute(currentContent)
-            }.value
-
-            do {
-                try await self.secureWrite(newContent, to: url)
-            } catch let error as WriteError {
-                throw error
-            } catch {
-                throw WriteError.writeFailed(url, error)
-            }
-            fileWatcher?.selfWriteCompleted()
-            settled = true
-            return newContent
-        }
-
-        let chain = Task { _ = try? await work.value }
-        Self.writeChains[key] = chain
-        defer {
-            if Self.writeChains[key] == chain {
-                Self.writeChains[key] = nil
-            }
-        }
-
-        let newContent = try await work.value
-        onContentUpdated?(newContent)
-    }
-
-    /// Writes content to a file with security-scoped access on the parent directory.
-    /// Ensures write permission for files in subfolders of the sandbox-granted directory.
-    private func secureWrite(_ content: String, to url: URL) async throws {
-        let parentDir = url.deletingLastPathComponent()
-        let hasAccess = parentDir.startAccessingSecurityScopedResource()
-        defer { if hasAccess { parentDir.stopAccessingSecurityScopedResource() } }
-
-        try await Task.detached(priority: .userInitiated) {
-            try content.write(to: url, atomically: true, encoding: .utf8)
-        }.value
+        let document = MarkdownDocumentRegistry.obtain(url: url, initialSource: displayedContent)
+        try await SaveCoordinator.shared.perform(on: document, fileWatcher: fileWatcher, compute: compute)
+        onContentUpdated?(document.source)
     }
 
     // MARK: - Core Patterns
@@ -143,7 +84,7 @@ final class InteractionHandler {
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         let wasChecked = checkbox.isChecked
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.checkbox(
                 checkbox, displayed: displayedContent, fresh: current
             ) else {
@@ -164,7 +105,7 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.choice(
                 choice, displayed: displayedContent, fresh: current
             ) else {
@@ -206,7 +147,7 @@ final class InteractionHandler {
         case .text:
             wrapped = "[[text: \(safeValue)]]"
         }
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.fillIn(
                 element, displayed: displayedContent, fresh: current
             ) else {
@@ -229,7 +170,7 @@ final class InteractionHandler {
     ) async throws {
         let sanitized = Self.sanitizeNoteText(text)
         let newComment = "<!-- feedback: \(sanitized) -->"
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.feedback(
                 element, displayed: displayedContent, fresh: current
             ) else {
@@ -253,7 +194,7 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.spec4(
                 element, displayed: displayedContent, fresh: current
             ) else {
@@ -279,7 +220,7 @@ final class InteractionHandler {
         let sanitizedNote = Self.sanitizeNoteText(note)
         let today = Self.todayString()
 
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.auditableCheckbox(
                 element, displayed: displayedContent, fresh: current
             ) else {
@@ -360,7 +301,7 @@ final class InteractionHandler {
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         let dateString = Self.todayString()
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.review(
                 review, displayed: displayedContent, fresh: current
             ) else {
@@ -393,7 +334,7 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.review(
                 review, displayed: displayedContent, fresh: current
             ) else {
@@ -488,7 +429,7 @@ final class InteractionHandler {
         fileWatcher: FileWatcher?,
         onContentUpdated: ((String) -> Void)?
     ) async throws {
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.suggestion(
                 suggestion, displayed: displayedContent, fresh: current
             ) else {
@@ -518,7 +459,7 @@ final class InteractionHandler {
             throw WriteError.rangeMismatch
         }
         let replacement = "{==\(selectedText)==}{>>\(Self.sanitizeCommentText(comment))<<}"
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let freshRange = ElementRelocator.selection(
                 text: selectedText, staleRange: range, displayed: displayedContent, fresh: current
             ) else {
@@ -539,7 +480,7 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.status(
                 status, displayed: displayedContent, fresh: current
             ) else {
@@ -561,7 +502,7 @@ final class InteractionHandler {
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         let newMarker = "> [confidence: confirmed] \(element.text)"
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.confidence(
                 element, displayed: displayedContent, fresh: current
             ) else {
@@ -583,7 +524,7 @@ final class InteractionHandler {
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         let comment = "\n<!-- feedback: \(Self.sanitizeNoteText(feedback)) -->"
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.confidence(
                 element, displayed: displayedContent, fresh: current
             ) else {
@@ -619,7 +560,7 @@ final class InteractionHandler {
         let anchorText = displayedLines[staleLineIndex]
         let sanitized = commentText.map { Self.sanitizeNoteText($0) }
 
-        try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             var lines = current.components(separatedBy: "\n")
             guard let anchorIndex = ElementRelocator.anchorLine(
                 text: anchorText,
