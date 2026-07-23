@@ -14,6 +14,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let image = NSImage(named: direction.assetName) {
             NSApp.applicationIconImage = image
         }
+
+        // G2 runtime AC harness — delegate hook is guaranteed to fire even
+        // when the app launches inactive from the CLI (scene .task is not).
+        if StressPlainHarness.isRequested {
+            NSApp.activate(ignoringOtherApps: true)
+            Task { await StressPlainHarness.run(settings: UserDefaultsSettingsRepository.shared) }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

@@ -36,6 +36,7 @@
 		5233DF9BEF0D6E01EFCE46F5 /* BrowserWindowRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52C05C0F5E8774AFACA0B845 /* BrowserWindowRoot.swift */; };
 		5572052E7E4FEF3FCC1AA6D7 /* SpikeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 906FCD42CE5279A77CF8DA91 /* SpikeApp.swift */; };
 		5B356E557AD91A53CEBEE19B /* ContentBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75ED61A593D761BAA481CC3C /* ContentBlockView.swift */; };
+		5F94C08B096AB9D77F86B51B /* StressPlainHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B609AAA43B5DE97F89EE67 /* StressPlainHarness.swift */; };
 		5FCF2BF2A4C8281FF09C05DB /* FileWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59C1F8A33998A1805CF52C21 /* FileWatcherTests.swift */; };
 		611AB3541FAC22A7CE991F51 /* MarkdownEditorCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BFF79695C856DA747B91FB6 /* MarkdownEditorCoordinator.swift */; };
 		62B5FFE154F5ADA35608DCE9 /* FolderServiceLoadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200C662C39542FD6BFFD4DAF /* FolderServiceLoadingTests.swift */; };
@@ -111,6 +112,7 @@
 		163B0EA3C4C275628DAB5EFE /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
 		1C7F0F379C4D229BD0F9A73E /* OutlineFileList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutlineFileList.swift; sourceTree = "<group>"; };
 		200C662C39542FD6BFFD4DAF /* FolderServiceLoadingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderServiceLoadingTests.swift; sourceTree = "<group>"; };
+		24B609AAA43B5DE97F89EE67 /* StressPlainHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressPlainHarness.swift; sourceTree = "<group>"; };
 		252922C4505069106598EE0D /* SettingsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRepository.swift; sourceTree = "<group>"; };
 		274A5C0180A575FCC4A276D6 /* CoordinatorRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinatorRegistry.swift; sourceTree = "<group>"; };
 		2D6D24A7B40EC1E0A971E466 /* CheckboxAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckboxAttachment.swift; sourceTree = "<group>"; };
@@ -225,6 +227,7 @@
 				64FA6561AB123A6D63F0264A /* MarkdownTextViewNavigation.swift */,
 				0F7D6B42FE2CAF577653F387 /* MarkdownTextViewPopovers.swift */,
 				8A70093718A58E9919D50A1B /* PopoverControllers.swift */,
+				24B609AAA43B5DE97F89EE67 /* StressPlainHarness.swift */,
 				0DBA1764977EF384F4BDE349 /* Coordinator */,
 				B52FFDED8153B878EF5792B4 /* Models */,
 				EBF1AC4AA48491DBB81D52C0 /* Persistence */,
@@ -652,6 +655,7 @@
 				16B47F39F1BDFEAEFE2147A1 /* SettingsRepository.swift in Sources */,
 				C929A72A1E02F19A072C8458 /* SettingsView.swift in Sources */,
 				7233BE4AB7B72D86D0DE7D6F /* StartView.swift in Sources */,
+				5F94C08B096AB9D77F86B51B /* StressPlainHarness.swift in Sources */,
 				F24EE8CB2083D2E2F5FB8794 /* SwiftDataMetadataRepository.swift in Sources */,
 				C6C584481495ADECC4470660 /* TranscriptCondenser.swift in Sources */,
 				F13DF6DBB6CA4C7DA407EBA9 /* WelcomeManager.swift in Sources */,

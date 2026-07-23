@@ -42,7 +42,15 @@ Gate G1: Document model + detector fixes   [COMPLETE — 2026-07-23]
     #89 grammar + sanitization, #106 data-half — UI half stays G5).
   US-1.4 DONE: package suite green (#102 closed); swift test documented
     as required gate in CLAUDE.md.
-Gate G2: Plain mode editable               [IN PROGRESS — iter 1 done 2026-07-23]
+Gate G2: Plain mode editable               [COMPLETE — 2026-07-23, 3 iterations]
+  Runtime ACs verified by --stress-plain harness (Sources/
+  StressPlainHarness.swift, triggered from applicationDidFinishLaunching —
+  scene .task does NOT fire on inactive CLI launch, delegate hook does):
+  STRESS-PLAIN PASS — 500 keystrokes, dropped=0, selectionErrors=0;
+  highlight spot-check green; autosave on disk ≤2.2s; undo reverts typing,
+  syncs model; external write clears undo (D8) — post-merge ⌘Z is a no-op.
+  Note: sandboxed app can't write /tmp — harness verdict = exit code +
+  stdout capture. Details below were iter-1 state:
   US-2.1 DONE: display mutations deleted (padTableColumns, check glyphs);
     storage string == model string, asserted at the boundary. #91 dead —
     close it when the gate completes.
