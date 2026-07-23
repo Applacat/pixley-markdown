@@ -2,13 +2,26 @@ Editor Epic — Progress
 ======================
 Spec: docs/specs/editor-epic.md (v1.0, 2026-07-23)
 
-Gate G0: TextKit 2 spike (4-week kill box) [IN PROGRESS — started 2026-07-23]
-  US-0.1 type-save-reload-undo + checkbox attachment: building
-  US-0.2 Typora reveal + perf: pending
-  Approach: separate app target Spikes/TextKit2Spike (main app untouched).
-  Storage is a projection of model source (checkbox token → attachment) with an
-  explicit bidirectional mapping; round-trip assert source == serialize(storage)
-  every cycle — the mapping fidelity IS the spike question.
+Gate G0: TextKit 2 spike (4-week kill box) [EXIT TESTS GREEN — 2026-07-23, day 1]
+  US-0.1 PASS: 100× type-save-reload-undo with checkbox attachment; zero
+    storage/model/disk divergence; caret traverses attachment atomically.
+  US-0.2 PASS: Typora reveal on 5000-line/5000-run doc — reveal p95 0.30ms,
+    unreveal p95 0.24ms, max 0.74ms (budget 16ms); doc byte-identical after
+    200 cycles. Deviation: measured with ContinuousClock, not signposts.
+  Architecture proven: storage = projection of source; bold markers mapped
+    via custom attribute (removed from layout, reconstructed on serialize);
+    reveal = local splice at caret entry, re-project on leave.
+  Findings for G4:
+    - TextKit 2 provider APIs not actor-annotated → spike runs Swift 5 mode;
+      production needs a deliberate Swift 6 isolation pattern.
+    - Attribute-mapped markers (not storage-mutation-with-offset-map) is the
+      #91-safe pattern: serialize reconstructs from attributes.
+  HUMAN FOLLOW-UP (before G1 starts):
+    [ ] Jose: run the TextKit2Spike scheme interactively — feel the reveal,
+        toggle the checkbox, type around it ("screen-recorded demo" AC
+        satisfied by the live app + metrics; record if wanted).
+    [ ] Jose: formal GO on TextKit 2 (kill criterion not triggered; this is
+        the affirmative architecture decision for G4).
 Gate G1: Document model + detector fixes   [PENDING]
 Gate G2: Plain mode editable               [PENDING]
 Gate G3: Conflict engine                   [PENDING]

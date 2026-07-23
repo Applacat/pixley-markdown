@@ -22,10 +22,18 @@ struct SpikeApp: App {
     """
 
     static func makeDocument() -> SpikeDocument {
+        let source: String
+        if CommandLine.arguments.contains("--stress-reveal") {
+            // US-0.2 perf corpus: 5k lines, every line carries a bold run
+            source = (1...5000).map { "Line \($0) of prose with **bold span \($0)** inside it." }
+                .joined(separator: "\n")
+        } else {
+            source = sampleSource
+        }
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("tk2spike-\(ProcessInfo.processInfo.processIdentifier).md")
-        try? sampleSource.write(to: url, atomically: true, encoding: .utf8)
-        return SpikeDocument(source: sampleSource, url: url)
+        try? source.write(to: url, atomically: true, encoding: .utf8)
+        return SpikeDocument(source: source, url: url)
     }
 
     var body: some Scene {
@@ -56,6 +64,12 @@ struct SpikeContentView: View {
                 let report = StressTest.run(document: document)
                 print(report.summary)
                 exit(report.passed ? 0 : 1)
+            }
+            if CommandLine.arguments.contains("--stress-reveal") {
+                try? await Task.sleep(for: .milliseconds(1000))
+                let report = RevealStressTest.run(document: document)
+                print(report)
+                exit(report.contains("REVEAL PASS") ? 0 : 1)
             }
         }
     }
@@ -200,12 +214,74 @@ enum StressTest {
         return found
     }
 
-    private static func findTextView(in view: NSView?) -> NSTextView? {
+    static func findTextView(in view: NSView?) -> NSTextView? {
         guard let view else { return nil }
         if let tv = view as? NSTextView { return tv }
         for sub in view.subviews {
             if let found = findTextView(in: sub) { return found }
         }
         return nil
+    }
+}
+
+// MARK: - US-0.2 Reveal Perf Loop
+
+@MainActor
+enum RevealStressTest {
+    static func run(document: SpikeDocument) -> String {
+        guard let window = NSApp.windows.first,
+              let textView = StressTest.findTextView(in: window.contentView),
+              let storage = textView.textStorage else {
+            return "REVEAL FAIL: no text view"
+        }
+
+        // Collect hidden-marker bold run locations
+        var runLocations: [Int] = []
+        storage.enumerateAttribute(SpikeProjection.spikeBold, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+            if value != nil { runLocations.append(range.location + range.length / 2) }
+        }
+        guard runLocations.count > 100 else {
+            return "REVEAL FAIL: only \(runLocations.count) bold runs projected (expected ~5000)"
+        }
+
+        let baseline = SpikeProjection.serialize(storage: storage)
+        var revealTimes: [Double] = []
+        var unrevealTimes: [Double] = []
+        let clock = ContinuousClock()
+        var rng = SystemRandomNumberGenerator()
+
+        for _ in 1...200 {
+            let target = runLocations.randomElement(using: &rng)!
+
+            let revealElapsed = clock.measure {
+                textView.setSelectedRange(NSRange(location: min(target, storage.length - 1), length: 0))
+            }
+            revealTimes.append(Double(revealElapsed.components.attoseconds) / 1e15) // ms
+
+            let unrevealElapsed = clock.measure {
+                textView.setSelectedRange(NSRange(location: 0, length: 0))
+            }
+            unrevealTimes.append(Double(unrevealElapsed.components.attoseconds) / 1e15)
+        }
+
+        // Integrity: 200 reveal/unreveal cycles must not change the document
+        let after = SpikeProjection.serialize(storage: storage)
+        let intact = after == baseline
+
+        func stats(_ values: [Double]) -> (p50: Double, p95: Double, max: Double) {
+            let sorted = values.sorted()
+            return (sorted[sorted.count / 2], sorted[Int(Double(sorted.count) * 0.95)], sorted.last ?? 0)
+        }
+        let r = stats(revealTimes), u = stats(unrevealTimes)
+        let passed = intact && r.p95 <= 16.0 && u.p95 <= 16.0
+
+        return String(format: """
+        REVEAL %@
+        doc: 5000 lines, %d bold runs; 200 cycles
+        reveal   ms  p50 %.2f  p95 %.2f  max %.2f
+        unreveal ms  p50 %.2f  p95 %.2f  max %.2f
+        round-trip intact after all cycles: %@
+        """, passed ? "PASS" : "FAIL", runLocations.count,
+        r.p50, r.p95, r.max, u.p50, u.p95, u.max, intact ? "yes" : "NO — DIVERGED")
     }
 }
