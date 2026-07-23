@@ -192,15 +192,19 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        // Spec 4: File/folder types use prefix convention for re-pickable detection
+        // Typed prefixes keep filled values re-detectable with their type
+        // intact (#88/#106) — no content-guessing on the way back in.
+        let safeValue = Self.sanitizeFillInValue(value)
         let wrapped: String
         switch element.type {
         case .file:
-            wrapped = "[[file: \(value)]]"
+            wrapped = "[[file: \(safeValue)]]"
         case .folder:
-            wrapped = "[[folder: \(value)]]"
-        case .text, .date:
-            wrapped = "[[\(value)]]"
+            wrapped = "[[folder: \(safeValue)]]"
+        case .date:
+            wrapped = "[[date: \(safeValue)]]"
+        case .text:
+            wrapped = "[[text: \(safeValue)]]"
         }
         try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let fresh = ElementRelocator.fillIn(
@@ -306,6 +310,28 @@ final class InteractionHandler {
             modified.replaceSubrange(fresh.range, with: newLine)
             return modified
         }
+    }
+
+    /// Sanitizes a fill-in value so it cannot break the `[[...]]` grammar:
+    /// the closing `]]` sequence is split, newlines flattened (#89).
+    /// Single `]` characters are fine — the detector grammar allows them.
+    static func sanitizeFillInValue(_ value: String) -> String {
+        var clean = value.replacingOccurrences(of: "\n", with: " ")
+        clean = clean.replacingOccurrences(of: "\r", with: " ")
+        while clean.contains("]]") {
+            clean = clean.replacingOccurrences(of: "]]", with: "] ]")
+        }
+        return clean
+    }
+
+    /// Sanitizes CriticMarkup comment text so it cannot terminate its own
+    /// `{>>...<<}` span early (#89).
+    static func sanitizeCommentText(_ text: String) -> String {
+        var clean = text.replacingOccurrences(of: "\n", with: " ")
+        clean = clean.replacingOccurrences(of: "\r", with: " ")
+        clean = clean.replacingOccurrences(of: "<<", with: "«")
+        clean = clean.replacingOccurrences(of: ">>", with: "»")
+        return clean
     }
 
     /// Sanitizes note text to prevent HTML comment corruption, newline injection, and excessive length.
@@ -448,7 +474,7 @@ final class InteractionHandler {
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
         let highlightedText = suggestion.oldText ?? ""
-        let replacement = "{==\(highlightedText)==}{>>\(newComment)<<}"
+        let replacement = "{==\(highlightedText)==}{>>\(Self.sanitizeCommentText(newComment))<<}"
         try await replaceSuggestion(suggestion, with: replacement, displayedContent: displayedContent,
                                     in: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated)
     }
@@ -486,7 +512,12 @@ final class InteractionHandler {
         fileWatcher: FileWatcher? = nil,
         onContentUpdated: ((String) -> Void)? = nil
     ) async throws {
-        let replacement = "{==\(selectedText)==}{>>\(comment)<<}"
+        // A selection containing CriticMarkup delimiters can't be wrapped
+        // without corrupting markup — refuse rather than write garbage (#89).
+        guard !selectedText.contains("==}"), !selectedText.contains("{==") else {
+            throw WriteError.rangeMismatch
+        }
+        let replacement = "{==\(selectedText)==}{>>\(Self.sanitizeCommentText(comment))<<}"
         try await serializedWrite(to: url, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
             guard let freshRange = ElementRelocator.selection(
                 text: selectedText, staleRange: range, displayed: displayedContent, fresh: current

@@ -151,18 +151,16 @@ The App Store **requires** universal macOS binaries (arm64 + x86_64).
 - **NEVER `git checkout` the pbxproj** to fix build errors — it will revert the universal ARCHS and break App Store submission
 - If you see x86_64 linker errors during development, the fix is Debug-only — do not touch Release
 
-## Building
+## Building & Testing
 
-**Swift Package Manager:**
 ```bash
-cd PixleyWriter && swift build
+xcodegen generate   # ONLY needed after project.yml changes
+xcodebuild test -project AIMDReader.xcodeproj -scheme AIMDReader -configuration Debug
+cd Packages/aimdRenderer && swift test   # package suite — REQUIRED green (#102); part of every merge gate
 ```
 
-**Xcode:**
-```bash
-cd PixleyWriter && xcodegen generate
-open AIMDReader.xcodeproj
-```
+The package suite (detector, relocator, block parser, write-back grammar)
+runs separately from the app scheme — run BOTH before declaring green.
 
 ## Current State: v3.0 (App Store: v2.2)
 

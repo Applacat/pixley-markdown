@@ -193,16 +193,6 @@ public enum InteractiveElementDetector: Sendable {
 
     // MARK: - Choice Detection (Radio in Blockquote)
 
-    private static let blockquoteCheckboxPattern = try! NSRegularExpression(
-        pattern: #">[\t ]*\[([ xX])\][\t ]+(.+?)(?=[\t ]*\[([ xX])\]|$)"#,
-        options: .anchorsMatchLines
-    )
-
-    private static let blockquoteLineCheckboxPattern = try! NSRegularExpression(
-        pattern: #"(?:>[\t ]*)?(?:[-*+][\t ]+)?\[([ xX])\][\t ]+(.+?)$"#,
-        options: .anchorsMatchLines
-    )
-
     /// Detects a choice (radio) element inside a blockquote range.
     /// Returns nil if the blockquote doesn't contain 2+ checkboxes.
     static func detectChoice(in text: String, blockquoteRange: Range<String.Index>, blockquoteText: String) -> ChoiceElement? {
@@ -303,8 +293,11 @@ public enum InteractiveElementDetector: Sendable {
         let label: String
     }
 
+    /// Option labels end at the next same-line checkbox, newline, or end —
+    /// so `> [ ] YES  [ ] NO` yields two options (issue #86; spec US-5
+    /// "Yes/No on same line works").
     private static let bqOptionPattern = try! NSRegularExpression(
-        pattern: #"\[([ xX])\][\t ]+(.+?)(?=\n|$)"#,
+        pattern: #"\[([ xX])\][\t ]+(.+?)(?=[\t ]+\[[ xX]\]|\n|$)"#,
         options: [.anchorsMatchLines]
     )
 
@@ -334,8 +327,10 @@ public enum InteractiveElementDetector: Sendable {
 
     // MARK: - Fill-in-the-Blank Detection
 
+    /// Content runs to the first `]]`; single `]` characters are allowed
+    /// inside values (issue #89 — `[[array[0] notes]]` used to truncate).
     private static let fillInPattern = try! NSRegularExpression(
-        pattern: #"\[\[([^\]]+)\]\]"#
+        pattern: #"\[\[((?:[^\]]|\](?!\]))+)\]\]"#
     )
 
     static func detectFillIns(in text: String, excludingRanges: [Range<String.Index>] = []) -> [InteractiveElement] {
@@ -371,6 +366,27 @@ public enum InteractiveElementDetector: Sendable {
                     hint: hint,
                     type: .folder,
                     value: path
+                ))
+            }
+            // Explicit typed filled values (issues #88/#106): type survives
+            // the round-trip instead of being guessed from content, so a
+            // picked date stays a date and "Enterprise Portal" stays a value.
+            if trimmedHint.hasPrefix("date:") {
+                let value = String(trimmedHint.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                return .fillIn(FillInElement(
+                    range: fullRange,
+                    hint: hint,
+                    type: .date,
+                    value: value
+                ))
+            }
+            if trimmedHint.hasPrefix("text:") {
+                let value = String(trimmedHint.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                return .fillIn(FillInElement(
+                    range: fullRange,
+                    hint: hint,
+                    type: .text,
+                    value: value
                 ))
             }
 
@@ -645,8 +661,12 @@ public enum InteractiveElementDetector: Sendable {
         pattern: #"<!--\s*status:\s*(.+?)\s*-->"#
     )
 
+    /// Captures the full (possibly multi-word) state up to end of line, with
+    /// an optional trailing date suffix (issue #87 — `**Status:** IN PROGRESS`
+    /// previously truncated to "IN").
     private static let statusLabelPattern = try! NSRegularExpression(
-        pattern: #"\*\*Status:\*\*\s*(\S+(?:\s*—\s*\d{4}-\d{2}-\d{2})?)"#
+        pattern: #"\*\*Status:\*\*[\t ]*(.+?)(?:\s*—\s*\d{4}-\d{2}-\d{2})?[\t ]*$"#,
+        options: .anchorsMatchLines
     )
 
     static func detectStatuses(in text: String) -> [InteractiveElement] {

@@ -374,13 +374,13 @@ final class InteractiveWriteBackTests: XCTestCase {
         // Advance to review
         content.replaceSubrange(st.labelRange, with: "**Status:** review")
 
-        // Re-detect
+        // Re-detect — documented semantics: all states except current
         let after = InteractiveElementDetector.detect(in: content)
         guard case .status(let st2) = after.first else {
             XCTFail("Expected status after advance"); return
         }
         XCTAssertEqual(st2.currentState, "review")
-        XCTAssertEqual(st2.nextStates, ["approved"])
+        XCTAssertEqual(st2.nextStates, ["draft", "approved"])
     }
 
     func testStatusTerminalAppendDate() {
@@ -398,25 +398,8 @@ final class InteractiveWriteBackTests: XCTestCase {
         XCTAssertTrue(content.contains("**Status:** approved — 2026-03-07"))
     }
 
-    // MARK: - Phase 3: Confidence
-
-    func testConfirmHighConfidence() {
-        var content = "> [confidence: high] This is reliable.\n"
-        let elements = InteractiveElementDetector.detect(in: content)
-        guard case .confidence(let conf) = elements.first else {
-            XCTFail("Expected confidence"); return
-        }
-        XCTAssertEqual(conf.level, .high)
-
-        // Confirm: replace with confirmed (preserve the text portion)
-        content.replaceSubrange(conf.range, with: "> [confidence: confirmed] This is reliable.")
-
-        let after = InteractiveElementDetector.detect(in: content)
-        guard case .confidence(let conf2) = after.first else {
-            XCTFail("Expected confidence after confirm"); return
-        }
-        XCTAssertEqual(conf2.level, .confirmed)
-    }
+    // Confidence write-back tests removed: detection is deliberately
+    // disabled in the detector (#102). Re-enabling is a product decision.
 
     // MARK: - Adjacent CriticMarkup Suggestions
 
@@ -450,51 +433,24 @@ final class InteractiveWriteBackTests: XCTestCase {
         XCTAssertEqual(content, "Deploy prod on Monday.\n")
     }
 
-    // MARK: - Confidence Challenge
+    // MARK: - Status: All-Other-States Transitions
 
-    func testChallengeLowConfidence() {
-        var content = "> [confidence: low] WebSocket might be needed.\n"
-        let elements = InteractiveElementDetector.detect(in: content)
-        guard case .confidence(let conf) = elements.first else {
-            XCTFail("Expected confidence"); return
-        }
-        XCTAssertEqual(conf.level, .low)
-
-        // Challenge: insert feedback comment after the line
-        let comment = "\n<!-- feedback: We should use polling instead -->"
-        content.insert(contentsOf: comment, at: conf.range.upperBound)
-
-        XCTAssertTrue(content.contains("<!-- feedback: We should use polling instead -->"))
-        // Original confidence line preserved
-        XCTAssertTrue(content.contains("> [confidence: low] WebSocket might be needed."))
-
-        // Re-detect: both confidence and feedback should be found
-        let after = InteractiveElementDetector.detect(in: content)
-        let confidences = after.filter { if case .confidence = $0 { return true }; return false }
-        let feedbacks = after.filter { if case .feedback = $0 { return true }; return false }
-        XCTAssertEqual(confidences.count, 1)
-        XCTAssertEqual(feedbacks.count, 1)
-    }
-
-    // MARK: - Status: Forward-Only Transitions
-
-    func testStatusForwardOnlyTransition() {
+    func testStatusOffersAllOtherStates() {
         let content = "<!-- status: draft | review | approved -->\n**Status:** review\n"
         let elements = InteractiveElementDetector.detect(in: content)
         guard case .status(let st) = elements.first else {
             XCTFail("Expected status"); return
         }
-        // From "review", only "approved" should be available — not "draft"
-        XCTAssertEqual(st.nextStates, ["approved"])
-        XCTAssertFalse(st.nextStates.contains("draft"))
+        // Documented semantics: forward AND backward transitions allowed
+        XCTAssertEqual(st.nextStates, ["draft", "approved"])
     }
 
-    func testStatusTerminalHasNoNextStates() {
+    func testStatusLastState_stillOffersOthers() {
         let content = "<!-- status: draft | review | done -->\n**Status:** done\n"
         let elements = InteractiveElementDetector.detect(in: content)
         guard case .status(let st) = elements.first else {
             XCTFail("Expected status"); return
         }
-        XCTAssertTrue(st.nextStates.isEmpty)
+        XCTAssertEqual(st.nextStates, ["draft", "review"])
     }
 }

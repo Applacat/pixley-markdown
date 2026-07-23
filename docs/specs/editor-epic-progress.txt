@@ -22,7 +22,10 @@ Gate G0: TextKit 2 spike (4-week kill box) [EXIT TESTS GREEN — 2026-07-23, day
         satisfied by the live app + metrics; record if wanted).
     [ ] Jose: formal GO on TextKit 2 (kill criterion not triggered; this is
         the affirmative architecture decision for G4).
-Gate G1: Document model + detector fixes   [PENDING]
+Gate G1: Document model + detector fixes   [IN PROGRESS — started 2026-07-23]
+  TextKit 2 GO recorded (Jose launched G1 past the G0 gate).
+  Plan: US-1.4 package suite green → US-1.3 detector fixes (test-driven)
+        → US-1.1 MarkdownDocument+SaveCoordinator refactor → US-1.2 verify.
 Gate G2: Plain mode editable               [PENDING]
 Gate G3: Conflict engine                   [PENDING]
 Gate G4: Enhanced WYSIWYG surface          [PENDING]

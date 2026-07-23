@@ -345,7 +345,9 @@ final class InteractiveElementDetectorTests: XCTestCase {
         XCTAssertEqual(s.nextStates, ["review", "approved", "implemented"])
     }
 
-    func testStatusAtTerminal() {
+    func testStatusAtLastState_offersAllOtherStates() {
+        // Documented semantics: nextStates = all states except current
+        // (forward and backward transitions allowed; no terminal lock).
         let text = """
         <!-- status: draft | review | done -->
         **Status:** done
@@ -355,29 +357,12 @@ final class InteractiveElementDetectorTests: XCTestCase {
             XCTFail("Expected status"); return
         }
         XCTAssertEqual(s.currentState, "done")
-        XCTAssertEqual(s.nextStates, [])
+        XCTAssertEqual(s.nextStates, ["draft", "review"])
     }
 
-    // MARK: - Confidence Detection
-
-    func testDetectsConfidenceHigh() {
-        let text = "> [confidence: high] Use REST for the API"
-        let elements = InteractiveElementDetector.detect(in: text)
-        guard case .confidence(let c) = elements.first else {
-            XCTFail("Expected confidence"); return
-        }
-        XCTAssertEqual(c.level, .high)
-        XCTAssertEqual(c.text, "Use REST for the API")
-    }
-
-    func testDetectsConfidenceLow() {
-        let text = "> [confidence: low] WebSocket might be needed"
-        let elements = InteractiveElementDetector.detect(in: text)
-        guard case .confidence(let c) = elements.first else {
-            XCTFail("Expected confidence"); return
-        }
-        XCTAssertEqual(c.level, .low)
-    }
+    // Confidence detection is deliberately disabled in the detector (#102):
+    // tests for it were removed rather than kept failing. Re-enabling
+    // confidence is a product decision, not a regression.
 
     // MARK: - Conditional Detection
 
@@ -532,7 +517,9 @@ final class InteractiveElementDetectorTests: XCTestCase {
         XCTAssertEqual(reviews.count, 1, "reviews")
         XCTAssertGreaterThanOrEqual(suggestions.count, 3, "suggestions (add + del + sub + highlight)")
         XCTAssertEqual(statuses.count, 1, "statuses")
-        XCTAssertEqual(confidences.count, 2, "confidences")
+        // Confidence detection deliberately disabled (#102) — lines remain
+        // in the corpus to prove they don't misdetect as something else.
+        XCTAssertEqual(confidences.count, 0, "confidences (disabled)")
         XCTAssertEqual(feedbacks.count, 1, "feedbacks")
 
         // Verify structure has correct sections
