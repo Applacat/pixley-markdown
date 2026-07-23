@@ -489,6 +489,10 @@ struct MarkdownEditor: NSViewRepresentable {
     /// Callback when user triggers "Add Comment" on selected text (selectedText, range)
     var onAddComment: ((String, NSRange) -> Void)? = nil
 
+    /// G2 (US-2.2): called on every user edit with the full new source —
+    /// the view layer routes it into the document model + autosave.
+    var onTextEdited: ((String) -> Void)? = nil
+
     func makeNSView(context: Context) -> NSView {
         // Container: gutter (left) + scroll view (right), side by side via Auto Layout.
         // Gutter is a sibling, not a child of the scroll view — no z-order conflicts.
@@ -518,9 +522,16 @@ struct MarkdownEditor: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
 
-        // Configure text view (read-only viewer)
-        textView.isEditable = false
+        // G2 (US-2.2): Plain mode is the editable raw-source view.
+        textView.isEditable = true
         textView.isRichText = false
+        textView.allowsUndo = true
+        // Round-trip fidelity: smart substitutions would silently rewrite
+        // markdown syntax (quotes, dashes) — all off, always.
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
 
         // Theme colors
         let syntaxTheme = settings.rendering.syntaxTheme.rendererTheme(for: settings.appearance.colorScheme)
@@ -675,6 +686,9 @@ struct MarkdownEditor: NSViewRepresentable {
 
         // Re-apply highlighting if text changed externally
         else if context.coordinator.lastAppliedText != text {
+            // Undo is mine-only (D8): an external/AI change invalidates the
+            // typed-edit stack rather than letting ⌘Z fight the merge.
+            textView.undoManager?.removeAllActions()
             context.coordinator.applyHighlighting(to: textView, text: text)
 
             if let position = restoreScrollPosition {

@@ -50,9 +50,9 @@ final class InteractiveAnnotator {
     func annotateInteractiveElements(_ attributed: NSMutableAttributedString, elements: [InteractiveElement], text: String, enhanced: Bool = true) {
         // Plain mode: just add click targets and tooltips, no visual styling
         if !enhanced {
+            // G2 (US-2.1): attributes only — the displayed string must equal
+            // the source string byte-for-byte (glyph swaps deleted with #91).
             annotatePlainClickTargets(attributed, elements: elements, text: text)
-            // Still replace x with check glyph for checked items (readability, not styling)
-            replaceCheckGlyphs(attributed, elements: elements, text: text)
             return
         }
 
@@ -232,41 +232,6 @@ final class InteractiveAnnotator {
         // Post-pass: replace markdown brackets with native macOS control indicators.
         // SF Symbol checkboxes, radio buttons, dropdown chevrons, hidden field delimiters.
         replaceWithNativeIndicators(attributed, elements: elements, text: text)
-    }
-
-    // MARK: - Check Glyph Replacement
-
-    /// Replaces "x"/"X" check marks with a check glyph for checked/selected items (display only).
-    /// Processes in reverse order so character replacements don't shift earlier ranges.
-    func replaceCheckGlyphs(_ attributed: NSMutableAttributedString, elements: [InteractiveElement], text: String) {
-        for element in elements.reversed() {
-            switch element {
-            case .checkbox(let cb) where cb.isChecked:
-                let checkNS = NSRange(cb.checkRange, in: text)
-                if checkNS.location + checkNS.length <= attributed.length {
-                    let checkAttrs = attributed.attributes(at: checkNS.location, effectiveRange: nil)
-                    attributed.replaceCharacters(in: checkNS, with: NSAttributedString(string: "\u{2713}", attributes: checkAttrs))
-                }
-            case .choice(let ch):
-                for option in ch.options.reversed() where option.isSelected {
-                    let checkNS = NSRange(option.checkRange, in: text)
-                    if checkNS.location + checkNS.length <= attributed.length {
-                        let checkAttrs = attributed.attributes(at: checkNS.location, effectiveRange: nil)
-                        attributed.replaceCharacters(in: checkNS, with: NSAttributedString(string: "\u{2713}", attributes: checkAttrs))
-                    }
-                }
-            case .review(let rv):
-                for option in rv.options.reversed() where option.isSelected {
-                    let checkNS = NSRange(option.checkRange, in: text)
-                    if checkNS.location + checkNS.length <= attributed.length {
-                        let checkAttrs = attributed.attributes(at: checkNS.location, effectiveRange: nil)
-                        attributed.replaceCharacters(in: checkNS, with: NSAttributedString(string: "\u{2713}", attributes: checkAttrs))
-                    }
-                }
-            default:
-                break
-            }
-        }
     }
 
     // MARK: - Native Control Indicators (Enhanced Mode)

@@ -80,6 +80,30 @@ final class SaveCoordinator {
         try await work.value
     }
 
+    // MARK: - Autosave (G2, US-2.3)
+
+    private var pendingSaves: [String: Task<Void, Never>] = [:]
+
+    /// Debounced autosave: coalesces keystrokes; the write lands ~1.5 s after
+    /// typing pauses. Save timing is also "when the AI sees the edit" (D6).
+    func scheduleSave(for document: MarkdownDocument, fileWatcher: FileWatcher?, after seconds: Double = 1.5) {
+        let key = document.url.path
+        pendingSaves[key]?.cancel()
+        pendingSaves[key] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            try? await self?.saveNow(document, fileWatcher: fileWatcher)
+        }
+    }
+
+    /// Immediate save (⌘S, or the tail of a debounce). No-op when clean.
+    func saveNow(_ document: MarkdownDocument, fileWatcher: FileWatcher?) async throws {
+        pendingSaves[document.url.path]?.cancel()
+        pendingSaves[document.url.path] = nil
+        guard document.isDirty else { return }
+        try await perform(on: document, fileWatcher: fileWatcher) { $0 }
+    }
+
     /// Atomic write with security-scoped access on the parent directory
     /// (moved from InteractionHandler.secureWrite).
     private static func atomicWrite(_ content: String, to url: URL) async throws {

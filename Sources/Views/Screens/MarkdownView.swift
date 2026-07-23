@@ -159,12 +159,47 @@ struct MarkdownView: View {
             },
             onAddComment: { selectedText, nsRange in
                 handleAddComment(selectedText: selectedText, nsRange: nsRange)
+            },
+            onTextEdited: { newText in
+                handleTextEdited(newText)
             }
         )
         .overlay(alignment: .topTrailing) {
             if coordinator.navigation.selectedFile != nil {
                 ReadingProgressBadge(progress: readingProgress)
                     .padding(8)
+            }
+        }
+        .background {
+            // ⌘S forces an immediate save of the live document (US-2.3)
+            Button("") { forceSave() }
+                .keyboardShortcut("s", modifiers: .command)
+                .hidden()
+        }
+    }
+
+    // MARK: - Editing (G2)
+
+    /// Routes a Plain-mode edit into the document model and schedules the
+    /// debounced autosave. DocumentState stays in sync so Enhanced mode and
+    /// chat see the same content.
+    private func handleTextEdited(_ newText: String) {
+        guard let url = coordinator.navigation.selectedFile else { return }
+        let document = MarkdownDocumentRegistry.obtain(url: url, initialSource: newText)
+        document.update(source: newText)
+        coordinator.updateDocumentContent(newText)
+        refreshCommentedLines(in: newText)
+        SaveCoordinator.shared.scheduleSave(for: document, fileWatcher: fileWatcher)
+    }
+
+    private func forceSave() {
+        guard let url = coordinator.navigation.selectedFile else { return }
+        let document = MarkdownDocumentRegistry.obtain(url: url, initialSource: coordinator.document.content)
+        Task {
+            do {
+                try await SaveCoordinator.shared.saveNow(document, fileWatcher: fileWatcher)
+            } catch {
+                coordinator.showError(.error(message: error.localizedDescription))
             }
         }
     }

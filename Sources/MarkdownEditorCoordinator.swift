@@ -25,7 +25,7 @@ final class MarkdownEditorCoordinator: NSObject, NSTextViewDelegate {
     /// The source text that was last applied to highlighting.
     /// Used instead of textView.string comparison because native indicator
     /// replacements (SF Symbol attachments) mutate the displayed string.
-    private(set) var lastAppliedText: String = ""
+    var lastAppliedText: String = ""
     /// Deferred text when a popover was open during `applyHighlighting`.
     var pendingHighlightText: String?
 
@@ -99,7 +99,9 @@ final class MarkdownEditorCoordinator: NSObject, NSTextViewDelegate {
             let annotator = debouncedHighlighter.highlighter.makeAnnotator()
             annotator.annotateInteractiveElements(mutable, elements: elements, text: text, enhanced: false)
         }
-        MarkdownHighlighter.padTableColumns(in: mutable)
+        // G2 (US-2.1): the displayed string IS the model string — no display
+        // mutations (table padding, glyph swaps) are permitted. #91 dies here.
+        assert(mutable.string == text, "Display string diverged from source — a mutation crept back in")
         textView.textStorage?.setAttributedString(mutable)
 
         // Update gutter line offset cache for O(log N) line number lookup
@@ -141,20 +143,40 @@ final class MarkdownEditorCoordinator: NSObject, NSTextViewDelegate {
                 return
             }
 
-            // Update parent binding synchronously (no Task overhead)
+            // Keep the SwiftUI-side text in sync so updateNSView's
+            // external-change branch doesn't misread our own typing as an
+            // external edit (which would replace storage and clear undo).
+            lastAppliedText = textContent
             parent.text = textContent
+            // G2 (US-2.2/2.3): route the edit into the document model + autosave
+            parent.onTextEdited?(textContent)
 
-            // Use debounced highlighting for better performance
+            // Debounced re-highlight — ATTRIBUTE-ONLY. Never replaces text,
+            // never moves the caret, never fights the typist (US-2.2). Skips
+            // itself when the text moved on since compute; a newer pass owns it.
             debouncedHighlighter.highlightDebounced(textContent) { [weak self, weak textView] attributed in
-                guard let self, let textView else { return }
-                guard !self.isUpdating else { return }
+                guard let self, let textView, !self.isUpdating else { return }
+                guard let storage = textView.textStorage, storage.string == attributed.string else { return }
 
                 self.isUpdating = true
                 defer { self.isUpdating = false }
 
-                let selectedRanges = textView.selectedRanges
-                textView.textStorage?.setAttributedString(attributed)
-                textView.selectedRanges = selectedRanges
+                let mutable = NSMutableAttributedString(attributedString: attributed)
+                let elements = InteractiveElementDetector.detect(in: attributed.string)
+                if !elements.isEmpty {
+                    let annotator = self.debouncedHighlighter.highlighter.makeAnnotator()
+                    annotator.annotateInteractiveElements(mutable, elements: elements, text: attributed.string, enhanced: false)
+                }
+
+                storage.beginEditing()
+                mutable.enumerateAttributes(in: NSRange(location: 0, length: mutable.length)) { attrs, range, _ in
+                    storage.setAttributes(attrs, range: range)
+                }
+                storage.endEditing()
+
+                self.gutterView?.updateLineOffsets(for: attributed.string)
+                self.gutterView?.needsDisplay = true
+                textView.window?.invalidateCursorRects(for: textView)
             }
         }
     }
