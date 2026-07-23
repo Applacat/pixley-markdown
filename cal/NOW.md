@@ -5,9 +5,10 @@ Work is tracked in GitHub Issues: `gh issue list --state open`
 ## Active: Editor Epic (#107, milestone "v5: The Editor")
 Spec: `docs/specs/editor-epic.md` · Progress: `docs/specs/editor-epic-progress.txt`
 
-- [x] G0 — TextKit 2 spike (exit tests green 2026-07-23; awaiting Jose's
-      feel-check of the TextKit2Spike scheme + formal GO)
-- [ ] G1 — Document model + detector fixes (#86–#89, #75, #87, #106, #102)
+- [x] G0 — TextKit 2 spike (exit tests green; GO recorded via G1 launch)
+- [x] G1 — Document model + detector fixes (COMPLETE 2026-07-23: closed
+      #86, #87, #75, #88, #89, #102; #106 data half; MarkdownDocument +
+      SaveCoordinator shipped, interaction path off disk)
 - [ ] G2 — Plain mode editable (kills #91)
 - [ ] G3 — Conflict engine
 - [ ] G4 — Enhanced WYSIWYG surface (folds in #82, #83, #94, #104, #105)
