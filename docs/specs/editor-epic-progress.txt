@@ -42,7 +42,25 @@ Gate G1: Document model + detector fixes   [COMPLETE — 2026-07-23]
     #89 grammar + sanitization, #106 data-half — UI half stays G5).
   US-1.4 DONE: package suite green (#102 closed); swift test documented
     as required gate in CLAUDE.md.
-Gate G2: Plain mode editable               [PENDING]
+Gate G2: Plain mode editable               [IN PROGRESS — iter 1 done 2026-07-23]
+  US-2.1 DONE: display mutations deleted (padTableColumns, check glyphs);
+    storage string == model string, asserted at the boundary. #91 dead —
+    close it when the gate completes.
+  US-2.2 CODE DONE: isEditable, substitutions off, attribute-only
+    debounced re-highlight (string-equality guarded), lastAppliedText
+    synced from typing. RUNTIME AC OUTSTANDING: scripted 500-char typing
+    harness (add --stress-plain launch mode to the MAIN app, spike-style:
+    programmatic typing incl. markdown syntax → no dropped keystrokes,
+    selection stable, attributes correct).
+  US-2.3 CODE DONE: model-routed edits + SaveCoordinator.scheduleSave
+    (1.5s debounce) + ⌘S saveNow + undo cleared on external change (D8
+    conservative interpretation: merge invalidates typed-undo stack).
+    RUNTIME AC OUTSTANDING: harness verifies type→2s→disk matches, and
+    simulated external write → undo does NOT restore pre-merge text.
+  US-2.4 DONE: RoundTripCorpusTests in package (single-char toggle diff,
+    reversible prose edits, pure detection, CRLF). Permanent merge gate.
+  Suites: app 320/320, package 150/150. Perf note: refreshCommentedLines
+    runs per keystroke (O(doc) regex scan) — acceptable now, flag for G4.
 Gate G3: Conflict engine                   [PENDING]
 Gate G4: Enhanced WYSIWYG surface          [PENDING]
 Gate G5: Insert palette + polish           [PENDING]
