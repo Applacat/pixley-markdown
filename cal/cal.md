@@ -319,3 +319,34 @@ Wire Phase 2 components into views OR skip to user-visible feature (Phase 4/5)
 - Table rendering support (not trivial — needs NSTextTable or WKWebView)
 
 ---
+
+## 2026-07-23 — DECISION: Editor pivot (PROTECTED)
+
+Pixley becomes an AI-native markdown editor (epic #107, milestone "v5: The
+Editor"). BRD: docs/specs/pixley-editor-migration-brd.md. Spec:
+docs/specs/editor-epic.md. Full WYSIWYG or bust; single v5 release, no
+public betas; Typora-style reveal; interactive elements are OOD objects;
+Plain mode = raw-source escape hatch; editing free, Relay Pro = collab
+layer; build first, ASO later.
+
+**Sacred guardrails (do not violate in any editor work):**
+1. Never ship a build that can lose a keystroke of user text.
+2. Reader stays rock-solid at every phase — existing smoke tests pass unchanged.
+3. One write path — all mutations through the serialized funnel/SaveCoordinator.
+4. Edit the source, render the display — never write a display-mutated string.
+5. Corruption-class + round-trip corpus tests gate every merge from G1 on.
+
+## 2026-07-23 — AHA: Attribute-mapped projection kills the #91 class
+
+G0 spike finding: hiding markdown markers by REMOVING them from storage and
+mapping via custom attributes (serialize reconstructs from attributes) means
+there is no display↔source offset map to drift. Reveal = local splice at
+caret. Perf: p95 0.30ms on 5k lines. This is the pattern for G4.
+
+## 2026-07-20 — PATTERN: Ralph prompts are one-liners pointing at specs
+
+Long inline ralph prompts get mangled by the stop hook (build logs
+interpolated, promise never detected). All instructions + the completion
+promise live in the spec file; the prompt is one short line. Also: the stop
+hook often misses the promise once — verify state, re-promise; cancel via
+removing .claude/ralph-loop.local.md if it keeps looping.
