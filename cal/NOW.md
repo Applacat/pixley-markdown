@@ -9,7 +9,11 @@ Spec: `docs/specs/editor-epic.md` · Progress: `docs/specs/editor-epic-progress.
 - [x] G1 — Document model + detector fixes (COMPLETE 2026-07-23: closed
       #86, #87, #75, #88, #89, #102; #106 data half; MarkdownDocument +
       SaveCoordinator shipped, interaction path off disk)
-- [ ] G2 — Plain mode editable (kills #91)
+- [x] G2 — Plain mode editable (COMPLETE 2026-07-23, 3 iterations: #91
+      closed as obsolete; display mutations deleted, editable + attribute-
+      only re-highlight, model-routed typing, debounced autosave + ⌘S,
+      undo-mine-only D8, round-trip corpus gate; --stress-plain harness:
+      500 keystrokes, 0 dropped, 0 selection errors)
 - [ ] G3 — Conflict engine
 - [ ] G4 — Enhanced WYSIWYG surface (folds in #82, #83, #94, #104, #105)
 - [ ] G5 — Insert palette + polish (#103, #85)
@@ -29,5 +33,5 @@ Ralph per gate:
 - G0 spike: TextKit 2 + attachment + Typora reveal proven
 
 ## Frozen / superseded
-- #91 blocked (dies in G2) · Ralph 3 rendering fixes folded into G4/G5
+- #91 CLOSED (died in G2) · Ralph 3 rendering fixes folded into G4/G5
 - Old sprints (1–3) complete; v4 milestone absorbed into v5 plan
