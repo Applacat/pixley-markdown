@@ -64,8 +64,16 @@ final class EditInteractiveElementsTool: Tool, @unchecked Sendable {
     var onEdit: (@Sendable @MainActor (ElementEdit, String, URL) async throws -> String)?
 
     func call(arguments: Arguments) async throws -> String {
-        // Snapshot mutable state on MainActor before doing work
-        let (content, url, editHandler) = await MainActor.run { (documentContent, fileURL, onEdit) }
+        // Snapshot mutable state on MainActor before doing work. Detection
+        // runs against the LIVE document model when one exists (G3, US-3.2:
+        // apply-if-current) — `documentContent` is only the fallback for
+        // files never opened into the registry. Relocation inside
+        // InteractionHandler remains the merge path for any drift between
+        // this snapshot and apply time.
+        let (content, url, editHandler) = await MainActor.run {
+            let live = fileURL.flatMap { MarkdownDocumentRegistry.current(url: $0)?.source }
+            return (live ?? documentContent, fileURL, onEdit)
+        }
 
         let elements = InteractiveElementDetector.detect(in: content)
 

@@ -49,8 +49,19 @@ struct MarkdownView: View {
                 markdownContent
             }
 
-            // Reload pill overlay
-            if coordinator.document.hasChanges {
+            // Clash pill (G3): same-region conflict needs a user decision
+            if coordinator.document.externalClash != nil {
+                VStack {
+                    Spacer()
+                    ClashPill(
+                        onKeepMine: { resolveClash(takeTheirs: false) },
+                        onTakeTheirs: { resolveClash(takeTheirs: true) }
+                    )
+                    .padding(.bottom, 20)
+                }
+            } else if coordinator.document.hasChanges {
+                // Fallback reload pill: external change we couldn't arbitrate
+                // (unreadable mid-write) — manual reload
                 VStack {
                     Spacer()
                     ReloadPill {
@@ -719,13 +730,107 @@ struct MarkdownView: View {
 
     private func startWatching(_ url: URL) {
         if fileWatcher == nil {
-            fileWatcher = FileWatcher { [weak coordinator] in
-                coordinator?.markDocumentChanged()
+            fileWatcher = FileWatcher {
+                handleExternalChange()
             }
         }
         fileWatcher?.watch(url)
         // Expose to other write paths (AI chat edits) for suppression
         coordinator.activeFileWatcher = fileWatcher
+    }
+
+    // MARK: - External Changes (G3)
+
+    /// The watched file changed under us. Clean documents silently reload,
+    /// dirty documents 3-way merge (D7), and same-region clashes raise the
+    /// keep-mine / take-theirs pill — never a silent overwrite in either
+    /// direction.
+    private func handleExternalChange() {
+        guard let url = coordinator.navigation.selectedFile else { return }
+        Task { @MainActor in
+            guard let diskContent = try? String(contentsOf: url, encoding: .utf8) else {
+                // Unreadable (mid-write, encoding, gone) — fall back to the
+                // manual reload pill rather than guessing.
+                coordinator.markDocumentChanged()
+                return
+            }
+            let document = MarkdownDocumentRegistry.obtain(
+                url: url, initialSource: coordinator.document.content)
+            switch ExternalChangeArbiter.arbitrate(document: document, diskContent: diskContent) {
+            case .noChange:
+                break
+            case .reloaded:
+                coordinator.updateDocumentContent(document.source)
+                refreshCommentedLines(in: document.source)
+            case .merged:
+                coordinator.updateDocumentContent(document.source)
+                refreshCommentedLines(in: document.source)
+                SaveCoordinator.shared.scheduleSave(for: document, fileWatcher: fileWatcher)
+            case .clash(let theirs):
+                coordinator.document.raiseClash(theirs: theirs)
+            }
+        }
+    }
+
+    /// Clash pill resolution (G3, US-3.2).
+    private func resolveClash(takeTheirs: Bool) {
+        guard let url = coordinator.navigation.selectedFile,
+              let theirs = coordinator.document.externalClash else {
+            coordinator.document.clearClash()
+            return
+        }
+        let document = MarkdownDocumentRegistry.obtain(
+            url: url, initialSource: coordinator.document.content)
+        if takeTheirs {
+            ExternalChangeArbiter.takeTheirs(document: document, theirs: theirs)
+            coordinator.updateDocumentContent(document.source)
+            refreshCommentedLines(in: document.source)
+        } else {
+            ExternalChangeArbiter.keepMine(document: document, theirs: theirs)
+            SaveCoordinator.shared.scheduleSave(for: document, fileWatcher: fileWatcher)
+        }
+        coordinator.document.clearClash()
+    }
+}
+
+// MARK: - Clash Pill (G3)
+
+/// Floating pill for same-region external-change clashes: the user's unsaved
+/// text and the external content both touched the same region — the user
+/// picks a side (D7). Nothing is applied until they do.
+struct ClashPill: View {
+
+    let onKeepMine: () -> Void
+    let onTakeTheirs: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.callout.weight(.medium))
+                .accessibilityHidden(true)
+
+            Text("Conflicting changes")
+                .font(.callout)
+
+            Button("Keep Mine") {
+                onKeepMine()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            Button("Take Theirs") {
+                onTakeTheirs()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(.orange.opacity(0.5), lineWidth: 1))
+        .shadow(radius: 4, y: 2)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Conflicting external changes. Choose Keep Mine or Take Theirs.")
     }
 }
 

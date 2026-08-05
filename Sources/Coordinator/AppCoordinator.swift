@@ -576,6 +576,10 @@ public final class DocumentState {
     /// Whether the current file has unseen external changes
     public private(set) var hasChanges: Bool = false
 
+    /// External content that clashed with unsaved local edits (G3, D7) —
+    /// non-nil drives the keep-mine/take-theirs pill in MarkdownView.
+    public private(set) var externalClash: String? = nil
+
     /// Reload trigger (incremented to force reload)
     public private(set) var reloadTrigger: Int = 0
 
@@ -586,6 +590,7 @@ public final class DocumentState {
     func loadFile(url: URL) async {
         isLoading = true
         errorMessage = nil
+        externalClash = nil
 
         do {
             let text = try await Task.detached(priority: .userInitiated) {
@@ -603,12 +608,26 @@ public final class DocumentState {
                 return text
             }.value
 
-            content = text
             hasChanges = false
             // Disk truth flows into the live document model (editor epic G1)
             // so interaction write-backs compute against current content
-            // without their own disk reads.
-            MarkdownDocumentRegistry.syncFromDisk(url: url, content: text)
+            // without their own disk reads. A dirty model is never clobbered
+            // (G3, guardrail 1): disk truth merges in via the arbiter, and a
+            // same-region clash keeps the user's text on screen and raises
+            // the pill.
+            if let live = MarkdownDocumentRegistry.current(url: url), live.isDirty {
+                if case .clash(let theirs) = ExternalChangeArbiter.arbitrate(
+                    document: live, diskContent: text) {
+                    externalClash = theirs
+                } else if live.isDirty {
+                    // Auto-merge left the model ahead of disk — flush it.
+                    SaveCoordinator.shared.scheduleSave(for: live, fileWatcher: nil)
+                }
+                content = live.source
+            } else {
+                MarkdownDocumentRegistry.syncFromDisk(url: url, content: text)
+                content = text
+            }
         } catch {
             errorMessage = error.localizedDescription
             content = ""
@@ -623,10 +642,21 @@ public final class DocumentState {
         content = ""
         hasChanges = false
         errorMessage = nil
+        externalClash = nil
     }
 
     func markChanged() {
         hasChanges = true
+    }
+
+    /// A same-region external clash needs a user decision (G3, D7).
+    func raiseClash(theirs: String) {
+        externalClash = theirs
+    }
+
+    /// The clash was resolved (or went stale on file switch).
+    func clearClash() {
+        externalClash = nil
     }
 
     func clearChanges() {

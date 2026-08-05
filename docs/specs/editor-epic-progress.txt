@@ -69,7 +69,35 @@ Gate G2: Plain mode editable               [COMPLETE — 2026-07-23, 3 iteration
     reversible prose edits, pure detection, CRLF). Permanent merge gate.
   Suites: app 320/320, package 150/150. Perf note: refreshCommentedLines
     runs per keystroke (O(doc) regex scan) — acceptable now, flag for G4.
-Gate G3: Conflict engine                   [PENDING]
+Gate G3: Conflict engine                   [COMPLETE — 2026-08-05, 1 iteration]
+  US-3.1 DONE: ThreeWayMerge (package) — line-based 3-way merge, hunks
+    anchored on the base→side diffs; disjoint AND adjacent-line edits both
+    survive; same-region / competing-insertion / delete-vs-edit clashes
+    detected, never silently resolved. Matrix in ThreeWayMergeTests (15
+    tests incl. CRLF + trailing-newline fidelity).
+    LESSON: String.split(separator: "\n") never splits CRLF docs — "\r\n"
+    is ONE Swift Character. Use components(separatedBy: "\n") (UTF-16
+    literal, lossless round-trip).
+  US-3.2 DONE: ExternalChangeArbiter (package) — disk==model rebaselines;
+    clean doc silently reloads; dirty doc 3-way merges (D7) leaving the
+    model dirty for save; clash returns theirs untouched. MarkdownDocument
+    grew baselineContent/applyMerge/rebaseline; registry grew current(url:).
+    App wiring: FileWatcher → MarkdownView.handleExternalChange (arbiter,
+    replaces blunt reload pill; unreadable disk falls back to ReloadPill);
+    ClashPill (keep mine / take theirs) driven by DocumentState.externalClash;
+    DocumentState.loadFile no longer clobbers a dirty model (guardrail 1) —
+    arbitrates instead, schedules flush after auto-merge.
+    AI edits: ChatTools.call snapshots the LIVE registry document
+    (apply-if-current); relocation in InteractionHandler stays the merge
+    path. #90 closed: routed through InteractionHandler already, suppression
+    via activeFileWatcher, SelfDescribingElement.apply formats are dead code.
+  AC fuzz: 100-iteration AI-write-during-typing in
+    ExternalChangeArbiterTests (seeded SplitMix64) — merged ⇒ both tokens
+    survive; clash ⇒ model untouched AND theirs intact. Runtime: harness
+    G3 scenario (type → disjoint external write → arbiter merge in the live
+    editor → both sides present, undo post-merge is a no-op).
+  Suites: app 320/320, package 172/172 XCTest + 16 swift-testing;
+    STRESS-PLAIN PASS (500 keystrokes, dropped=0, selectionErrors=0).
 Gate G4: Enhanced WYSIWYG surface          [PENDING]
 Gate G5: Insert palette + polish           [PENDING]
 Gate G6: Done bar / 2-week soak            [PENDING]

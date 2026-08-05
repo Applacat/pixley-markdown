@@ -21,11 +21,14 @@ public final class MarkdownDocument {
     /// Hash of the last content known to be on disk (saved or loaded) —
     /// the baseline for conflict detection (G3).
     public private(set) var baselineHash: Int
+    /// The last content known to be on disk — the 3-way merge base (G3).
+    public private(set) var baselineContent: String
 
     public init(url: URL, source: String) {
         self.url = url
         self.source = source
         self.baselineHash = source.hashValue
+        self.baselineContent = source
     }
 
     /// A local mutation (interaction, keystroke, AI edit).
@@ -43,6 +46,26 @@ public final class MarkdownDocument {
             revision += 1
         }
         baselineHash = content.hashValue
+        baselineContent = content
+    }
+
+    /// A clean 3-way merge landed (G3): `merged` becomes the model text and
+    /// `diskBaseline` (what's actually on disk right now) becomes the merge
+    /// base, leaving the document dirty until the merged text is saved.
+    public func applyMerge(merged: String, diskBaseline: String) {
+        if merged != source {
+            source = merged
+            revision += 1
+        }
+        baselineHash = diskBaseline.hashValue
+        baselineContent = diskBaseline
+    }
+
+    /// Disk caught up with the model without a content change (e.g. our own
+    /// write settled) — just move the merge base forward.
+    public func rebaseline(to content: String) {
+        baselineHash = content.hashValue
+        baselineContent = content
     }
 
     public var isDirty: Bool {
@@ -79,6 +102,12 @@ public enum MarkdownDocumentRegistry {
         } else {
             documents[url.path] = MarkdownDocument(url: url, source: content)
         }
+    }
+
+    /// The live document for a URL if one exists — no creation. AI edit
+    /// snapshots read this so they detect against current text (G3, US-3.2).
+    public static func current(url: URL) -> MarkdownDocument? {
+        documents[url.path]
     }
 
     /// Drop a document (file closed/deselected); a later touch recreates it.

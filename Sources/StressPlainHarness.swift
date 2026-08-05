@@ -139,6 +139,36 @@ enum StressPlainHarness {
             fail("US-2.3: undo restored pre-merge text — D8 violated")
         }
 
+        // ── G3: AI-write-during-typing — arbiter auto-merge in the live editor ──
+        // Type into the editor so the model is dirty…
+        let endOfDoc = (textView.string as NSString).length
+        textView.setSelectedRange(NSRange(location: endOfDoc, length: 0))
+        textView.insertText("G3-MINE typed tail.", replacementRange: NSRange(location: endOfDoc, length: 0))
+        if !document.source.contains("G3-MINE") {
+            fail("G3: typed text did not reach the document model")
+        }
+        // …while an external writer changes a disjoint region on disk.
+        let g3Theirs = externalContent.replacingOccurrences(of: "# External", with: "# External THEIRS-G3")
+        try? g3Theirs.write(to: url, atomically: true, encoding: .utf8)
+        let outcome = ExternalChangeArbiter.arbitrate(document: document, diskContent: g3Theirs)
+        guard case .merged = outcome else {
+            fail("G3: disjoint typing + external write did not auto-merge (got \(outcome))")
+            print("STRESS-PLAIN FAIL\nG3 arbiter outcome: \(outcome)")
+            exit(1)
+        }
+        state.text = document.source // what MarkdownView does on .merged
+        try? await Task.sleep(for: .milliseconds(400))
+        if !(textView.string.contains("G3-MINE") && textView.string.contains("THEIRS-G3")) {
+            fail("G3: merge lost a side — editor shows: mine=\(textView.string.contains("G3-MINE")) theirs=\(textView.string.contains("THEIRS-G3"))")
+        }
+        if textView.string != document.source {
+            fail("G3: editor and model diverged after merge")
+        }
+        textView.undoManager?.undo() // merge cleared typed undo (D8) — must be a no-op
+        if !(textView.string.contains("G3-MINE") && textView.string.contains("THEIRS-G3")) {
+            fail("G3: undo after merge dropped a side — D8 violated")
+        }
+
         let verdict = failures.isEmpty ? "PASS" : "FAIL"
         var report = "STRESS-PLAIN \(verdict)\n"
         report += "typed 500 keystrokes; dropped=\(dropped) selectionErrors=\(selectionErrors)\n"
