@@ -171,8 +171,8 @@ struct MarkdownView: View {
             onAddComment: { selectedText, nsRange in
                 handleAddComment(selectedText: selectedText, nsRange: nsRange)
             },
-            onTextEdited: { newText in
-                handleTextEdited(newText)
+            onTextEdited: { newText, previousText in
+                handleTextEdited(newText, previous: previousText)
             }
         )
         .overlay(alignment: .topTrailing) {
@@ -194,17 +194,35 @@ struct MarkdownView: View {
     /// Routes a Plain-mode edit into the document model and schedules the
     /// debounced autosave. DocumentState stays in sync so Enhanced mode and
     /// chat see the same content.
-    private func handleTextEdited(_ newText: String) {
+    ///
+    /// `previous` is the editor's pre-edit text. If it no longer matches the
+    /// model, an external merge landed in the one-runloop window before the
+    /// editor could display it — fold the keystroke into the merged text
+    /// instead of clobbering it (G3 review fix). On a same-region collision
+    /// within that window the keystroke wins (guardrail 1: never lose a
+    /// keystroke), accepting loss of the colliding external region.
+    private func handleTextEdited(_ newText: String, previous: String) {
         guard let url = coordinator.navigation.selectedFile else { return }
         let document = MarkdownDocumentRegistry.obtain(url: url, initialSource: newText)
-        document.update(source: newText)
-        coordinator.updateDocumentContent(newText)
-        refreshCommentedLines(in: newText)
+        if previous != document.source, document.source != newText,
+           case .merged(let folded) = ThreeWayMerge.merge(
+               base: previous, mine: newText, theirs: document.source) {
+            document.update(source: folded)
+        } else {
+            document.update(source: newText)
+        }
+        coordinator.updateDocumentContent(document.source)
+        refreshCommentedLines(in: document.source)
         SaveCoordinator.shared.scheduleSave(for: document, fileWatcher: fileWatcher)
     }
 
     private func forceSave() {
         guard let url = coordinator.navigation.selectedFile else { return }
+        guard coordinator.document.externalClash == nil else {
+            coordinator.showError(.error(
+                message: "Resolve the conflicting external changes first (Keep Mine / Take Theirs)."))
+            return
+        }
         let document = MarkdownDocumentRegistry.obtain(url: url, initialSource: coordinator.document.content)
         Task {
             do {
@@ -767,6 +785,8 @@ struct MarkdownView: View {
                 refreshCommentedLines(in: document.source)
                 SaveCoordinator.shared.scheduleSave(for: document, fileWatcher: fileWatcher)
             case .clash(let theirs):
+                // Hold the debounced autosave — it must not decide the clash
+                SaveCoordinator.shared.cancelPendingSave(for: document)
                 coordinator.document.raiseClash(theirs: theirs)
             }
         }

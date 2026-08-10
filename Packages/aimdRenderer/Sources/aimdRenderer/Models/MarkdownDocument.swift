@@ -23,6 +23,10 @@ public final class MarkdownDocument {
     public private(set) var baselineHash: Int
     /// The last content known to be on disk — the 3-way merge base (G3).
     public private(set) var baselineContent: String
+    /// Non-nil while a same-region external clash awaits a user decision
+    /// (G3, D7). Saves are held: writing "mine" to disk before the user
+    /// picks a side would silently destroy "theirs".
+    public private(set) var pendingClash: String?
 
     public init(url: URL, source: String) {
         self.url = url
@@ -47,6 +51,7 @@ public final class MarkdownDocument {
         }
         baselineHash = content.hashValue
         baselineContent = content
+        pendingClash = nil
     }
 
     /// A clean 3-way merge landed (G3): `merged` becomes the model text and
@@ -59,6 +64,7 @@ public final class MarkdownDocument {
         }
         baselineHash = diskBaseline.hashValue
         baselineContent = diskBaseline
+        pendingClash = nil
     }
 
     /// Disk caught up with the model without a content change (e.g. our own
@@ -66,6 +72,14 @@ public final class MarkdownDocument {
     public func rebaseline(to content: String) {
         baselineHash = content.hashValue
         baselineContent = content
+        pendingClash = nil
+    }
+
+    /// A same-region external clash awaits a user decision — hold all saves
+    /// (G3, D7). Cleared by every baseline-moving operation: `applyMerge`
+    /// (keep mine), `syncToDisk` (take theirs / fresh load), `rebaseline`.
+    public func flagClash(theirs: String) {
+        pendingClash = theirs
     }
 
     public var isDirty: Bool {

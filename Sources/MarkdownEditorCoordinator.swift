@@ -146,10 +146,15 @@ final class MarkdownEditorCoordinator: NSObject, NSTextViewDelegate {
             // Keep the SwiftUI-side text in sync so updateNSView's
             // external-change branch doesn't misread our own typing as an
             // external edit (which would replace storage and clear undo).
+            // The pre-edit text travels with the callback so the model layer
+            // can detect a merge that landed between the editor's snapshot
+            // and this keystroke and fold the keystroke in instead of
+            // clobbering it (G3).
+            let previousText = lastAppliedText
             lastAppliedText = textContent
             parent.text = textContent
             // G2 (US-2.2/2.3): route the edit into the document model + autosave
-            parent.onTextEdited?(textContent)
+            parent.onTextEdited?(textContent, previousText)
 
             // Debounced re-highlight — ATTRIBUTE-ONLY. Never replaces text,
             // never moves the caret, never fights the typist (US-2.2). Skips

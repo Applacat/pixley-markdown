@@ -25,7 +25,7 @@ enum StressPlainHarness {
         var body: some View {
             MarkdownEditor(
                 text: .constant(state.text),
-                onTextEdited: { onEdited($0) }
+                onTextEdited: { new, _ in onEdited(new) }
             )
             .frame(minWidth: 700, minHeight: 500)
         }
@@ -167,6 +167,29 @@ enum StressPlainHarness {
         textView.undoManager?.undo() // merge cleared typed undo (D8) — must be a no-op
         if !(textView.string.contains("G3-MINE") && textView.string.contains("THEIRS-G3")) {
             fail("G3: undo after merge dropped a side — D8 violated")
+        }
+
+        // ── G3 review fix: clash holds every save until the user decides ──
+        // Same-region external write while dirty → clash → saveNow must NOT
+        // touch disk; keep-mine lifts the hold and deliberately overwrites.
+        let clashBase = document.source
+        let clashMine = clashBase.replacingOccurrences(of: "# External", with: "# External CLASH-MINE")
+        let clashTheirs = clashBase.replacingOccurrences(of: "# External", with: "# External CLASH-THEIRS")
+        document.update(source: clashMine)
+        try? clashTheirs.write(to: url, atomically: true, encoding: .utf8)
+        guard case .clash = ExternalChangeArbiter.arbitrate(document: document, diskContent: clashTheirs) else {
+            fail("G3-hold: same-region edits did not clash")
+            print("STRESS-PLAIN FAIL\nG3-hold: expected clash"); exit(1)
+        }
+        SaveCoordinator.shared.cancelPendingSave(for: document)
+        try? await SaveCoordinator.shared.saveNow(document, fileWatcher: fileWatcher)
+        if (try? String(contentsOf: url, encoding: .utf8)) != clashTheirs {
+            fail("G3-hold: a save landed during a pending clash — theirs destroyed on disk")
+        }
+        ExternalChangeArbiter.keepMine(document: document, theirs: clashTheirs)
+        try? await SaveCoordinator.shared.saveNow(document, fileWatcher: fileWatcher)
+        if (try? String(contentsOf: url, encoding: .utf8)) != clashMine {
+            fail("G3-hold: keep-mine did not lift the hold and overwrite")
         }
 
         let verdict = failures.isEmpty ? "PASS" : "FAIL"

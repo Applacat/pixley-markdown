@@ -98,6 +98,24 @@ Gate G3: Conflict engine                   [COMPLETE — 2026-08-05, 1 iteration
     editor → both sides present, undo post-merge is a no-op).
   Suites: app 320/320, package 172/172 XCTest + 16 swift-testing;
     STRESS-PLAIN PASS (500 keystrokes, dropped=0, selectionErrors=0).
+  REVIEW FIXES (2026-08-10, post-gate code review):
+    1. Clash hold: pending debounced autosave / ⌘S / interaction writes
+       could overwrite "theirs" on disk while the clash pill was undecided
+       (and take-theirs after that left disk≠model forever). Now
+       MarkdownDocument.pendingClash holds ALL saves (SaveCoordinator
+       guards perform/saveNow; cancelPendingSave at both clash sites;
+       ⌘S surfaces an error). Cleared by every baseline-moving op.
+       Package tests + harness clash-hold scenario cover it.
+    2. Merge-vs-keystroke race: a keystroke in the one-runloop window
+       between an arbiter merge and the editor displaying it clobbered the
+       merged text. onTextEdited now carries the pre-edit text; if it
+       doesn't match the model, the keystroke is 3-way folded into the
+       merged text (same-region: keystroke wins per guardrail 1).
+    NOTE: app test target can't link app sources or the package (mirror-
+    type pattern) — real SaveCoordinator coverage lives in the harness.
+    Package: 175/175 + 16. Deferred (logged, not blocking): main-thread
+    disk read in handleExternalChange; diff cost on main for huge
+    both-sides-changed docs; fuzz breadth (single-line edits only).
 Gate G4: Enhanced WYSIWYG surface          [PENDING]
 Gate G5: Insert palette + polish           [PENDING]
 Gate G6: Done bar / 2-week soak            [PENDING]

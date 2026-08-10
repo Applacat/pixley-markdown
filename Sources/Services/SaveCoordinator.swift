@@ -19,6 +19,7 @@ final class SaveCoordinator {
     enum SaveError: LocalizedError {
         case rangeMismatch
         case writeFailed(URL, Error)
+        case clashPending
 
         var errorDescription: String? {
             switch self {
@@ -26,6 +27,8 @@ final class SaveCoordinator {
                 return "Document changed externally. Please try again."
             case .writeFailed(let url, let error):
                 return "Failed to write \(url.lastPathComponent): \(error.localizedDescription)"
+            case .clashPending:
+                return "Resolve the conflicting external changes first (Keep Mine / Take Theirs)."
             }
         }
     }
@@ -41,6 +44,10 @@ final class SaveCoordinator {
         fileWatcher: FileWatcher?,
         compute: @escaping @Sendable (String) throws -> String
     ) async throws {
+        // G3/D7: while a same-region clash awaits the user's decision, no
+        // path may write "mine" to disk — it would silently destroy "theirs".
+        guard document.pendingClash == nil else { throw SaveError.clashPending }
+
         let key = document.url.path
         let previous = chains[key]
 
@@ -96,12 +103,20 @@ final class SaveCoordinator {
         }
     }
 
-    /// Immediate save (⌘S, or the tail of a debounce). No-op when clean.
+    /// Immediate save (⌘S, or the tail of a debounce). No-op when clean or
+    /// when a clash is pending (the debounce tail must not decide the clash).
     func saveNow(_ document: MarkdownDocument, fileWatcher: FileWatcher?) async throws {
         pendingSaves[document.url.path]?.cancel()
         pendingSaves[document.url.path] = nil
+        guard document.pendingClash == nil else { return }
         guard document.isDirty else { return }
         try await perform(on: document, fileWatcher: fileWatcher) { $0 }
+    }
+
+    /// Drop any armed debounced save (a clash was raised — hold everything).
+    func cancelPendingSave(for document: MarkdownDocument) {
+        pendingSaves[document.url.path]?.cancel()
+        pendingSaves[document.url.path] = nil
     }
 
     /// Atomic write with security-scoped access on the parent directory

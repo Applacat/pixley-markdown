@@ -39,6 +39,9 @@ public enum ExternalChangeArbiter {
             document.applyMerge(merged: merged, diskBaseline: diskContent)
             return .merged
         case .clash:
+            // Hold every save until the user picks a side — an autosave or
+            // ⌘S landing now would silently destroy theirs on disk.
+            document.flagClash(theirs: diskContent)
             return .clash(theirs: diskContent)
         }
     }

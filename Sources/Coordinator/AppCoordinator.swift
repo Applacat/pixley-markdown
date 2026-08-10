@@ -618,6 +618,8 @@ public final class DocumentState {
             if let live = MarkdownDocumentRegistry.current(url: url), live.isDirty {
                 if case .clash(let theirs) = ExternalChangeArbiter.arbitrate(
                     document: live, diskContent: text) {
+                    // Hold the debounced autosave — it must not decide the clash
+                    SaveCoordinator.shared.cancelPendingSave(for: live)
                     externalClash = theirs
                 } else if live.isDirty {
                     // Auto-merge left the model ahead of disk — flush it.

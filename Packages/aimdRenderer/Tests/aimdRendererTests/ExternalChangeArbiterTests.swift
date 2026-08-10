@@ -69,6 +69,41 @@ final class ExternalChangeArbiterTests: XCTestCase {
         XCTAssertFalse(doc.isDirty)
     }
 
+    // MARK: - Clash hold (review fix: saves must pause until resolution)
+
+    func testClash_flagsPendingClashOnDocument() {
+        let doc = makeDocument("alpha\n")
+        doc.update(source: "alpha MINE\n")
+        _ = ExternalChangeArbiter.arbitrate(document: doc, diskContent: "alpha THEIRS\n")
+        XCTAssertEqual(doc.pendingClash, "alpha THEIRS\n",
+                       "clash must hold saves until the user decides")
+    }
+
+    func testClashResolution_clearsPendingClash() {
+        let keep = makeDocument("alpha\n")
+        keep.update(source: "alpha MINE\n")
+        _ = ExternalChangeArbiter.arbitrate(document: keep, diskContent: "alpha THEIRS\n")
+        ExternalChangeArbiter.keepMine(document: keep, theirs: "alpha THEIRS\n")
+        XCTAssertNil(keep.pendingClash)
+
+        let take = makeDocument("alpha\n")
+        take.update(source: "alpha MINE\n")
+        _ = ExternalChangeArbiter.arbitrate(document: take, diskContent: "alpha THEIRS\n")
+        ExternalChangeArbiter.takeTheirs(document: take, theirs: "alpha THEIRS\n")
+        XCTAssertNil(take.pendingClash)
+    }
+
+    func testAutoMergeAndReload_neverFlagClash() {
+        let doc = makeDocument("alpha\nbeta\n")
+        doc.update(source: "alpha MINE\nbeta\n")
+        _ = ExternalChangeArbiter.arbitrate(document: doc, diskContent: "alpha\nbeta THEIRS\n")
+        XCTAssertNil(doc.pendingClash)
+
+        let clean = makeDocument("alpha\n")
+        _ = ExternalChangeArbiter.arbitrate(document: clean, diskContent: "external\n")
+        XCTAssertNil(clean.pendingClash)
+    }
+
     func testSequentialMerges_baselineAdvances() {
         // Two external writes in a row against a continuously dirty doc.
         let doc = makeDocument("a\nb\nc\nd\n")

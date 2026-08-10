@@ -489,9 +489,11 @@ struct MarkdownEditor: NSViewRepresentable {
     /// Callback when user triggers "Add Comment" on selected text (selectedText, range)
     var onAddComment: ((String, NSRange) -> Void)? = nil
 
-    /// G2 (US-2.2): called on every user edit with the full new source —
-    /// the view layer routes it into the document model + autosave.
-    var onTextEdited: ((String) -> Void)? = nil
+    /// G2 (US-2.2): called on every user edit with (new source, pre-edit
+    /// source) — the view layer routes it into the document model +
+    /// autosave, and uses the pre-edit text to detect a merge that landed
+    /// between the editor's snapshot and the keystroke (G3).
+    var onTextEdited: ((_ new: String, _ previous: String) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSView {
         // Container: gutter (left) + scroll view (right), side by side via Auto Layout.
