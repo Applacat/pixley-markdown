@@ -210,14 +210,8 @@ public enum HeadingScaleSetting: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Converts to the MarkdownHighlighter's HeadingScale enum
-    var highlighterScale: MarkdownHighlighter.HeadingScale {
-        switch self {
-        case .compact: return .compact
-        case .normal: return .normal
-        case .spacious: return .spacious
-        }
-    }
+    // (highlighterScale conversion removed with MarkdownHighlighter in G4-P2;
+    // the engine's heading scaling maps from this enum in P4 theming.)
 }
 
 /// Link behavior options

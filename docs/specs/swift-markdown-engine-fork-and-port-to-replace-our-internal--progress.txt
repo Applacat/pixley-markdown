@@ -40,7 +40,42 @@ Phase P1: Fork & bind (kill box)            [COMPLETE — GO — 2026-08-12, 1 i
       guard may be worth considering.
   Regression floor: app 320/320, package 175/175 (+16 swift-testing),
     STRESS-PLAIN PASS, fork 323/323.
-Phase P2: Surface swap (full sweep)         [PENDING]
+Phase P2: Surface swap (full sweep)         [COMPLETE — 2026-08-12, 1 iteration]
+  US-P2.1 DONE: MarkdownView rewritten — ONE NativeTextViewWrapper for both
+    modes (Plain = rawSourceMode, Enhanced = live styling), flipped live by
+    ViewModePicker via settings.behavior.interactiveMode. Binding routes
+    (new, previous) through handleTextEdited (G3 fold-in intact) →
+    MarkdownDocument → debounced autosave. Engine documentId = file path;
+    wrapper NOT .id()-keyed so per-doc undo/scroll memory survives
+    switches. Runtime AC in harness: live↔raw flip byte-exact both ways,
+    undo dropped on flip (no-op after).
+  US-P2.2 DONE: full sweep. App: MarkdownEditor, MarkdownEditorCoordinator,
+    MarkdownHighlighter, InteractiveAnnotator, GutterOverlayView,
+    MarkdownTextViewPopovers, MarkdownTextViewNavigation,
+    LineNumberRulerView, Views/NativeRenderer/* (5 files),
+    StressPlainHarness (retired — STRESS-ENGINE runs the same checks
+    against the surviving surface). Package: legacy render pipeline
+    (aimdRenderer.swift, DocumentModel, MarkdownAST, MarkdownBlock,
+    MarkdownTheme, SwiftUITheme) + swift-markdown dependency RETIRED;
+    SyntaxTheme.swift kept (palette catalog for P4 theming).
+    MarkdownConfig extracted to its own file (AppCoordinator needs
+    maxTextSize). AIMDReaderApp: ⌘]/⌘[ element navigation removed until
+    P3; ⌘F now sets usesFindBar on the engine's text view (works on any
+    NSTextView). SettingsRepository: highlighterScale removed.
+    Grep gate CLEAN (one explanatory comment only).
+  US-P2.3 DONE: G3 conflict UX runs against the engine surface — harness
+    D8 external-replacement undo-clear, auto-merge both-survive, and
+    clash-hold (save blocked during pill / keep-mine lifts) all PASS with
+    the exact MarkdownView wiring. HUMAN SMOKE (non-blocking, P4 QA
+    list): AI chat edit while typing lands without a reload pill.
+  Accepted P2 regressions (restored in P4): gutter line numbers,
+    bookmarks, comment indicators + Add Comment, reading-progress badge,
+    ⌘G go-to-line, cross-launch scroll persistence (in-session per-doc
+    scroll memory works via the engine).
+  Floor: app 281/281 (was 320 — deleted suites of deleted code),
+    package 153/153 + 7 swift-testing (legacy render tests removed),
+    fork 323/323, STRESS-ENGINE PASS (incl. new mode-flip check,
+    p95 10.12ms).
 Phase P3: Interactive core four             [PENDING]
 Phase P4: Gutter parity & polish            [PENDING]
 

@@ -19,11 +19,13 @@ enum EngineStressHarness {
 
     private final class HarnessState: ObservableObject {
         @Published var text: String = ""
+        /// Runtime-flippable (US-P2.1): the mode flip must be byte-exact and
+        /// drop the document's undo stack.
+        @Published var rawSource: Bool = true
     }
 
     private struct HostView: View {
         @ObservedObject var state: HarnessState
-        let rawSource: Bool
         let documentId: String
         let onEdited: ((String, String) -> Void)?
 
@@ -37,7 +39,7 @@ enum EngineStressHarness {
                         onEdited?(new, previous)
                     }
                 ),
-                configuration: MarkdownEditorConfiguration(rawSourceMode: rawSource),
+                configuration: MarkdownEditorConfiguration(rawSourceMode: state.rawSource),
                 documentId: documentId,
                 isEditable: true
             )
@@ -48,13 +50,14 @@ enum EngineStressHarness {
     private static func makeWindow(_ state: HarnessState, rawSource: Bool,
                                    documentId: String,
                                    onEdited: ((String, String) -> Void)? = nil) -> NSWindow {
+        state.rawSource = rawSource
         let window = NSWindow(
             contentRect: NSRect(x: 100, y: 100, width: 740, height: 540),
             styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         // ARC owns the window; close() must not release it a second time.
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: HostView(
-            state: state, rawSource: rawSource, documentId: documentId, onEdited: onEdited))
+            state: state, documentId: documentId, onEdited: onEdited))
         window.makeKeyAndOrderFront(nil)
         return window
     }
@@ -237,6 +240,39 @@ enum EngineStressHarness {
             fail("G3-hold: keep-mine did not lift the hold")
         }
         window.close()
+
+        // ── US-P2.1: runtime mode flip is byte-exact and drops undo ──
+        let flipDoc = RoundTripCorpus.documents[0].content // kitchen-sink
+        let flipState = HarnessState()
+        flipState.text = flipDoc
+        let flipWindow = makeWindow(flipState, rawSource: false, documentId: "mode-flip")
+        try? await Task.sleep(for: .milliseconds(500))
+        if let flipTV = findTextView(in: flipWindow.contentView) {
+            flipWindow.makeFirstResponder(flipTV)
+            let end = (flipTV.string as NSString).length
+            flipTV.setSelectedRange(NSRange(location: end, length: 0))
+            flipTV.insertText("\nFLIP-TYPED", replacementRange: NSRange(location: end, length: 0))
+            try? await Task.sleep(for: .milliseconds(400))
+            let preFlip = flipTV.string
+            flipState.rawSource = true // Enhanced → Plain at runtime
+            try? await Task.sleep(for: .milliseconds(500))
+            if flipTV.string != preFlip {
+                fail("US-P2.1: mode flip mutated content (live→raw)")
+            }
+            flipTV.breakUndoCoalescing()
+            flipTV.undoManager?.undo() // stack dropped on flip — must be a no-op
+            if flipTV.string != preFlip {
+                fail("US-P2.1: undo after mode flip changed text — stack not dropped")
+            }
+            flipState.rawSource = false // and back
+            try? await Task.sleep(for: .milliseconds(500))
+            if flipTV.string != preFlip {
+                fail("US-P2.1: mode flip mutated content (raw→live)")
+            }
+        } else {
+            fail("US-P2.1: no text view in mode-flip window")
+        }
+        flipWindow.close()
 
         // ── Perf: live-mode restyle on a 5,000-line document ──
         // Realistic markdown: blank-line separated so the block parser sees

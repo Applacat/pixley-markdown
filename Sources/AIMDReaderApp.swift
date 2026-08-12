@@ -15,13 +15,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.applicationIconImage = image
         }
 
-        // G2 runtime AC harness — delegate hook is guaranteed to fire even
-        // when the app launches inactive from the CLI (scene .task is not).
-        if StressPlainHarness.isRequested {
-            NSApp.activate(ignoringOtherApps: true)
-            Task { await StressPlainHarness.run(settings: UserDefaultsSettingsRepository.shared) }
-        }
-        // G4-P1 runtime AC harness — the swift-markdown-engine editor.
+        // G4 runtime AC harness — the swift-markdown-engine editor (both
+        // modes). Delegate hook fires even when the app launches inactive
+        // from the CLI (scene .task does not). STRESS-PLAIN retired with the
+        // old editor in P2; STRESS-ENGINE runs the same checks and more.
         if EngineStressHarness.isRequested {
             NSApp.activate(ignoringOtherApps: true)
             Task { await EngineStressHarness.run() }
@@ -227,20 +224,8 @@ struct PixleyMarkdownApp: App {
                 .keyboardShortcut("g", modifiers: [.command, .shift])
             }
 
-            // Navigate menu — interactive element navigation
-            CommandGroup(before: .toolbar) {
-                Button("Next Interactive Element") {
-                    Self.sendNavigateAction(forward: true)
-                }
-                .keyboardShortcut("]", modifiers: [.command])
-                .disabled(activeCoordinator?.navigation.selectedFile == nil)
-
-                Button("Previous Interactive Element") {
-                    Self.sendNavigateAction(forward: false)
-                }
-                .keyboardShortcut("[", modifiers: [.command])
-                .disabled(activeCoordinator?.navigation.selectedFile == nil)
-            }
+            // Navigate menu (interactive element ⌘]/⌘[ navigation) returns in
+            // G4-P3 with the engine's element hit-test seam.
 
             // View menu — font size + Pixley Chat toggle
             CommandGroup(after: .toolbar) {
@@ -322,22 +307,17 @@ struct PixleyMarkdownApp: App {
 
         if let window = NSApp.keyWindow,
            let textView = findMarkdownTextView(in: window.contentView) {
+            // The engine's text view doesn't opt into the find bar itself;
+            // AppKit's incremental find bar works on any NSTextView (G4-P2).
+            textView.usesFindBar = true
             window.makeFirstResponder(textView)
             textView.performFindPanelAction(menuItem)
         }
     }
 
-    private static func sendNavigateAction(forward: Bool) {
-        if let window = NSApp.keyWindow,
-           let textView = findMarkdownTextView(in: window.contentView) as? MarkdownNSTextView {
-            window.makeFirstResponder(textView)
-            textView.navigateToElement(forward: forward)
-        }
-    }
-
     private static func findMarkdownTextView(in view: NSView?) -> NSTextView? {
         guard let view else { return nil }
-        if let textView = view as? NSTextView, textView.usesFindBar {
+        if let textView = view as? NSTextView, textView.isSelectable {
             return textView
         }
         for subview in view.subviews {
