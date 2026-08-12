@@ -1,0 +1,20 @@
+swift-markdown-engine Fork & Port (Gate G4 revised) — Progress
+==============================================================
+Spec: docs/specs/swift-markdown-engine-fork-and-port-to-replace-our-internal-.md (v1.0, 2026-08-12)
+Supersedes editor-epic.md § G4. Epic #107.
+
+Phase P1: Fork & bind (kill box)            [PENDING]
+Phase P2: Surface swap (full sweep)         [PENDING]
+Phase P3: Interactive core four             [PENDING]
+Phase P4: Gutter parity & polish            [PENDING]
+
+Regression floor at every phase exit: app suite green, aimdRenderer suite
+green, vendored fork suite green, --stress-plain PASS (incl. D8 + G3 merge
++ clash-hold scenarios), restyle p95 <= 16ms/5000 lines from P1 on.
+
+Kill box (P1 only): fundamental corpus/harness/perf failure needing > 1 week
+of fork surgery => record NO-GO here, do NOT output the completion promise,
+report to the user. Fallback: original editor-epic.md G4 plan.
+
+Iteration log:
+- (none yet)

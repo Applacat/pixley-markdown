@@ -1,0 +1,96 @@
+{
+  "feature": "swift-markdown-engine fork and port to replace our internal markdown parser",
+  "version": "1.0",
+  "date": "2026-08-12",
+  "supersedes": "editor-epic.md § Gate G4 (and G0 from-scratch architecture GO)",
+  "epic": 107,
+  "milestone": "v5: The Editor",
+  "source": {
+    "upstream": "https://github.com/nodes-app/swift-markdown-engine",
+    "license": "Apache-2.0",
+    "fork": "Applacat/swift-markdown-engine",
+    "vendoring": "local path package via git submodule or subtree"
+  },
+  "decisions": {
+    "D-A": "Engine replaces both view surfaces; InteractiveElementDetector stays write-side truth; G1-G3 model stack unchanged",
+    "D-B": "GitHub fork + vendored path dependency; rebase-able patches",
+    "D-C": "This port IS Gate G4",
+    "D-D": "Gutter feature parity in scope (P4)",
+    "D-E": "Repurpose wiki-link machinery into the fill-in element",
+    "D-F": "Generalized hit-test pattern; no NSTextAttachments",
+    "D-G": "MVP = core four interactive (checkbox, fill-in, choice, status); rest styled-but-inert until G5",
+    "D-H": "Internal SyntaxHighlighter adapter; no new dependencies",
+    "D-I": "Kill box: P1 corpus+harness+perf or NO-GO (>1 week fork surgery threshold); fallback = original G4 plan",
+    "D-J": "4 phases, one ralph loop each",
+    "D-K": "Upstream generic bits; Pixley element code stays in fork",
+    "D-L": "P2 full sweep: delete MarkdownEditor/coordinator/MarkdownHighlighter/NativeRenderer/MarkdownBlockParser; retire swift-markdown dep"
+  },
+  "hardRequirements": [
+    "Guardrails 1-5 (cal/cal.md)",
+    "D8: external/AI merges clear typed undo (fork hook); harness check green",
+    "Regression floor: app suite, package suite, STRESS-PLAIN (incl. G3 scenarios), fork suite — all green at every phase exit",
+    "Perf: reveal and per-keystroke restyle p95 <= 16ms on 5000-line doc",
+    "G3 conflict UX (silent reload / auto-merge / clash pill + save-hold) works on engine surface",
+    "Never touch Release ARCHS (arm64 + x86_64)"
+  ],
+  "phases": [
+    {
+      "id": "P1",
+      "title": "Fork & Bind (kill box)",
+      "stories": [
+        {"id": "US-P1.1", "summary": "Fork vendored; workspace builds; upstream 323 tests green in fork"},
+        {"id": "US-P1.2", "summary": "Debug-flag engine editor bound to MarkdownDocument; corpus byte-identical through engine storage"},
+        {"id": "US-P1.3", "summary": "STRESS-PLAIN re-targeted to engine rawSourceMode incl. D8 + G3 scenarios; restyle p95 <= 16ms/5000 lines"}
+      ],
+      "exit": "All green => GO. Fundamental failure > 1 week fork surgery => record NO-GO in progress file, do not emit promise"
+    },
+    {
+      "id": "P2",
+      "title": "Surface Swap (full sweep)",
+      "stories": [
+        {"id": "US-P2.1", "summary": "Plain = rawSourceMode, Enhanced = live styling; runtime mode flip byte-exact"},
+        {"id": "US-P2.2", "summary": "Delete old editors/renderer/block parser; retire swift-markdown; grep gate clean"},
+        {"id": "US-P2.3", "summary": "G3 conflict UX verified on engine surface"}
+      ],
+      "acceptedRegression": "Gutter/bookmarks/comments absent until P4 (per D2 nothing ships)"
+    },
+    {
+      "id": "P3",
+      "title": "Interactive Core Four",
+      "stories": [
+        {"id": "US-P3.1", "summary": "Generic element hit-test seam in fork (data-driven, upstreamable)"},
+        {"id": "US-P3.2", "summary": "Checkbox/fill-in/choice/status interactive; byte-identical writes via InteractionHandler; corpus assertions"},
+        {"id": "US-P3.3", "summary": "AI edits land and restyle live without reload"},
+        {"id": "US-P3.4", "summary": "Review/feedback/CriticMarkup styled-but-inert via InlineSyntax extensions"}
+      ]
+    },
+    {
+      "id": "P4",
+      "title": "Gutter Parity & Polish",
+      "stories": [
+        {"id": "US-P4.1", "summary": "Line-number gutter on engine text view, both modes"},
+        {"id": "US-P4.2", "summary": "Bookmarks, comment indicators, Add Comment popover, progress badge, cmd-G, scroll restore; manual QA list green"},
+        {"id": "US-P4.3", "summary": "Internal SyntaxHighlighter adapter styles fenced code; zero new deps"},
+        {"id": "US-P4.4", "summary": "Gate close-out: folded issues (#81-#84, #92-#94, #104, #105) verified/closed; G5 unblocked"}
+      ]
+    }
+  ],
+  "verification": [
+    "xcodebuild test -project AIMDReader.xcodeproj -scheme AIMDReader -configuration Debug",
+    "cd Packages/aimdRenderer && swift test",
+    "swift test in vendored fork",
+    "--stress-plain harness exit 0 with STRESS-PLAIN PASS and perf line"
+  ],
+  "ralph": {
+    "promiseTemplate": "G4 PHASE P<N> COMPLETE",
+    "maxIterations": 25,
+    "killBoxNote": "P1 may truthfully end NO-GO instead of the promise"
+  },
+  "outOfScope": [
+    "G5: insert palette, inert-element interactivity, #103/#85-UI/#106-UI",
+    "G6: soak/dogfood/App Store/version bump",
+    "LaTeX, image embeds, wiki-linking as feature, table editing beyond engine stock",
+    "iOS/visionOS, .pixley bundle",
+    "Detector grammar or write-back format changes"
+  ]
+}
