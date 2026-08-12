@@ -15,7 +15,19 @@ Spec: `docs/specs/editor-epic.md` · Progress: `docs/specs/editor-epic-progress.
       undo-mine-only D8, round-trip corpus gate; --stress-plain harness:
       500 keystrokes, 0 dropped, 0 selection errors)
 - [ ] G3 — Conflict engine
-- [ ] G4 — Enhanced WYSIWYG surface (folds in #82, #83, #94, #104, #105)
+- [ ] G4 — REVISED (2026-08-12): swift-markdown-engine fork & port replaces
+      the from-scratch build. Spec: docs/specs/swift-markdown-engine-fork-
+      and-port-to-replace-our-internal-.md (supersedes epic §G4; folds in
+      #82, #83, #94, #104, #105). Fork: Applacat/swift-markdown-engine,
+      vendored Packages/swift-markdown-engine (subtree, branch pixley-fork).
+      - [x] P1 Fork & bind — KILL BOX: GO (2026-08-12: corpus byte-exact
+            both modes, STRESS-ENGINE PASS, p95 11.9ms/16ms; 2 fork
+            patches: D8 undo-clear, undo/redo binding re-sync)
+      - [ ] P2 Surface swap (deletes old editors + block parser,
+            retires swift-markdown dep)
+      - [ ] P3 Interactive core four (hit-test seam)
+      - [ ] P4 Gutter parity + polish
+      Ralph per phase: promise "G4 PHASE P<N> COMPLETE", max 25.
 - [ ] G5 — Insert palette + polish (#103, #85)
 - [ ] G6 — Done bar: dogfood + round-trip corpus + 2-week zero-loss soak
 

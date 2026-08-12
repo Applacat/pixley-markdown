@@ -350,3 +350,24 @@ interpolated, promise never detected). All instructions + the completion
 promise live in the spec file; the prompt is one short line. Also: the stop
 hook often misses the promise once — verify state, re-promise; cancel via
 removing .claude/ralph-loop.local.md if it keeps looping.
+
+## 2026-08-12 — DECISION: G4 pivots to swift-markdown-engine fork (PROTECTED)
+
+nodes-app/swift-markdown-engine (Apache 2.0, TextKit 2, ships in Nodes.app)
+becomes Pixley's editor substrate for BOTH modes. Fork:
+Applacat/swift-markdown-engine, vendored as subtree at
+Packages/swift-markdown-engine (patches on branch pixley-fork, generic bits
+upstreamable). Detector stays write-side truth; G1–G3 model stack unchanged.
+Spec: docs/specs/swift-markdown-engine-fork-and-port-to-replace-our-internal-.md
+P1 kill box passed same day: corpus byte-exact both modes, all runtime
+gates green, p95 11.9ms. Their invariant "markers shrink, never removed
+from storage" independently confirms our #91 lesson.
+
+## 2026-08-12 — PATTERN: harness windows + engine binding quirks
+
+NSWindow in harnesses: isReleasedWhenClosed=false or close() double-releases
+under ARC. Engine publishes $text a beat after typing (async) — settle
+~500ms before model asserts. Undo/redo replay posts NO textDidChange
+(AppKit bypasses didChangeText) — fork patch re-syncs via
+NSUndoManagerDidUndo/RedoChange. Giant single paragraphs (no blank lines)
+degrade block-scoped restyle (~460ms/keystroke at 258KB) — G6 watch item.
