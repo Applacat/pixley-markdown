@@ -10,43 +10,9 @@ import XCTest
 /// `corpus` — every entry is automatically covered by every invariant test.
 final class RoundTripCorpusTests: XCTestCase {
 
-    static let corpus: [(name: String, content: String)] = [
-        ("kitchen-sink", """
-        # Doc 🎯
-
-        - [ ] First task
-        - [x] Done task with emoji ✅
-
-        | Col A | Col B |
-        |-------|-------|
-        | 1     | two   |
-
-        Name: [[enter your name]]
-        Filled: [[text: Enterprise Portal]]
-        Due: [[date: 2026-07-09]]
-
-        > [ ] YES  [ ] NO
-
-        The API {++needs auth++} and {==this span==}{>>a comment<<}.
-
-        <!-- status: TODO / IN PROGRESS / DONE -->
-        **Status:** IN PROGRESS
-
-        ```swift
-        let x = "code with - [ ] fake checkbox"
-        ```
-        """),
-        ("crlf-doc", "# CRLF\r\n\r\n- [ ] task one\r\n- [ ] task two\r\n"),
-        ("unicode-heavy", """
-        # Ünïcodé 💥🎨
-
-        Café naïve résumé — em-dash prose.
-
-        - [ ] tâche première 🇫🇷
-        - [ ] 日本語のタスク
-        """),
-        ("minimal", "- [ ] only\n"),
-    ]
+    /// Shared with the app's runtime harnesses (G4-P1): the corpus now lives
+    /// in the main target as `RoundTripCorpus.documents`.
+    static let corpus = RoundTripCorpus.documents
 
     /// Toggling a checkbox changes exactly one character of the document.
     func testCheckboxToggle_singleCharacterDiff() {

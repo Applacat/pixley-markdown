@@ -569,6 +569,20 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         if fontChanged {
             context.coordinator.didInitialFormatting = false
         }
+        // External programmatic replacement of the CURRENT document: the
+        // binding changed underneath a formatted editor (not typing echo —
+        // that syncs `lastSyncedText`; not a font change; not a document
+        // switch). The recorded undo actions' ranges are stale against the
+        // incoming text — replaying them could corrupt it or resurrect
+        // pre-replacement content. Same rule as switch-back divergence
+        // (`invalidateUndoIfContentDiverged`), applied in place.
+        if context.coordinator.didInitialFormatting,
+           !isNodeSwitch,
+           !fontChanged,
+           context.coordinator.lastSyncedText != text {
+            textView.breakUndoCoalescing()
+            textView.undoManager?.removeAllActions()
+        }
         if isNodeSwitch {
             // Save the outgoing document's scroll position — unless it just left
             // the retained set, in which case let it reset to top next time.

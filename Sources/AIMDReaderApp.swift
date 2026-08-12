@@ -21,6 +21,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             Task { await StressPlainHarness.run(settings: UserDefaultsSettingsRepository.shared) }
         }
+        // G4-P1 runtime AC harness — the swift-markdown-engine editor.
+        if EngineStressHarness.isRequested {
+            NSApp.activate(ignoringOtherApps: true)
+            Task { await EngineStressHarness.run() }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

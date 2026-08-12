@@ -27,6 +27,7 @@ settings:
 
 localPackages:
   - Packages/aimdRenderer
+  - Packages/swift-markdown-engine
 
 targets:
   AIMDReaderTests:
@@ -54,6 +55,8 @@ targets:
         buildPhase: resources
     dependencies:
       - package: aimdRenderer
+      - package: swift-markdown-engine
+        product: MarkdownEngine
     settings:
       base:
         PRODUCT_NAME: Pixley Markdown

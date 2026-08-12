@@ -31,7 +31,26 @@ extension NativeTextViewCoordinator {
         }
         let manager = UndoManager()
         undoManagers[key] = manager
+        observeUndoRedoSync(for: manager)
         return manager
+    }
+
+    /// Undo/redo replay mutates text storage WITHOUT posting `textDidChange`
+    /// (AppKit's text-operation replay bypasses `didChangeText`), so the text
+    /// binding never learns about the reverted content — and in live mode the
+    /// styling can go stale too. Re-run the delegate's own change path after
+    /// every undo/redo on a vended manager; it is idempotent against
+    /// `lastSyncedText`, so a double fire is harmless.
+    private func observeUndoRedoSync(for manager: UndoManager) {
+        let center = NotificationCenter.default
+        for name: Notification.Name in [.NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange] {
+            undoRedoSyncTokens.append(center.addObserver(
+                forName: name, object: manager, queue: .main
+            ) { [weak self] _ in
+                guard let self, let tv = self.textView else { return }
+                self.textDidChange(Notification(name: NSText.didChangeNotification, object: tv))
+            })
+        }
     }
 
     /// Drops `documentId`'s undo stack when its switch-away snapshot no longer

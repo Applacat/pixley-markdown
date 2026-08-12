@@ -3,7 +3,43 @@ swift-markdown-engine Fork & Port (Gate G4 revised) — Progress
 Spec: docs/specs/swift-markdown-engine-fork-and-port-to-replace-our-internal-.md (v1.0, 2026-08-12)
 Supersedes editor-epic.md § G4. Epic #107.
 
-Phase P1: Fork & bind (kill box)            [PENDING]
+Phase P1: Fork & bind (kill box)            [COMPLETE — GO — 2026-08-12, 1 iteration]
+  US-P1.1 DONE: forked to Applacat/swift-markdown-engine, vendored via
+    git subtree (squashed) at Packages/swift-markdown-engine; remote
+    'engine-fork' set. project.yml links MarkdownEngine product only
+    (no CodeBlocks/Latex bridges — D-H). App builds; fork suite 323/323.
+  US-P1.2 DONE: EngineStressHarness (--stress-engine, delegate-hook
+    trigger like G2's) hosts NativeTextViewWrapper bound to
+    MarkdownDocument via the P2-preview wiring (binding set closure gives
+    (new, previous) → G3 fold-in → update → scheduleSave). Corpus moved
+    to package main target (RoundTripCorpus.documents) shared by tests +
+    harness. Corpus byte-fidelity: PASS in BOTH raw and live modes, all
+    4 docs (storage == source bytes; binding untouched).
+  US-P1.3 DONE: STRESS-ENGINE PASS — 500 keystrokes dropped=0
+    selectionErrors=0; model sync; autosave ≤2.2s; undo reverts + model
+    follows; D8 external-write undo no-op; G3 auto-merge both-survive;
+    G3 clash-hold (save blocked during pill, keep-mine lifts);
+    perf p95 11.89ms ≤ 16ms budget on 5,000-line doc (live mode).
+  FORK PATCHES (both upstreamable, D-K):
+    1. NativeTextViewWrapper.updateNSView: external programmatic
+       replacement of the CURRENT document clears its undo stack
+       (same rule as switch-back divergence) — D8.
+    2. Coordinator observes NSUndoManagerDidUndo/RedoChange on vended
+       managers and re-runs textDidChange: undo/redo replay does NOT
+       post textDidChange, so bindings (and live styling) desync
+       without it. Found by harness; their own binding consumers
+       are exposed to this upstream.
+  FINDINGS:
+    - NSWindow harness windows need isReleasedWhenClosed=false (ARC
+      double-release crash on close()).
+    - Engine publishes binding a beat AFTER typing (async) — model-sync
+      asserts must settle ~500ms; P2 wiring must not assume sync echo.
+    - Block-scoped incremental restyle: a single giant paragraph
+      (no blank lines, 258KB) costs ~460ms/keystroke — realistic docs
+      are fine (11.9ms p95). Note for G6 soak: pathological-paragraph
+      guard may be worth considering.
+  Regression floor: app 320/320, package 175/175 (+16 swift-testing),
+    STRESS-PLAIN PASS, fork 323/323.
 Phase P2: Surface swap (full sweep)         [PENDING]
 Phase P3: Interactive core four             [PENDING]
 Phase P4: Gutter parity & polish            [PENDING]

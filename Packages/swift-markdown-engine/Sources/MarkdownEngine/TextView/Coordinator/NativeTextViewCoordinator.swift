@@ -40,6 +40,11 @@ public final class NativeTextViewCoordinator: NSObject, NSTextViewDelegate {
     /// its own undo stack that survives switching away and back. Vended through
     /// the `undoManager(for:)` delegate method; pruned alongside `scrollOffsets`.
     var undoManagers: [String: UndoManager] = [:]
+    /// Observer tokens for undo/redo replay sync (`observeUndoRedoSync`):
+    /// replay mutates text storage without posting `textDidChange`, so the
+    /// text binding (and live-mode styling) desync unless the delegate's own
+    /// sync path re-runs after every undo/redo on a vended manager.
+    var undoRedoSyncTokens: [any NSObjectProtocol] = []
     /// Per-`documentId` content snapshot (storage form) taken on switch-away. On
     /// switch-back a mismatch means the file was rewritten while backgrounded, so
     /// the now-stale undo stack is dropped. Pruned alongside `undoManagers`.
@@ -454,6 +459,7 @@ public final class NativeTextViewCoordinator: NSObject, NSTextViewDelegate {
     deinit {
         NotificationCenter.default.removeObserver(self)
         busObservers.forEach(NotificationCenter.default.removeObserver(_:))
+        undoRedoSyncTokens.forEach(NotificationCenter.default.removeObserver(_:))
     }
 }
 
