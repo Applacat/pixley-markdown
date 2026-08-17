@@ -152,6 +152,11 @@ extension NativeTextViewCoordinator {
         textView.textStorage?.setAttributedString(built)
         textView.textStorage?.endEditing()
 
+        // Host interactivity overlay over the whole rebuilt document (live mode
+        // only — raw mode carries base attrs and no interactivity).
+        if !configuration.rawSourceMode, let storage = textView.textStorage {
+            onInteractiveOverlay?(storage, fullRange)
+        }
 
         textView.typingAttributes = TextStylingService.makeBaseTypingAttributes(
             font: baseFont,
@@ -231,6 +236,14 @@ extension NativeTextViewCoordinator {
             precomputedBlocks: blocks,
             configuration: configuration
         )
+        // Host interactivity overlay over the restyled span (union of the
+        // paragraph candidates the incremental pass just rewrote).
+        if let storage = textView.textStorage, let overlay = onInteractiveOverlay,
+           let union = paragraphCandidates.reduce(nil as NSRange?, { acc, r in
+               acc.map { NSUnionRange($0, r) } ?? r
+           }) {
+            overlay(storage, NSIntersectionRange(union, NSRange(location: 0, length: storage.length)))
+        }
         // Reconcile wide-table overlays after layout settles.
         if let nativeTextView = textView as? NativeTextView {
             DispatchQueue.main.async { [weak nativeTextView] in

@@ -20,6 +20,11 @@ extension NativeTextView {
             return ts.attribute(.link, at: idx, effectiveRange: nil) != nil
         }()
         if let toggled = toggleTaskCheckboxIfHit(event: event), toggled { return }
+        // Host-driven interactive elements (radio choices, status chips,
+        // fill-in fields) — same early-return contract as the checkbox.
+        if isEditable, event.clickCount == 1,
+           event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+           handleInteractiveClickIfHit(event: event) { return }
         if remapClickInParagraphSpacing(event: event) { return }
         dragStartMouseScreenLoc = NSEvent.mouseLocation
         let boostTimer = Timer(timeInterval: 1.0 / configuration.dragSelection.ticksPerSecond, repeats: true) { [weak self] _ in

@@ -39,9 +39,15 @@ enum EngineStressHarness {
                         onEdited?(new, previous)
                     }
                 ),
-                configuration: MarkdownEditorConfiguration(rawSourceMode: state.rawSource),
+                configuration: MarkdownEditorConfiguration(
+                    rawSourceMode: state.rawSource,
+                    extensions: CriticMarkupExtensions.all()),
                 documentId: documentId,
-                isEditable: true
+                isEditable: true,
+                // Same production overlay so the harness exercises the real seam.
+                onInteractiveOverlay: { storage, range in
+                    PixleyElementStyler.overlay(storage: storage, range: range)
+                }
             )
             .frame(minWidth: 720, minHeight: 520)
         }
@@ -241,6 +247,10 @@ enum EngineStressHarness {
         }
         window.close()
 
+        // ── US-P3.2: interactive core four — overlay attributes, byte-exact
+        //    writes through InteractionHandler, and hit-test identifier mapping ──
+        await runInteractiveChecks(fail: fail)
+
         // ── US-P2.1: runtime mode flip is byte-exact and drops undo ──
         let flipDoc = RoundTripCorpus.documents[0].content // kitchen-sink
         let flipState = HarnessState()
@@ -333,5 +343,149 @@ enum EngineStressHarness {
             if let found = findTextView(in: sub) { return found }
         }
         return nil
+    }
+
+    // MARK: - Interactive core four (US-P3.2)
+
+    private static let interactiveSeed = """
+    > [ ] YES  [ ] NO
+
+    <!-- status: TODO / IN PROGRESS / DONE -->
+    **Status:** IN PROGRESS
+
+    Name: [[enter your name]]
+    """
+
+    private static func runInteractiveChecks(fail: (String) -> Void) async {
+        // Part A: overlay applies the seam attributes + hit-test maps a click.
+        let state = HarnessState()
+        state.text = interactiveSeed
+        let window = makeWindow(state, rawSource: false, documentId: "interactive")
+        try? await Task.sleep(for: .milliseconds(600))
+        if let tv = findTextView(in: window.contentView) as? NSTextView,
+           let storage = tv.textStorage {
+            let ns = storage.string as NSString
+            // Choice options carry a glyph; the two `[ ]` become interactive.
+            var glyphCount = 0
+            storage.enumerateAttribute(.interactiveGlyph,
+                                       in: NSRange(location: 0, length: storage.length)) { v, _, _ in
+                if v != nil { glyphCount += 1 }
+            }
+            if glyphCount < 2 { fail("US-P3.2: choice options did not receive interactive glyphs (\(glyphCount))") }
+
+            // Status label + fill-in become interactive zones.
+            var zoneIds: Set<String> = []
+            storage.enumerateAttribute(.interactiveZone,
+                                       in: NSRange(location: 0, length: storage.length)) { v, _, _ in
+                if let id = v as? String { zoneIds.insert(String(id.split(separator: ":").first ?? "")) }
+            }
+            if !zoneIds.contains("status") { fail("US-P3.2: status did not receive an interactive zone") }
+            if !zoneIds.contains("fillin") { fail("US-P3.2: fill-in did not receive an interactive zone") }
+            _ = ns
+            // (Hit-test → identifier mapping is proven in the fork's own
+            // InteractiveElementSeamTests; NativeTextView is internal there.)
+        } else {
+            fail("US-P3.2: interactive editor produced no text storage")
+        }
+        window.close()
+
+        // US-P3.4: CriticMarkup styles (has a background) but is INERT — no
+        // interactive glyph/zone under it, so no hover cursor / click.
+        let criticState = HarnessState()
+        criticState.text = "The API {++needs auth++} and {==a span==}{>>note<<}.\n"
+        let criticWindow = makeWindow(criticState, rawSource: false, documentId: "critic")
+        try? await Task.sleep(for: .milliseconds(500))
+        if let tv = findTextView(in: criticWindow.contentView) as? NSTextView,
+           let storage = tv.textStorage {
+            let str = storage.string as NSString
+            let insertionRange = str.range(of: "needs auth")
+            if insertionRange.location != NSNotFound {
+                let hasBackground = storage.attribute(.backgroundColor, at: insertionRange.location, effectiveRange: nil) != nil
+                    || storage.attribute(.markdownBlockBackground, at: insertionRange.location, effectiveRange: nil) != nil
+                if !hasBackground { fail("US-P3.4: CriticMarkup addition not styled (no background)") }
+                let isInteractive = storage.attribute(.interactiveZone, at: insertionRange.location, effectiveRange: nil) != nil
+                    || storage.attribute(.interactiveGlyph, at: insertionRange.location, effectiveRange: nil) != nil
+                if isInteractive { fail("US-P3.4: CriticMarkup is interactive — must be inert until G5") }
+            }
+        } else {
+            fail("US-P3.4: critic editor produced no text storage")
+        }
+        criticWindow.close()
+
+        // Part B: byte-exact writes through InteractionHandler (the same path
+        // clicks route to), independent of presentation.
+        await runInteractiveWriteChecks(fail: fail)
+    }
+
+    private static func runInteractiveWriteChecks(fail: (String) -> Void) async {
+        let handler = InteractionHandler()
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("interactive-\(ProcessInfo.processInfo.processIdentifier).md")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        func write(_ seed: String, _ body: @MainActor (InteractionHandler, URL, @escaping (String) -> Void) async throws -> Void) async -> String? {
+            try? seed.write(to: url, atomically: true, encoding: .utf8)
+            MarkdownDocumentRegistry.release(url: url)
+            _ = MarkdownDocumentRegistry.obtain(url: url, initialSource: seed)
+            var result: String?
+            do { try await body(handler, url) { result = $0 } }
+            catch { fail("US-P3.2 write threw: \(error)"); return nil }
+            return result
+        }
+
+        // Choice: selecting option 0 checks the first box only (radio).
+        let choiceSeed = "> [ ] YES  [ ] NO\n"
+        if let out = await write(choiceSeed, { h, u, cb in
+            let elements = InteractiveElementDetector.detect(in: choiceSeed)
+            guard case .choice(let c)? = elements.first(where: { if case .choice = $0 { return true }; return false }) else {
+                fail("US-P3.2: choice not detected in seed"); return
+            }
+            try await h.selectChoice(optionIndex: 0, in: c, displayedContent: choiceSeed, url: u, onContentUpdated: cb)
+        }) {
+            if out != "> [x] YES  [ ] NO\n" {
+                fail("US-P3.2: selectChoice(0) bytes wrong: \(out.debugDescription)")
+            }
+            // Radio: selecting the other option moves the mark, never adds one.
+            if let out2 = await write(out, { h, u, cb in
+                let elements = InteractiveElementDetector.detect(in: out)
+                guard case .choice(let c)? = elements.first(where: { if case .choice = $0 { return true }; return false }) else { return }
+                try await h.selectChoice(optionIndex: 1, in: c, displayedContent: out, url: u, onContentUpdated: cb)
+            }), out2 != "> [ ] YES  [x] NO\n" {
+                fail("US-P3.2: radio reselect bytes wrong: \(out2.debugDescription)")
+            }
+        }
+
+        // Status: advancing preserves the `**Status:**` prefix.
+        let statusSeed = "<!-- status: TODO / IN PROGRESS / DONE -->\n**Status:** IN PROGRESS\n"
+        if let out = await write(statusSeed, { h, u, cb in
+            let elements = InteractiveElementDetector.detect(in: statusSeed)
+            guard case .status(let s)? = elements.first(where: { if case .status = $0 { return true }; return false }) else {
+                fail("US-P3.2: status not detected in seed"); return
+            }
+            try await h.advanceStatus(s, to: "DONE", displayedContent: statusSeed, in: u, onContentUpdated: cb)
+        }) {
+            if !out.contains("**Status:** DONE") {
+                fail("US-P3.2: advanceStatus lost the prefix or state: \(out.debugDescription)")
+            }
+        }
+
+        // Fill-in: value is wrapped with its typed prefix (re-detectable).
+        let fillSeed = "Name: [[enter your name]]\n"
+        if let out = await write(fillSeed, { h, u, cb in
+            let elements = InteractiveElementDetector.detect(in: fillSeed)
+            guard case .fillIn(let f)? = elements.first(where: { if case .fillIn = $0 { return true }; return false }) else {
+                fail("US-P3.2: fill-in not detected in seed"); return
+            }
+            try await h.fillIn(f, value: "Jose Duarte", displayedContent: fillSeed, in: u, onContentUpdated: cb)
+        }) {
+            if !out.contains("[[text: Jose Duarte]]") {
+                fail("US-P3.2: fillIn wrapping wrong: \(out.debugDescription)")
+            }
+            // Re-detectable: the filled value parses back as a fill-in.
+            let redetected = InteractiveElementDetector.detect(in: out)
+            if !redetected.contains(where: { if case .fillIn = $0 { return true }; return false }) {
+                fail("US-P3.2: filled value no longer detects as a fill-in")
+            }
+        }
     }
 }

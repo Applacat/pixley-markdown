@@ -83,6 +83,12 @@ public final class NativeTextViewCoordinator: NSObject, NSTextViewDelegate {
     var layoutDelegate: MarkdownLayoutManagerDelegate?
     var onLinkClick: ((String) -> Void)?
     var onCaretRectChange: ((CGRect) -> Void)?
+    /// Host interactivity overlay (see InteractiveElementSeam.swift). Invoked
+    /// after each style application with the affected range so the host can
+    /// re-assert its `.interactiveGlyph` / `.interactiveZone` attributes (the
+    /// engine's restyle rewrites attributes and would otherwise drop them).
+    /// Never runs in `rawSourceMode` (raw text is the host's escape hatch).
+    var onInteractiveOverlay: ((NSTextStorage, NSRange) -> Void)?
     /// Embedder hook to build the right-click menu (the engine ships none). Gets the
     /// default menu + current selection range, returns the menu to show.
     var onBuildContextMenu: ((NSMenu, NSRange) -> NSMenu)?

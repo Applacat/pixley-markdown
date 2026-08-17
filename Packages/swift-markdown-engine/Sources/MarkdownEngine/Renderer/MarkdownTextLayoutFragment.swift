@@ -109,6 +109,10 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
         // 4. Task checkboxes (on top of hidden [ ]/[x] markers)
         drawTaskCheckboxes(at: point, in: context)
 
+        // 4a. Host interactive glyphs (radio circles, toggles, …) drawn on top
+        // of their host-cleared source glyphs.
+        drawInteractiveGlyphs(at: point, in: context)
+
         // 4b. Bullet glyphs (on top of hidden -/*/+ markers)
         drawBulletMarkers(at: point, in: context)
         drawOrderedMarkers(at: point, in: context)
@@ -674,6 +678,52 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
     }
 
     // MARK: - Task List Checkboxes
+
+    /// Draws host `.interactiveGlyph` symbols (radio circles, toggles, …).
+    /// The host clears the source glyphs' ink under the range, so the symbol
+    /// is drawn into the range's own box: a square of side ≈ the cap band,
+    /// left-aligned to the range start and vertically centered on the line.
+    private func drawInteractiveGlyphs(at point: CGPoint, in context: CGContext) {
+        guard let ts = textStorage, let range = fragmentNSRange, range.length > 0 else { return }
+
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
+        NSGraphicsContext.current = nsContext
+
+        let configuration = (textLayoutManager?.textContainer?.textView as? NativeTextView)?.configuration
+            ?? .default
+        let font = (textLayoutManager?.textContainer?.textView as? NativeTextView)?.baseFont
+            ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+
+        ts.enumerateAttribute(.interactiveGlyph, in: range, options: []) { [weak self] value, attrRange, _ in
+            guard let self, let glyph = value as? InteractiveGlyph,
+                  let start = self.drawPosition(forDocumentCharAt: attrRange.location, point: point) else { return }
+            // Range width from start→end x on the same line (fallback: the box side).
+            let side = min(TaskCheckboxGeometry.size(for: font) * 1.15, start.lineHeight)
+            let endX = self.drawPosition(forDocumentCharAt: NSMaxRange(attrRange), point: point)?.x
+            let boxWidth = max(side, (endX ?? start.x + side) - start.x)
+            let ascent = max(0, font.ascender)
+            let descent = max(0, -font.descender)
+            let centerY = start.baselineY + (descent - ascent) / 2
+            let glyphX = start.x + max(0, (boxWidth - side) / 2)
+
+            let scale = self.textLayoutManager?.textContainer?.textView?.window?.backingScaleFactor
+                ?? NSScreen.main?.backingScaleFactor ?? 2.0
+            func alignToPixel(_ v: CGFloat) -> CGFloat { (v * scale).rounded(.toNearestOrAwayFromZero) / scale }
+            let rect = CGRect(x: alignToPixel(glyphX), y: alignToPixel(centerY - side / 2),
+                              width: side, height: side)
+            guard !rect.isEmpty, !rect.isNull else { return }
+
+            if let symbol = NSImage(systemSymbolName: glyph.symbolName, accessibilityDescription: nil) {
+                let sizeConfig = NSImage.SymbolConfiguration(pointSize: rect.height, weight: .regular)
+                let tint = glyph.filled ? configuration.theme.bodyText : configuration.theme.mutedText
+                let colorConfig = NSImage.SymbolConfiguration(hierarchicalColor: tint)
+                let configured = symbol.withSymbolConfiguration(sizeConfig.applying(colorConfig)) ?? symbol
+                configured.draw(in: rect)
+            }
+        }
+    }
 
     private func drawTaskCheckboxes(at point: CGPoint, in context: CGContext) {
         guard let ts = textStorage, let range = fragmentNSRange, range.length > 0 else { return }

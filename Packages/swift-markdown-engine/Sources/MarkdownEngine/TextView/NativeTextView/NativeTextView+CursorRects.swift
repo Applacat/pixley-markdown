@@ -23,6 +23,10 @@ extension NativeTextView {
             // on every move, so setting the arrow after it flickers — skip
             // super entirely, like the exclusion-zone branch.
             NSCursor.arrow.set()
+        } else if isEditable, isOverInteractiveElement(event) {
+            // Host interactive control (radio, status, fill-in) — a control
+            // surface, not text: pointing hand, skip super's I-beam.
+            NSCursor.pointingHand.set()
         } else if isEditable, isOverWideTableOverlay(event) {
             // Same treatment for wide-table scroll overlays: the overlay is a
             // control surface (rendered image + horizontal scroller), not

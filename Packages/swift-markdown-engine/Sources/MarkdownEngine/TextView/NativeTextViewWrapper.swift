@@ -137,6 +137,14 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
     /// Return `true` to show the arrow cursor instead of the I-beam.
     public var isCursorExcluded: ((CGPoint) -> Bool)?
 
+    /// Host interactivity overlay (see InteractiveElementSeam.swift): invoked
+    /// after each style application with the affected range, so the host can
+    /// re-assert `.interactiveGlyph` / `.interactiveZone` attributes.
+    public var onInteractiveOverlay: ((NSTextStorage, NSRange) -> Void)?
+    /// Called when a click hits an interactive glyph/zone: (opaque identifier,
+    /// range rect in window coordinates). Return `true` if handled.
+    public var onInteractiveElementClick: ((String, NSRect) -> Bool)?
+
     public init(
         text: Binding<String>,
         isWikiLinkActive: Binding<Bool> = .constant(false),
@@ -161,7 +169,9 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         retainedScrollDocumentIds: Set<String>? = nil,
         onPersistScrollOffset: ((String, CGFloat) -> Void)? = nil,
         restoreScrollOffset: ((String) -> CGFloat?)? = nil,
-        isCursorExcluded: ((CGPoint) -> Bool)? = nil
+        isCursorExcluded: ((CGPoint) -> Bool)? = nil,
+        onInteractiveOverlay: ((NSTextStorage, NSRange) -> Void)? = nil,
+        onInteractiveElementClick: ((String, NSRect) -> Bool)? = nil
     ) {
         self._text = text
         self._isWikiLinkActive = isWikiLinkActive
@@ -187,6 +197,8 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         self.onPersistScrollOffset = onPersistScrollOffset
         self.restoreScrollOffset = restoreScrollOffset
         self.isCursorExcluded = isCursorExcluded
+        self.onInteractiveOverlay = onInteractiveOverlay
+        self.onInteractiveElementClick = onInteractiveElementClick
     }
 
     public func sizeThatFits(
@@ -284,6 +296,7 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         textView.isAutomaticDataDetectionEnabled = true
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.onPasteImage = onPasteImage
+        textView.onInteractiveElementClick = onInteractiveElementClick
         if #available(macOS 15.1, *) {
             // `.limited` = the Writing Tools popover panel; `.complete` = the inline
             // experience that morphs the text with an animation. We use `.limited` so
@@ -323,6 +336,7 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         context.coordinator.textView = textView
         context.coordinator.wikiLinkMetadata = initialState.metadata
         context.coordinator.onCaretRectChange = onCaretRectChange
+        context.coordinator.onInteractiveOverlay = onInteractiveOverlay
         context.coordinator.onBuildContextMenu = onBuildContextMenu
         context.coordinator.onInlineSelectionChange = onInlineSelectionChange
         context.coordinator.onInlinePreviewKey = onInlinePreviewKey
@@ -446,6 +460,7 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         }
 
         textView.onPasteImage = onPasteImage
+        textView.onInteractiveElementClick = onInteractiveElementClick
         textView.isCursorExcluded = isCursorExcluded
         textView.setPlaceholder(placeholder)
         // Sync heightBehavior across all three layers (scroll view, text view,
@@ -696,6 +711,7 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         }
 
         context.coordinator.onCaretRectChange = onCaretRectChange
+        context.coordinator.onInteractiveOverlay = onInteractiveOverlay
         context.coordinator.onBuildContextMenu = onBuildContextMenu
         context.coordinator.onInlineSelectionChange = onInlineSelectionChange
         context.coordinator.onInlinePreviewKey = onInlinePreviewKey

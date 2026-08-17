@@ -49,6 +49,12 @@ final class NativeTextView: NSTextView {
     weak var layoutBridge: LayoutBridge?
     var baseFont: NSFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
 
+    // MARK: Interactive element seam (host-driven; see InteractiveElementSeam.swift)
+    /// Called when a click lands on an `.interactiveGlyph` or `.interactiveZone`
+    /// range. Arguments: the opaque host identifier and the range's rect in
+    /// window coordinates (for anchoring a popover/menu). Return handled.
+    var onInteractiveElementClick: ((String, NSRect) -> Bool)?
+
     // MARK: Caret-workaround state
     var caretIndicatorObservation: NSKeyValueObservation?
     weak var observedCaretIndicator: NSView?

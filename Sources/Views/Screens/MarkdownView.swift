@@ -27,10 +27,11 @@ private struct FileLoadTrigger: Equatable {
 /// reading-progress badge return in P4.
 struct MarkdownView: View {
 
-    @Environment(\.coordinator) private var coordinator
+    @Environment(\.coordinator) var coordinator
     @Environment(\.settings) private var settings
 
-    @State private var fileWatcher: FileWatcher? = nil
+    @State var fileWatcher: FileWatcher? = nil
+    @State var interactionHandler = InteractionHandler()
 
     // MARK: - Body
 
@@ -95,11 +96,18 @@ struct MarkdownView: View {
                 }
             ),
             configuration: MarkdownEditorConfiguration(
-                rawSourceMode: settings.behavior.interactiveMode == .plain
+                rawSourceMode: settings.behavior.interactiveMode == .plain,
+                extensions: CriticMarkupExtensions.all()
             ),
             fontSize: CGFloat(settings.rendering.fontSize),
             documentId: coordinator.navigation.selectedFile?.path ?? "no-document",
-            isEditable: true
+            isEditable: true,
+            onInteractiveOverlay: { storage, range in
+                PixleyElementStyler.overlay(storage: storage, range: range)
+            },
+            onInteractiveElementClick: { identifier, windowRect in
+                handleElementClick(identifier, windowRect: windowRect)
+            }
         )
         .background {
             // ⌘S forces an immediate save of the live document (US-2.3)

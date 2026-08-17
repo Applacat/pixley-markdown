@@ -76,7 +76,48 @@ Phase P2: Surface swap (full sweep)         [COMPLETE — 2026-08-12, 1 iteratio
     package 153/153 + 7 swift-testing (legacy render tests removed),
     fork 323/323, STRESS-ENGINE PASS (incl. new mode-flip check,
     p95 10.12ms).
-Phase P3: Interactive core four             [PENDING]
+Phase P3: Interactive core four             [COMPLETE — 2026-08-17, 1 iteration]
+  US-P3.1 DONE: generic interactive-element seam in the fork (data-driven,
+    no host types). InteractiveElementSeam.swift: `.interactiveGlyph`
+    (value InteractiveGlyph: symbolName/filled/opaque id — drawn SF Symbol
+    control) + `.interactiveZone` (opaque String id — clickable text span).
+    Engine does hit-testing (NativeTextView+InteractiveElement), glyph
+    drawing (MarkdownTextLayoutFragment.drawInteractiveGlyphs), pointing-
+    hand hover (CursorRects), mouseDown dispatch → onInteractiveElementClick
+    (id, windowRect), and an overlay hook (onInteractiveOverlay) fired after
+    BOTH restyle paths so the host re-asserts attrs the restyle cleared
+    (raw mode skipped). Wrapper params + coordinator plumbing added.
+    Fork tests: InteractiveElementSeamTests (4) — glyph hit, miss-outside,
+    zone hit, glyph-beats-zone. Fork suite 327/327.
+  US-P3.2 DONE: core four interactive. PixleyElementStyler (overlay) maps
+    detector elements → seam attrs: choice options get a radio glyph
+    (circle / circle.inset.filled) over the `[ ]` (source glyphs cleared);
+    status label + fill-in get zones with chip / field styling. Checkbox
+    stays engine-native. MarkdownViewInteractive (click router) parses the
+    opaque id, re-detects by anchor, routes through InteractionHandler —
+    the SAME serialized detector-anchored write path (status menu, fill-in
+    popover). Harness US-P3.2: overlay lands glyph on choices + zones on
+    status/fillin; byte-exact writes verified — selectChoice(0)→`[x] YES`,
+    radio reselect moves the mark, advanceStatus preserves `**Status:**`,
+    fillIn wraps `[[text: …]]` and re-detects.
+    PERF LESSON: whole-doc detect per keystroke blew the budget (43ms) —
+    the overlay now WINDOWS detection to the blank-line block enclosing the
+    restyled range (elements outside keep their prior overlay). Back to
+    11.45ms p95 / 16ms.
+  US-P3.3 DONE (path): AI edits already route ChatTools → InteractionHandler
+    (unchanged); the engine restyles + re-overlays the merged region via the
+    same onInteractiveOverlay hook. Harness G3 auto-merge/clash scenarios
+    (P1) stay green on this surface.
+  US-P3.4 DONE: CriticMarkupExtensions — {++ ++}/{-- --}/{~~ ~~}/{== ==}/
+    {>> <<} registered as engine InlineSyntax extensions, styled (distinct
+    backgrounds, strikethrough/italic) but INERT (overlay never marks them
+    glyph/zone → no hover cursor). Harness US-P3.4: addition has a
+    background AND is not interactive. Corpus round-trip stays byte-exact
+    WITH extensions registered (extensions are styling-only).
+  HUMAN QA (P4 checklist): visually confirm the radio ring renders and a
+    click selects; status menu + fill-in popover feel; hover cursors.
+  Floor: app 281/281, package 153/153+7, fork 327/327, STRESS-ENGINE PASS
+    (p95 11.45ms). Fork patches on branch pixley-fork.
 Phase P4: Gutter parity & polish            [PENDING]
 
 Regression floor at every phase exit: app suite green, aimdRenderer suite
