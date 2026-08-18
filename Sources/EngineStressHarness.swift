@@ -41,7 +41,7 @@ enum EngineStressHarness {
                     }
                 ),
                 configuration: MarkdownEditorConfiguration(
-                    leftContentInset: onReady != nil ? PixleyGutterRulerView.width : 0,
+                    leftContentInset: onReady != nil ? PixleyGutterView.width : 0,
                     rawSourceMode: state.rawSource,
                     extensions: CriticMarkupExtensions.all()),
                 documentId: documentId,

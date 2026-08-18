@@ -1,84 +1,95 @@
 import AppKit
+import os.log
+
+private let gutterLog = Logger(subsystem: "com.aimd.reader", category: "PixleyGutter")
 
 /// TextKit 2 line-number gutter for the engine's NSTextView (G4-P4, US-P4.1/2).
-/// The old ruler used TextKit 1 (`layoutManager`); this enumerates
-/// `textLayoutManager` fragments — one fragment per source line — for Y
-/// positions. Draws line numbers, a bookmark dot on bookmarked lines, and a
-/// comment glyph on commented lines; a click toggles the line's bookmark.
-final class PixleyGutterRulerView: NSRulerView {
+///
+/// A floating overlay (via `NSScrollView.addFloatingSubview`), NOT an
+/// `NSRulerView`: the ruler's space reservation is unreliable inside the app's
+/// nested split view (it worked in a plain window but not in the browser). The
+/// editor reserves the strip via `MarkdownEditorConfiguration.leftContentInset`
+/// and this view floats in it, redrawing line numbers as the content scrolls.
+///
+/// Line Y positions come from `textLayoutManager` fragments (one per source
+/// line); the old ruler used TextKit 1 `layoutManager`, which the engine lacks.
+final class PixleyGutterView: NSView {
 
-    /// Width of the gutter strip; the editor reserves this much on the left
-    /// via `MarkdownEditorConfiguration.leftContentInset` so text never
-    /// overlaps the numbers.
+    /// Width of the gutter strip; the editor reserves this much on the left via
+    /// `leftContentInset` so text never overlaps the numbers.
     static let width: CGFloat = 44
 
-    private weak var markdownTextView: NSTextView?
+    private weak var textView: NSTextView?
+    private weak var scrollView: NSScrollView?
 
     var bookmarkedLines: Set<Int> = [] { didSet { needsDisplay = true } }
     var commentedLines: Set<Int> = [] { didSet { needsDisplay = true } }
     var onToggleBookmark: ((Int) -> Void)?
 
     init(scrollView: NSScrollView, textView: NSTextView) {
-        self.markdownTextView = textView
-        super.init(scrollView: scrollView, orientation: .verticalRuler)
-        clientView = textView
-        ruleThickness = Self.width
-        // Decorative — VoiceOver skips it (line numbers are visual context).
-        setAccessibilityElement(false)
-        setAccessibilityRole(.unknown)
+        self.scrollView = scrollView
+        self.textView = textView
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: scrollView.contentView.bounds.height))
+        setAccessibilityElement(false) // decorative
+        wantsLayer = false
 
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(refresh),
                            name: NSText.didChangeNotification, object: textView)
         center.addObserver(self, selector: #selector(refresh),
-                           name: NSView.boundsDidChangeNotification,
-                           object: scrollView.contentView)
+                           name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+        center.addObserver(self, selector: #selector(refresh),
+                           name: NSView.frameDidChangeNotification, object: scrollView)
         scrollView.contentView.postsBoundsChangedNotifications = true
+        scrollView.postsFrameChangedNotifications = true
     }
 
     @available(*, unavailable)
-    required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     deinit { NotificationCenter.default.removeObserver(self) }
 
-    @objc private func refresh() { needsDisplay = true }
+    override var isFlipped: Bool { true }
+
+    @objc private func refresh() {
+        if let clipHeight = scrollView?.contentView.bounds.height, abs(frame.height - clipHeight) > 0.5 {
+            setFrameSize(NSSize(width: Self.width, height: clipHeight))
+        }
+        needsDisplay = true
+    }
 
     // MARK: - Fragment → line-number geometry (TextKit 2)
 
-    /// Walks the visible fragments, calling `body` with (line number, the
-    /// fragment's Y in this ruler's coordinates, its height).
+    /// Calls `body` with (line number, top-Y in THIS view's coords, height) for
+    /// each source line whose fragment is in the visible band.
     private func enumerateVisibleLines(_ body: (Int, CGFloat, CGFloat) -> Void) {
-        guard let textView = markdownTextView,
-              let tlm = textView.textLayoutManager,
+        guard let textView, let tlm = textView.textLayoutManager,
               let tcs = tlm.textContentManager else { return }
         let full = textView.string as NSString
         let visible = textView.visibleRect
         let origin = textView.textContainerOrigin
 
         tlm.enumerateTextLayoutFragments(from: tlm.documentRange.location, options: [.ensuresLayout]) { fragment in
-            let frame = fragment.layoutFragmentFrame // text-container coords
-            // Skip until the visible band; stop once past its bottom.
-            let bottomInView = frame.maxY + origin.y
+            let frame = fragment.layoutFragmentFrame
             let topInView = frame.minY + origin.y
+            let bottomInView = frame.maxY + origin.y
             if bottomInView < visible.minY { return true }
             if topInView > visible.maxY { return false }
 
-            // Line number = newlines before this fragment's start + 1.
-            let startOffset = tcs.offset(from: tcs.documentRange.location,
-                                         to: fragment.rangeInElement.location)
+            let startOffset = tcs.offset(from: tcs.documentRange.location, to: fragment.rangeInElement.location)
             var line = 1
             if startOffset > 0 {
                 full.enumerateSubstrings(in: NSRange(location: 0, length: startOffset),
                                          options: [.byLines, .substringNotRequired]) { _, _, _, _ in line += 1 }
             }
-            let pointInView = NSPoint(x: 0, y: frame.minY + origin.y)
-            let yInRuler = self.convert(pointInView, from: textView).y
-            body(line, yInRuler, frame.height)
+            // Fragment top in text-view coords → this floating view's coords.
+            let pTop = self.convert(NSPoint(x: 0, y: topInView), from: textView)
+            body(line, pTop.y, frame.height)
             return true
         }
     }
 
-    /// Line numbers currently visible in the gutter (for smoke tests).
+    /// Line numbers currently visible (for smoke tests).
     func visibleLineNumbers() -> [Int] {
         var lines: [Int] = []
         enumerateVisibleLines { line, _, _ in lines.append(line) }
@@ -93,13 +104,24 @@ final class PixleyGutterRulerView: NSRulerView {
         enumerateVisibleLines { line, y, height in
             if clickY >= y && clickY < y + height { hitLine = line }
         }
-        if let hitLine { onToggleBookmark?(hitLine) } else { super.mouseDown(with: event) }
+        if let hitLine { onToggleBookmark?(hitLine) }
     }
 
     // MARK: - Drawing
 
-    override func drawHashMarksAndLabels(in rect: NSRect) {
+    private var didLogFirstDraw = false
+
+    override func draw(_ dirtyRect: NSRect) {
         let numberFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        var count = 0
+        enumerateVisibleLines { line, y, height in
+            count += 1
+            _ = (line, y, height)
+        }
+        if !didLogFirstDraw {
+            didLogFirstDraw = true
+            gutterLog.debug("gutter draw: frame=\(NSStringFromRect(self.frame), privacy: .public) visibleLines=\(count) tvVisible=\(NSStringFromRect(self.textView?.visibleRect ?? .zero), privacy: .public)")
+        }
         enumerateVisibleLines { line, y, height in
             let bookmarked = self.bookmarkedLines.contains(line)
             let commented = self.commentedLines.contains(line)
@@ -123,34 +145,33 @@ final class PixleyGutterRulerView: NSRulerView {
             ]
             let str = "\(line)" as NSString
             let size = str.size(withAttributes: attrs)
-            str.draw(at: NSPoint(x: self.ruleThickness - size.width - 6,
-                                 y: y + (height - size.height) / 2),
+            str.draw(at: NSPoint(x: Self.width - size.width - 8, y: y + (height - size.height) / 2),
                      withAttributes: attrs)
         }
     }
 }
 
-/// Owns a gutter ruler for one editor and keeps its data current. Held by the
-/// SwiftUI layer across updates; the ruler itself lives on the scroll view.
+/// Owns a gutter overlay for one editor and keeps its data current. Held by the
+/// SwiftUI layer across updates; the view floats on the scroll view.
 @MainActor
 final class GutterController {
-    private var ruler: PixleyGutterRulerView?
+    private var gutter: PixleyGutterView?
     private var progressObserver: (any NSObjectProtocol)?
     /// Reading progress (0…1) as the reader scrolls (US-P4.2).
     var onProgress: ((Double) -> Void)?
 
     func install(on scrollView: NSScrollView, textView: NSTextView,
                  onToggleBookmark: @escaping (Int) -> Void) {
-        guard ruler == nil else { return }
-        let ruler = PixleyGutterRulerView(scrollView: scrollView, textView: textView)
-        ruler.onToggleBookmark = onToggleBookmark
-        scrollView.verticalRulerView = ruler
-        scrollView.hasVerticalRuler = true
-        scrollView.rulersVisible = true
-        // Enabling rulers after the initial tile doesn't re-reserve space on
-        // its own — re-tile so the content view insets left of the gutter.
-        scrollView.tile()
-        self.ruler = ruler
+        guard gutter == nil else { return }
+        let view = PixleyGutterView(scrollView: scrollView, textView: textView)
+        view.onToggleBookmark = onToggleBookmark
+        view.frame = NSRect(x: 0, y: 0, width: PixleyGutterView.width,
+                            height: scrollView.contentView.bounds.height)
+        // Floating for the vertical axis: stays pinned to the viewport's left
+        // edge while the document scrolls beneath it.
+        scrollView.addFloatingSubview(view, for: .vertical)
+        self.gutter = view
+        gutterLog.debug("gutter installed: clipH=\(scrollView.contentView.bounds.height) tvFrame=\(NSStringFromRect(textView.frame), privacy: .public)")
 
         scrollView.contentView.postsBoundsChangedNotifications = true
         progressObserver = NotificationCenter.default.addObserver(
@@ -166,10 +187,10 @@ final class GutterController {
     }
 
     func update(bookmarked: Set<Int>, commented: Set<Int>) {
-        ruler?.bookmarkedLines = bookmarked
-        ruler?.commentedLines = commented
+        gutter?.bookmarkedLines = bookmarked
+        gutter?.commentedLines = commented
     }
 
-    /// Smoke-test hook: the line numbers the ruler currently lays out.
-    func visibleLineNumbers() -> [Int] { ruler?.visibleLineNumbers() ?? [] }
+    /// Smoke-test hook: the line numbers the gutter currently lays out.
+    func visibleLineNumbers() -> [Int] { gutter?.visibleLineNumbers() ?? [] }
 }

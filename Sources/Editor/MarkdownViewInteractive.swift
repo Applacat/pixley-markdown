@@ -98,11 +98,16 @@ extension MarkdownView {
         guard let contentView = NSApp.keyWindow?.contentView else { return }
         let popover = NSPopover()
         popover.behavior = .transient
+        // Offer a native date picker when the field is date-typed OR its value
+        // already looks like a date (the sample docs store `[[text: 2026-…]]`,
+        // which is text-typed but clearly a date the user expects to pick).
+        let looksLikeDate = (fillIn.value ?? "").range(
+            of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil
         let handler = interactionHandler, watcher = fileWatcher
         let controller = FillInEditController(
             initialValue: fillIn.value ?? "",
             hint: fillIn.hint,
-            isDate: fillIn.type == .date
+            isDate: fillIn.type == .date || looksLikeDate
         ) { [self] newValue in
             popover.close()
             runWrite(url: url) { onUpdate in

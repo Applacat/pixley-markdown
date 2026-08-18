@@ -107,7 +107,7 @@ struct MarkdownView: View {
                         palette: settings.rendering.syntaxTheme
                             .rendererTheme(for: settings.appearance.colorScheme).palette,
                         fontSize: CGFloat(settings.rendering.fontSize))),
-                leftContentInset: PixleyGutterRulerView.width,
+                leftContentInset: PixleyGutterView.width,
                 rawSourceMode: settings.behavior.interactiveMode == .plain,
                 extensions: CriticMarkupExtensions.all()
             ),

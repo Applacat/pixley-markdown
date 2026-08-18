@@ -43,7 +43,7 @@ extension NSAttributedString.Key {
 /// A host-defined control drawn as an SF Symbol inside its text range's box.
 /// The engine draws it, hit-tests it, and shows a pointing-hand cursor over
 /// it; the `identifier` is opaque and returned verbatim to the click handler.
-public struct InteractiveGlyph: Equatable, Sendable {
+public struct InteractiveGlyph: Equatable, Hashable, Sendable {
     /// SF Symbol name drawn centered in the marked range's bounding box.
     public var symbolName: String
     /// Selected/active look — tinted with the theme's body ink; otherwise muted.
