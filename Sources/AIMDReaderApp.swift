@@ -23,6 +23,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             Task { await EngineStressHarness.run() }
         }
+
+        // Debug: open a seeded sample doc through the REAL browser flow, then
+        // snapshot the window + dump gutter diagnostics. Verifies the gutter
+        // in the actual split-view context the harness can't reproduce.
+        if CommandLine.arguments.contains("--open-sample") {
+            NSApp.activate(ignoringOtherApps: true)
+            Task { await Self.openSampleAndSnapshot() }
+        }
+    }
+
+    private static func openSampleAndSnapshot() async {
+        // Give the start scene time to appear and set openWindowAction.
+        try? await Task.sleep(for: .seconds(2))
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("sample-\(ProcessInfo.processInfo.processIdentifier)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("sample.md")
+        let body = (1...20).map { "Line \($0): some prose to fill the document." }.joined(separator: "\n\n") + "\n"
+        try? body.write(to: file, atomically: true, encoding: .utf8)
+        WindowRouter.shared.openBrowser(BrowserOpenRequest(folderURL: dir, fileURL: file, preferSidebarCollapsed: true))
+        try? await Task.sleep(for: .seconds(3)) // browser window + MarkdownView + gutter install
+        // The browser window is the largest visible one (start launcher is smaller).
+        let browser = NSApp.windows
+            .filter { $0.isVisible && $0.contentView != nil }
+            .max(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })
+        if let window = browser,
+           let view = window.contentView,
+           let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+            view.cacheDisplay(in: view.bounds, to: rep)
+            if let png = rep.representation(using: .png, properties: [:]) {
+                let path = FileManager.default.temporaryDirectory.appendingPathComponent("real-app-shot.png")
+                try? png.write(to: path)
+                print("REAL-APP-SHOT \(path.path)")
+            }
+        }
+        print("OPEN-SAMPLE DONE")
+        exit(0)
     }
 
     func applicationWillTerminate(_ notification: Notification) {

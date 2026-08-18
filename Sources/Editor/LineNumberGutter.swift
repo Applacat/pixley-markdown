@@ -1,7 +1,4 @@
 import AppKit
-import os.log
-
-private let gutterLog = Logger(subsystem: "com.aimd.reader", category: "PixleyGutter")
 
 /// TextKit 2 line-number gutter for the engine's NSTextView (G4-P4, US-P4.1/2).
 ///
@@ -109,19 +106,8 @@ final class PixleyGutterView: NSView {
 
     // MARK: - Drawing
 
-    private var didLogFirstDraw = false
-
     override func draw(_ dirtyRect: NSRect) {
         let numberFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        var count = 0
-        enumerateVisibleLines { line, y, height in
-            count += 1
-            _ = (line, y, height)
-        }
-        if !didLogFirstDraw {
-            didLogFirstDraw = true
-            gutterLog.debug("gutter draw: frame=\(NSStringFromRect(self.frame), privacy: .public) visibleLines=\(count) tvVisible=\(NSStringFromRect(self.textView?.visibleRect ?? .zero), privacy: .public)")
-        }
         enumerateVisibleLines { line, y, height in
             let bookmarked = self.bookmarkedLines.contains(line)
             let commented = self.commentedLines.contains(line)
@@ -156,22 +142,38 @@ final class PixleyGutterView: NSView {
 @MainActor
 final class GutterController {
     private var gutter: PixleyGutterView?
+    private weak var installedScrollView: NSScrollView?
     private var progressObserver: (any NSObjectProtocol)?
     /// Reading progress (0…1) as the reader scrolls (US-P4.2).
     var onProgress: ((Double) -> Void)?
+    // Retained so a re-parent onto a new scroll view keeps the indicators.
+    private var bookmarked: Set<Int> = []
+    private var commented: Set<Int> = []
 
+    /// SwiftUI can build the editor's NSView more than once (a throwaway pass at
+    /// 0×0, then the live one), so `onScrollViewReady` fires per scroll view.
+    /// Re-parent the gutter onto whichever scroll view is current instead of
+    /// pinning to the first — that first one is often 0-sized and discarded.
     func install(on scrollView: NSScrollView, textView: NSTextView,
                  onToggleBookmark: @escaping (Int) -> Void) {
-        guard gutter == nil else { return }
+        if installedScrollView === scrollView, gutter != nil {
+            forceRefreshSoon(); return
+        }
+        // Tear down any prior gutter (stale scroll view).
+        gutter?.removeFromSuperview()
+        if let progressObserver { NotificationCenter.default.removeObserver(progressObserver) }
+
         let view = PixleyGutterView(scrollView: scrollView, textView: textView)
         view.onToggleBookmark = onToggleBookmark
+        view.bookmarkedLines = bookmarked
+        view.commentedLines = commented
         view.frame = NSRect(x: 0, y: 0, width: PixleyGutterView.width,
-                            height: scrollView.contentView.bounds.height)
-        // Floating for the vertical axis: stays pinned to the viewport's left
-        // edge while the document scrolls beneath it.
+                            height: max(1, scrollView.contentView.bounds.height))
+        // Floating for the vertical axis: pinned to the viewport's left edge
+        // while the document scrolls beneath it.
         scrollView.addFloatingSubview(view, for: .vertical)
-        self.gutter = view
-        gutterLog.debug("gutter installed: clipH=\(scrollView.contentView.bounds.height) tvFrame=\(NSStringFromRect(textView.frame), privacy: .public)")
+        gutter = view
+        installedScrollView = scrollView
 
         scrollView.contentView.postsBoundsChangedNotifications = true
         progressObserver = NotificationCenter.default.addObserver(
@@ -184,9 +186,27 @@ final class GutterController {
             let fraction = max(0, min(1, clip.origin.y / scrollable))
             MainActor.assumeIsolated { self?.onProgress?(fraction) }
         }
+        // The scroll view is usually 0×0 at makeNSView time; catch up once
+        // SwiftUI has laid it out.
+        forceRefreshSoon()
+    }
+
+    /// Resize + redraw the gutter after the scroll view lays out. Retries a few
+    /// runloop turns because the split-view sizing can lag makeNSView.
+    private func forceRefreshSoon(_ attempt: Int = 0) {
+        guard attempt < 6 else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let g = self.gutter, let sv = self.installedScrollView else { return }
+            let h = sv.contentView.bounds.height
+            if h > 1 { g.setFrameSize(NSSize(width: PixleyGutterView.width, height: h)) }
+            g.needsDisplay = true
+            if h <= 1 || g.visibleLineNumbers().isEmpty { self.forceRefreshSoon(attempt + 1) }
+        }
     }
 
     func update(bookmarked: Set<Int>, commented: Set<Int>) {
+        self.bookmarked = bookmarked
+        self.commented = commented
         gutter?.bookmarkedLines = bookmarked
         gutter?.commentedLines = commented
     }
