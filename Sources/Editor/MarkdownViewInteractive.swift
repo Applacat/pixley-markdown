@@ -187,36 +187,64 @@ private final class FillInEditController: NSViewController {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func loadView() {
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 56))
+        let pad: CGFloat = 14
+        let buttonH: CGFloat = 28
+        let container = NSView()
+        let input: NSView
+
         if isDate {
-            // Native macOS date picker (calendar/stepper), not a text field.
-            datePicker = NSDatePicker(frame: NSRect(x: 12, y: 24, width: 236, height: 24))
-            datePicker.datePickerStyle = .textFieldAndStepper
-            datePicker.datePickerElements = .yearMonthDay
-            datePicker.dateValue = Self.dateFormatter.date(from: initialValue) ?? Date(timeIntervalSince1970: 0)
-            container.addSubview(datePicker)
+            // Graphical calendar picker (month grid), not a stepper field.
+            let picker = NSDatePicker()
+            picker.datePickerStyle = .clockAndCalendar
+            picker.datePickerElements = .yearMonthDay   // calendar only, no clock
+            picker.dateValue = Self.dateFormatter.date(from: initialValue) ?? Date(timeIntervalSince1970: 0)
+            picker.sizeToFit()
+            picker.target = self
+            picker.action = #selector(datePicked)        // pick a day → commit
+            datePicker = picker
+            input = picker
         } else {
-            field = NSTextField(frame: NSRect(x: 12, y: 24, width: 236, height: 24))
-            field.stringValue = initialValue
-            field.placeholderString = hint
-            field.target = self
-            field.action = #selector(commit)
-            container.addSubview(field)
+            let tf = NSTextField()
+            tf.stringValue = initialValue
+            tf.placeholderString = hint
+            tf.target = self
+            tf.action = #selector(commit)
+            tf.frame = NSRect(x: 0, y: 0, width: 236, height: 24)
+            field = tf
+            input = tf
         }
 
-        let button = NSButton(frame: NSRect(x: 168, y: 0, width: 80, height: 24))
+        // Lay out: input on top, Save button below it, right-aligned, roomy.
+        let inputSize = input.fittingSize.width > 1 ? input.fittingSize : input.frame.size
+        let contentW = max(inputSize.width, 236)
+        let width = contentW + pad * 2
+        let height = inputSize.height + buttonH + pad * 3
+
+        input.setFrameOrigin(NSPoint(x: pad, y: pad * 2 + buttonH))
+        container.addSubview(input)
+
+        let button = NSButton(frame: NSRect(x: width - pad - 84, y: pad, width: 84, height: buttonH))
         button.title = "Save"
         button.bezelStyle = .rounded
         button.target = self
         button.action = #selector(commit)
         button.keyEquivalent = "\r"
         container.addSubview(button)
+
+        container.frame = NSRect(x: 0, y: 0, width: width, height: height)
         view = container
     }
 
     override func viewDidAppear() {
         super.viewDidAppear()
         view.window?.makeFirstResponder(isDate ? datePicker : field)
+    }
+
+    /// Clicking a day in the graphical calendar commits immediately.
+    @objc private func datePicked() {
+        // Single-click on a day fires the action; commit so the user doesn't
+        // also have to press Save (Save stays for keyboard users).
+        commit()
     }
 
     @objc private func commit() {
