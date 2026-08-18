@@ -118,15 +118,55 @@ enum PixleyElementStyler {
 
     // MARK: - Fill-in (field)
 
+    /// Storage-only prefixes the display must never show (`[[text: Jose]]`
+    /// reads as "Jose", `[[date: 2026-07-09]]` as "2026-07-09").
+    private static let typePrefixes = ["text:", "date:", "file:", "folder:"]
+    /// Near-zero, clear-inked font that collapses hidden syntax to ~no advance.
+    private static var hiddenFont: NSFont { NSFont.systemFont(ofSize: 0.01) }
+
     private static func styleFillIn(_ fillIn: FillInElement, in slice: String,
                                     storage: NSTextStorage, base: Int) {
         let sliceNS = NSRange(fillIn.range, in: slice)
         guard sliceNS.location != NSNotFound else { return }
         let ns = NSRange(location: base + sliceNS.location, length: sliceNS.length)
-        guard NSMaxRange(ns) <= storage.length else { return }
-        storage.addAttribute(.interactiveZone, value: "fillin:\(ns.location)", range: ns)
-        storage.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.18), range: ns)
-        storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: ns)
-        storage.addAttribute(.underlineColor, value: NSColor.systemOrange, range: ns)
+        let full = storage.string as NSString
+        guard NSMaxRange(ns) <= full.length, ns.length > 4 else { return }
+
+        // Interior between `[[` and `]]`.
+        let openLen = 2, closeLen = 2
+        let interiorStart = ns.location + openLen
+        let interiorLen = ns.length - openLen - closeLen
+        guard interiorLen > 0 else { return }
+        let interior = full.substring(with: NSRange(location: interiorStart, length: interiorLen))
+
+        // Skip the storage-only type prefix (ASCII, so char count == UTF-16 units).
+        var valueOffset = 0
+        let lower = interior.lowercased()
+        for kw in typePrefixes where lower.hasPrefix(kw) {
+            valueOffset = kw.count
+            let chars = Array(interior)
+            while valueOffset < chars.count, chars[valueOffset] == " " { valueOffset += 1 }
+            break
+        }
+
+        // Hide `[[` + prefix and the trailing `]]` — display shows only the value.
+        hide(NSRange(location: ns.location, length: openLen + valueOffset), in: storage)
+        hide(NSRange(location: NSMaxRange(ns) - closeLen, length: closeLen), in: storage)
+
+        // The visible value becomes the clickable field.
+        let valueRange = NSRange(location: interiorStart + valueOffset,
+                                 length: interiorLen - valueOffset)
+        guard valueRange.length > 0 else { return }
+        storage.addAttribute(.interactiveZone, value: "fillin:\(ns.location)", range: valueRange)
+        storage.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.18), range: valueRange)
+        storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: valueRange)
+        storage.addAttribute(.underlineColor, value: NSColor.systemOrange, range: valueRange)
+    }
+
+    /// Collapses a syntax range to ~zero advance with clear ink.
+    private static func hide(_ range: NSRange, in storage: NSTextStorage) {
+        guard range.length > 0, NSMaxRange(range) <= storage.length else { return }
+        storage.addAttribute(.font, value: hiddenFont, range: range)
+        storage.addAttribute(.foregroundColor, value: NSColor.clear, range: range)
     }
 }

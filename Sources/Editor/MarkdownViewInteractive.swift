@@ -99,7 +99,11 @@ extension MarkdownView {
         let popover = NSPopover()
         popover.behavior = .transient
         let handler = interactionHandler, watcher = fileWatcher
-        let controller = FillInEditController(initialValue: fillIn.value ?? "", hint: fillIn.hint) { [self] newValue in
+        let controller = FillInEditController(
+            initialValue: fillIn.value ?? "",
+            hint: fillIn.hint,
+            isDate: fillIn.type == .date
+        ) { [self] newValue in
             popover.close()
             runWrite(url: url) { onUpdate in
                 try await handler.fillIn(
@@ -155,12 +159,22 @@ private final class StatusMenuTarget: NSObject {
 private final class FillInEditController: NSViewController {
     private let initialValue: String
     private let hint: String
+    private let isDate: Bool
     private let onCommit: (String) -> Void
     private var field: NSTextField!
+    private var datePicker: NSDatePicker!
 
-    init(initialValue: String, hint: String, onCommit: @escaping (String) -> Void) {
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    init(initialValue: String, hint: String, isDate: Bool, onCommit: @escaping (String) -> Void) {
         self.initialValue = initialValue
         self.hint = hint
+        self.isDate = isDate
         self.onCommit = onCommit
         super.init(nibName: nil, bundle: nil)
     }
@@ -169,12 +183,21 @@ private final class FillInEditController: NSViewController {
 
     override func loadView() {
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 56))
-        field = NSTextField(frame: NSRect(x: 12, y: 24, width: 236, height: 24))
-        field.stringValue = initialValue
-        field.placeholderString = hint
-        field.target = self
-        field.action = #selector(commit)
-        container.addSubview(field)
+        if isDate {
+            // Native macOS date picker (calendar/stepper), not a text field.
+            datePicker = NSDatePicker(frame: NSRect(x: 12, y: 24, width: 236, height: 24))
+            datePicker.datePickerStyle = .textFieldAndStepper
+            datePicker.datePickerElements = .yearMonthDay
+            datePicker.dateValue = Self.dateFormatter.date(from: initialValue) ?? Date(timeIntervalSince1970: 0)
+            container.addSubview(datePicker)
+        } else {
+            field = NSTextField(frame: NSRect(x: 12, y: 24, width: 236, height: 24))
+            field.stringValue = initialValue
+            field.placeholderString = hint
+            field.target = self
+            field.action = #selector(commit)
+            container.addSubview(field)
+        }
 
         let button = NSButton(frame: NSRect(x: 168, y: 0, width: 80, height: 24))
         button.title = "Save"
@@ -188,10 +211,11 @@ private final class FillInEditController: NSViewController {
 
     override func viewDidAppear() {
         super.viewDidAppear()
-        view.window?.makeFirstResponder(field)
+        view.window?.makeFirstResponder(isDate ? datePicker : field)
     }
 
     @objc private func commit() {
-        onCommit(field.stringValue)
+        let value = isDate ? Self.dateFormatter.string(from: datePicker.dateValue) : field.stringValue
+        onCommit(value)
     }
 }

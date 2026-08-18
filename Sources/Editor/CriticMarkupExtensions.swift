@@ -17,13 +17,16 @@ enum CriticMarkupExtensions {
                        background: NSColor.systemGreen.withAlphaComponent(0.20)),
             CriticSpan(id: "critic-deletion", open: "{--", close: "--}",
                        background: NSColor.systemRed.withAlphaComponent(0.20), strikethrough: true),
-            CriticSpan(id: "critic-substitution", open: "{~~", close: "~~}",
-                       background: NSColor.systemOrange.withAlphaComponent(0.20)),
             CriticSpan(id: "critic-highlight", open: "{==", close: "==}",
                        background: NSColor.systemYellow.withAlphaComponent(0.28)),
             CriticSpan(id: "critic-comment", open: "{>>", close: "<<}",
                        background: NSColor.secondaryLabelColor.withAlphaComponent(0.12),
                        foreground: NSColor.secondaryLabelColor, italic: true),
+            // Substitution `{~~ old ~> new ~~}` is intentionally omitted: the
+            // engine's InlineSyntax aborts a span when the close delimiter's
+            // first char (`~`) appears loose in the content, and substitutions
+            // carry `~>` — so it can't be an InlineSyntax. It stays raw text
+            // until G5 gives CriticMarkup a real parser.
         ]
     }
 }

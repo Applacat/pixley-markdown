@@ -381,6 +381,29 @@ enum EngineStressHarness {
             }
             if !zoneIds.contains("status") { fail("US-P3.2: status did not receive an interactive zone") }
             if !zoneIds.contains("fillin") { fail("US-P3.2: fill-in did not receive an interactive zone") }
+
+            // Fill-in displays cleanly: the `text:` storage prefix is hidden
+            // (collapsed to clear ink), so the zone sits on the VALUE only.
+            let filledSeed = "Filled: [[text: Enterprise Portal]]\n"
+            let fs = HarnessState(); fs.text = filledSeed
+            let fw = makeWindow(fs, rawSource: false, documentId: "fillin-clean")
+            try? await Task.sleep(for: .milliseconds(400))
+            if let ftv = findTextView(in: fw.contentView) as? NSTextView, let fstore = ftv.textStorage {
+                let fstr = fstore.string as NSString
+                // The `text:` prefix chars must be clear-inked (hidden).
+                let prefixLoc = fstr.range(of: "text:").location
+                if prefixLoc != NSNotFound {
+                    let ink = fstore.attribute(.foregroundColor, at: prefixLoc, effectiveRange: nil) as? NSColor
+                    if ink != NSColor.clear { fail("US-P3.2: fill-in `text:` prefix is visible, not hidden") }
+                }
+                // The value ("Enterprise Portal") carries the zone.
+                let valueLoc = fstr.range(of: "Enterprise").location
+                if valueLoc != NSNotFound,
+                   fstore.attribute(.interactiveZone, at: valueLoc, effectiveRange: nil) as? String == nil {
+                    fail("US-P3.2: fill-in value is not the clickable zone")
+                }
+            }
+            fw.close()
             _ = ns
             // (Hit-test → identifier mapping is proven in the fork's own
             // InteractiveElementSeamTests; NativeTextView is internal there.)
