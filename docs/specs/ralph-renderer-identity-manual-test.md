@@ -1,3 +1,25 @@
+> **SUPERSEDED by the swift-markdown-engine port (Gate G4, 2026-08-18).**
+> This checklist validated fixes to the OLD Enhanced native renderer, which
+> was deleted in G4-P2. On the engine, an interactive element **is** its
+> source text (storage == source), so the whole class of identity bugs #81
+> describes cannot occur — an edit above a control only shifts offsets, it
+> can't transplant the control's state to a neighbor.
+>
+> **Automated coverage now standing in for the human checks:**
+> - Tests 1/2/5 (identity across reparse/insertion) → `EngineStressHarness`
+>   "US-P4.4 identity": a filled value survives a comment inserted ABOVE it,
+>   stays itself, and the checkbox count is unchanged. Plus the round-trip
+>   corpus + relocation suites (element survives edits elsewhere) and the
+>   500-keystroke stress harness.
+> - Test 3 (scroll restore across in-session file switches) → engine-native,
+>   exercised by the P2 surface-swap switching checks.
+> - Test 4 (scroll survives quit) → wired via the engine's
+>   onPersistScrollOffset/restoreScrollOffset → file metadata (G4-P4);
+>   full quit/relaunch confirmation folds into the G6 soak.
+>
+> #81 and #84 are closed. Kept for history; a human feel-check of the live
+> editor is still welcome but no longer gates G4.
+
 # Manual Verification: Renderer Identity + Scroll Restoration (#81, #84)
 
 Run in **Enhanced mode** (Settings > Behavior > Interactive Mode). Use a

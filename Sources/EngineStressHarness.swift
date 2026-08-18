@@ -553,5 +553,31 @@ enum EngineStressHarness {
                 fail("US-P3.2: filled value no longer detects as a fill-in")
             }
         }
+
+        // US-P4.4 identity (automated equivalent of the #81 manual checks,
+        // Tests 1/2/5): a filled value survives an insertion ABOVE it and stays
+        // itself. In the engine the element IS its source text — an edit above
+        // only shifts offsets, so its value cannot transplant to a neighbor
+        // (the class the old ForEach-identity renderer got wrong is gone).
+        let idSeed = "Intro paragraph.\n\nName: [[text: DRAFT-JOSE]]\n\n- [ ] task\n"
+        if let out = await write(idSeed, { h, u, cb in
+            // Insert a comment on line 1 — a line lands above the fill-in and
+            // the whole document reparses (the #81 trigger).
+            try await h.setGutterComment(lineNumber: 1, commentText: "note",
+                                         displayedContent: idSeed, in: u, onContentUpdated: cb)
+        }) {
+            let elements = InteractiveElementDetector.detect(in: out)
+            let fill = elements.compactMap { e -> FillInElement? in
+                if case .fillIn(let f) = e { return f }; return nil
+            }
+            if fill.count != 1 || fill.first?.value != "DRAFT-JOSE" {
+                fail("US-P4.4 identity: fill-in value did not survive an insertion above (\(fill.map { $0.value ?? "nil" }))")
+            }
+            // Exactly one checkbox too — no element duplicated/transplanted.
+            let checks = elements.filter { if case .checkbox = $0 { return true }; return false }
+            if checks.count != 1 {
+                fail("US-P4.4 identity: checkbox count changed after insert (\(checks.count))")
+            }
+        }
     }
 }

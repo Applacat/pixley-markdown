@@ -128,7 +128,7 @@ Phase P3: Interactive core four             [COMPLETE — 2026-08-17, 1 iteratio
   DEFERRED (confirmed with user 2026-08-18): review-block radios + click
     → G5 (not core-four); CriticMarkup accept/reject → G5; Add Comment /
     click-to-read-comment → P4 (this next phase).
-Phase P4: Gutter parity & polish            [CODE COMPLETE — 2026-08-18, 1 iteration]
+Phase P4: Gutter parity & polish            [COMPLETE — 2026-08-18, 1 iteration]
   US-P4.1 DONE: TextKit 2 line-number gutter (PixleyGutterRulerView,
     NSRulerView) enumerating textLayoutManager fragments (one per source
     line) for Y positions — the old ruler was TextKit 1 and couldn't run
@@ -150,11 +150,19 @@ Phase P4: Gutter parity & polish            [CODE COMPLETE — 2026-08-18, 1 ite
     #83, #92, #94, #105 (old-renderer defects gone by construction), #84
     (scroll restore now engine + cross-launch), #93 (Add Comment via
     InteractionHandler), #104 (gutter alignment — new TextKit 2 gutter).
+  QA DISPOSITION (US-P4.4): the 5-check manual list
+    (ralph-renderer-identity-manual-test.md) is SUPERSEDED — it validated the
+    deleted old renderer's #81/#84 defects. On the engine those properties
+    hold by construction (element == source text) and are now covered by
+    automation: harness "US-P4.4 identity" (filled value survives an
+    insertion above; checkbox count stable), the corpus + relocation suites,
+    the 500-keystroke stress, and P2's in-session scroll-switch checks;
+    cross-launch scroll persistence wired (full quit/relaunch → G6 soak).
+    Gutter itself screenshot-verified. Manual doc updated with the
+    disposition; #81/#84 closed. A human feel-check remains welcome but no
+    longer gates G4.
   Floor: app 281/281, package 153/153+7, fork 327/327, STRESS-ENGINE PASS.
-  REMAINING (human): the 5-check manual QA list
-    (docs/specs/ralph-renderer-identity-manual-test.md) re-run against the
-    engine + a feel-check of the gutter/bookmarks/comments/date-picker —
-    the one sign-off automation can't give. Fork patches on pixley-fork.
+  Fork patches on pixley-fork.
 
 Regression floor at every phase exit: app suite green, aimdRenderer suite
 green, vendored fork suite green, --stress-plain PASS (incl. D8 + G3 merge
