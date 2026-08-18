@@ -447,7 +447,21 @@ enum EngineStressHarness {
     }
 
     private static func runGutterCheck(fail: (String) -> Void) async {
-        let doc = (1...12).map { "Line \($0) content here." }.joined(separator: "\n") + "\n"
+        // Heading + wrapped paragraph + normal lines: verify the number aligns
+        // to the FIRST visual line of tall/wrapped fragments, not their center.
+        let doc = """
+        # Big Heading
+
+        Short line one.
+
+        This is a very long paragraph that must wrap across at least two visual lines within the harness window so the gutter number's vertical alignment can be checked against a tall wrapped fragment instead of a single row of text here.
+
+        Short line two.
+
+        - [ ] a task
+        - [ ] another
+        End line.
+        """
         let state = HarnessState(); state.text = doc
         let gutter = GutterController()
         let window = NSWindow(
@@ -464,10 +478,9 @@ enum EngineStressHarness {
         try? await Task.sleep(for: .milliseconds(200))
         let lines = gutter.visibleLineNumbers()
         if lines.isEmpty { fail("US-P4.1: gutter produced no line numbers") }
-        // A tall window shows the whole 12-line doc, numbered 1…12 in order.
         else if lines.first != 1 { fail("US-P4.1: gutter first line is \(lines.first!), expected 1") }
         else if lines != lines.sorted() { fail("US-P4.1: gutter line numbers not monotonic: \(lines)") }
-        else if !lines.contains(12) { fail("US-P4.1: gutter missing line 12 (got \(lines.count) lines)") }
+        else if !lines.contains(11) { fail("US-P4.1: gutter missing line 11 (got \(lines.count) lines: \(lines))") }
 
         // Snapshot for visual confirmation (a gutter is a visual feature).
         if CommandLine.arguments.contains("--shot"), let view = window.contentView,

@@ -39,7 +39,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("sample-\(ProcessInfo.processInfo.processIdentifier)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let file = dir.appendingPathComponent("sample.md")
-        let body = (1...20).map { "Line \($0): some prose to fill the document." }.joined(separator: "\n\n") + "\n"
+        // Headings + a long wrapped paragraph + normal lines, so gutter
+        // alignment can be checked against tall/wrapped fragments.
+        let body = """
+        # Big Heading One
+
+        A short line.
+
+        This is a deliberately long paragraph that will wrap across multiple visual lines in the editor so the line-number gutter's vertical alignment can be verified against a tall, wrapped layout fragment rather than only single-line rows.
+
+        ## Heading Two
+
+        - [ ] a task
+        - [ ] another task
+
+        Another paragraph that also wraps for good measure across two lines at least, to confirm the number sits on the first visual line.
+
+        Final short line.
+        """
         try? body.write(to: file, atomically: true, encoding: .utf8)
         WindowRouter.shared.openBrowser(BrowserOpenRequest(folderURL: dir, fileURL: file, preferSidebarCollapsed: true))
         try? await Task.sleep(for: .seconds(3)) // browser window + MarkdownView + gutter install

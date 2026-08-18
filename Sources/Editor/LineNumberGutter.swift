@@ -81,7 +81,11 @@ final class PixleyGutterView: NSView {
             }
             // Fragment top in text-view coords → this floating view's coords.
             let pTop = self.convert(NSPoint(x: 0, y: topInView), from: textView)
-            body(line, pTop.y, frame.height)
+            // Align the number to the FIRST visual line of the (possibly
+            // wrapped/tall) fragment, like a code editor — centering in the
+            // whole fragment drifts headings and wrapped paragraphs.
+            let firstLineHeight = fragment.textLineFragments.first?.typographicBounds.height ?? frame.height
+            body(line, pTop.y, firstLineHeight)
             return true
         }
     }
