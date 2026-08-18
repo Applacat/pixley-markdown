@@ -128,7 +128,17 @@ Phase P3: Interactive core four             [COMPLETE — 2026-08-17, 1 iteratio
   DEFERRED (confirmed with user 2026-08-18): review-block radios + click
     → G5 (not core-four); CriticMarkup accept/reject → G5; Add Comment /
     click-to-read-comment → P4 (this next phase).
-Phase P4: Gutter parity & polish            [PENDING]
+Phase P4: Gutter parity & polish            [IN PROGRESS — 2026-08-18]
+  Plan (one loop): US-P4.3 code highlighter DONE (PixleyCodeHighlighter,
+  internal SyntaxHighlighter adapter, zero deps, wired via services).
+  TODO: fork hook onScrollViewReady → Pixley LineNumberGutter (TextKit 2
+  NSRulerView: line numbers + bookmark dots + comment indicators + click-
+  to-bookmark); wire bookmarks/comments from coordinator; Add Comment
+  popover; ⌘G go-to-line; reading-progress badge; scroll restoration via
+  the engine's onPersistScrollOffset/restoreScrollOffset. Then US-P4.4
+  close-out (fold issues, QA list).
+  Old ruler was TextKit 1 (layoutManager) — engine is TextKit 2, gutter
+  rewritten against textLayoutManager fragments.
 
 Regression floor at every phase exit: app suite green, aimdRenderer suite
 green, vendored fork suite green, --stress-plain PASS (incl. D8 + G3 merge

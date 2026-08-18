@@ -49,6 +49,7 @@
 		924C2627CFE61B5C4397B750 /* SettingsRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3785C170BCFA7F12A916ABC /* SettingsRepositoryTests.swift */; };
 		9706C359F15E7A8E0DFBE3E6 /* FolderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B46C2079D5FC942799A84EAC /* FolderService.swift */; };
 		9B61A17A180E5068795FFF4D /* FolderItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4483E0EF01008FD6766A84A2 /* FolderItem.swift */; };
+		A04A1E250B5985509B109E01 /* LineNumberGutter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D8FCCA0F0E76DF5B17DD88D /* LineNumberGutter.swift */; };
 		A571FD88201A22F487088385 /* ChatSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65D020033697908C47AF12C6 /* ChatSummary.swift */; };
 		AED2169653B5B667D912DB46 /* ACKNOWLEDGMENTS.md in Resources */ = {isa = PBXBuildFile; fileRef = E6C1FBAB4B01432B18DC39AB /* ACKNOWLEDGMENTS.md */; };
 		B38F2D5327EDE837D4695F8D /* SecurityScopedBookmarkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB81EE3FB70820E95B314A5B /* SecurityScopedBookmarkManager.swift */; };
@@ -78,6 +79,7 @@
 		DA51DA0EE6E4AA31FA78462D /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6BBEFD5E89FD87384767913 /* ChatView.swift */; };
 		DC66F69416DB06DAB5CFE2B2 /* RecentFoldersManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5EDAF12A053E7D98F82C853 /* RecentFoldersManager.swift */; };
 		DF2644809B674011702FD2C7 /* ErrorBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5582C99D27644F5CB3FC69C /* ErrorBanner.swift */; };
+		E18E6DC44E81ABC54959B273 /* PixleyCodeHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2AAACDB520840432BA54480 /* PixleyCodeHighlighter.swift */; };
 		E5E300FEB131BE8C39834293 /* FolderWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7838CF7D4E3E4E3537D06749 /* FolderWatcher.swift */; };
 		E85EDF07CF9FE049D9CB80D5 /* SaveCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A660996842CE9ACB33E6162 /* SaveCoordinator.swift */; };
 		F13DF6DBB6CA4C7DA407EBA9 /* WelcomeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70857F60DB5FFA670F7BD668 /* WelcomeManager.swift */; };
@@ -95,6 +97,7 @@
 		0867112C3234D8356712867A /* SpikeTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpikeTextView.swift; sourceTree = "<group>"; };
 		09FA8652D62524559DFB8FEF /* FolderServiceCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderServiceCacheTests.swift; sourceTree = "<group>"; };
 		0A660996842CE9ACB33E6162 /* SaveCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveCoordinator.swift; sourceTree = "<group>"; };
+		0D8FCCA0F0E76DF5B17DD88D /* LineNumberGutter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineNumberGutter.swift; sourceTree = "<group>"; };
 		0E829AB1C1DC61172A97135F /* ChatConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatConfiguration.swift; sourceTree = "<group>"; };
 		11D99AD8354DE6CF1DD21F50 /* AIMDReaderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIMDReaderApp.swift; sourceTree = "<group>"; };
 		146DE543C58BA2A081646221 /* AppCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoordinatorTests.swift; sourceTree = "<group>"; };
@@ -147,6 +150,7 @@
 		AD91AEC319E8EC4C3903635C /* aimdRenderer */ = {isa = PBXFileReference; lastKnownFileType = folder; name = aimdRenderer; path = Packages/aimdRenderer; sourceTree = SOURCE_ROOT; };
 		B0C69A0C58227D3D4FB2CC18 /* WindowRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowRouter.swift; sourceTree = "<group>"; };
 		B1F8EA971E150D300A334B1A /* FolderTreeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderTreeFilter.swift; sourceTree = "<group>"; };
+		B2AAACDB520840432BA54480 /* PixleyCodeHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixleyCodeHighlighter.swift; sourceTree = "<group>"; };
 		B39B05B1D4284C46E7800BDC /* TranscriptCondenser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptCondenser.swift; sourceTree = "<group>"; };
 		B46C2079D5FC942799A84EAC /* FolderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderService.swift; sourceTree = "<group>"; };
 		B5582C99D27644F5CB3FC69C /* ErrorBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorBanner.swift; sourceTree = "<group>"; };
@@ -240,7 +244,9 @@
 			isa = PBXGroup;
 			children = (
 				39AABAF15E26FFB8F6CBD9AF /* CriticMarkupExtensions.swift */,
+				0D8FCCA0F0E76DF5B17DD88D /* LineNumberGutter.swift */,
 				B9B702B45D26492BF4598E18 /* MarkdownViewInteractive.swift */,
+				B2AAACDB520840432BA54480 /* PixleyCodeHighlighter.swift */,
 				066F4ABE1834FE95192A0563 /* PixleyElementStyler.swift */,
 			);
 			path = Editor;
@@ -607,10 +613,12 @@
 				E5E300FEB131BE8C39834293 /* FolderWatcher.swift in Sources */,
 				D8A80879E81D4208F043DD72 /* InteractionHandler.swift in Sources */,
 				3D5283B99383C6453797F8B0 /* InteractiveSheets.swift in Sources */,
+				A04A1E250B5985509B109E01 /* LineNumberGutter.swift in Sources */,
 				5D03BCD25F8CD59BAEA027D2 /* MarkdownConfig.swift in Sources */,
 				BEEFBEB46ACBF94B9377CCC3 /* MarkdownView.swift in Sources */,
 				F310314D075C1F858D503329 /* MarkdownViewInteractive.swift in Sources */,
 				331A6A9490B0445164AB5E73 /* OutlineFileList.swift in Sources */,
+				E18E6DC44E81ABC54959B273 /* PixleyCodeHighlighter.swift in Sources */,
 				D160C23B5F2D62C8D364BBBA /* PixleyElementStyler.swift in Sources */,
 				BF44B15895467314278C594F /* PopoverControllers.swift in Sources */,
 				43CDFF554DF839BB7391A61E /* QuickSwitcher.swift in Sources */,

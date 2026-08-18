@@ -33,6 +33,12 @@ struct MarkdownView: View {
     @State var fileWatcher: FileWatcher? = nil
     @State var interactionHandler = InteractionHandler()
 
+    // Gutter (G4-P4): line numbers + bookmark/comment indicators.
+    @State private var gutter = GutterController()
+    @State private var bookmarkedLines: Set<Int> = []
+    @State private var commentedLines: Set<Int> = []
+    @State private var readingProgress: Double = 0
+
     // MARK: - Body
 
     var body: some View {
@@ -96,25 +102,135 @@ struct MarkdownView: View {
                 }
             ),
             configuration: MarkdownEditorConfiguration(
+                services: MarkdownEditorServices(
+                    syntaxHighlighter: PixleyCodeHighlighter(
+                        palette: settings.rendering.syntaxTheme
+                            .rendererTheme(for: settings.appearance.colorScheme).palette,
+                        fontSize: CGFloat(settings.rendering.fontSize))),
+                leftContentInset: PixleyGutterRulerView.width,
                 rawSourceMode: settings.behavior.interactiveMode == .plain,
                 extensions: CriticMarkupExtensions.all()
             ),
             fontSize: CGFloat(settings.rendering.fontSize),
             documentId: coordinator.navigation.selectedFile?.path ?? "no-document",
             isEditable: true,
+            onBuildContextMenu: { menu, selection in
+                buildContextMenu(menu, selection: selection)
+            },
+            onPersistScrollOffset: { path, offset in
+                coordinator.persistEditorScroll(Double(offset), path: path)
+            },
+            restoreScrollOffset: { path in
+                coordinator.restoredEditorScroll(path: path).map { CGFloat($0) }
+            },
             onInteractiveOverlay: { storage, range in
                 PixleyElementStyler.overlay(storage: storage, range: range)
             },
             onInteractiveElementClick: { identifier, windowRect in
                 handleElementClick(identifier, windowRect: windowRect)
+            },
+            onScrollViewReady: { scrollView, textView in
+                gutter.install(on: scrollView, textView: textView) { line in
+                    toggleBookmark(at: line)
+                }
+                gutter.update(bookmarked: bookmarkedLines, commented: commentedLines)
+                gutter.onProgress = { progress in readingProgress = progress }
             }
         )
+        .overlay(alignment: .topTrailing) {
+            ReadingProgressBadge(progress: readingProgress)
+                .padding(8)
+        }
         .background {
             // ⌘S forces an immediate save of the live document (US-2.3)
             Button("") { forceSave() }
                 .keyboardShortcut("s", modifiers: .command)
                 .hidden()
+            // ⌘G go-to-line (US-P4.2)
+            Button("") { presentGoToLine() }
+                .keyboardShortcut("g", modifiers: .command)
+                .hidden()
         }
+        .onChange(of: bookmarkedLines) { gutter.update(bookmarked: bookmarkedLines, commented: commentedLines) }
+        .onChange(of: commentedLines) { gutter.update(bookmarked: bookmarkedLines, commented: commentedLines) }
+    }
+
+    // MARK: - Bookmarks & Comments (G4-P4)
+
+    /// Adds an "Add Comment…" item to the editor's right-click menu (US-P4.2).
+    private func buildContextMenu(_ menu: NSMenu, selection: NSRange) -> NSMenu {
+        let item = NSMenuItem(title: "Add Comment…", action: nil, keyEquivalent: "")
+        item.target = CommentMenuTarget.shared
+        item.action = #selector(CommentMenuTarget.add(_:))
+        CommentMenuTarget.shared.onAdd = { addCommentAtCaret(selection: selection) }
+        menu.insertItem(item, at: 0)
+        menu.insertItem(.separator(), at: 1)
+        return menu
+    }
+
+    private func addCommentAtCaret(selection: NSRange) {
+        guard let url = coordinator.navigation.selectedFile else { return }
+        let text = coordinator.document.content
+        let ns = text as NSString
+        // 1-based line number of the selection/caret location.
+        var line = 1
+        ns.enumerateSubstrings(in: NSRange(location: 0, length: min(selection.location, ns.length)),
+                               options: [.byLines, .substringNotRequired]) { _, _, _, _ in line += 1 }
+
+        let alert = NSAlert()
+        alert.messageText = "Add Comment"
+        alert.informativeText = "Attach a note to line \(line)."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Add")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn, !field.stringValue.isEmpty else { return }
+
+        let commentText = field.stringValue
+        let handler = interactionHandler, watcher = fileWatcher
+        Task { @MainActor in
+            do {
+                try await handler.setGutterComment(
+                    lineNumber: line, commentText: commentText,
+                    displayedContent: text, in: url, fileWatcher: watcher
+                ) { newContent in
+                    coordinator.updateDocumentContent(newContent)
+                    refreshCommentedLines(in: newContent)
+                }
+            } catch {
+                coordinator.showError(.error(message: error.localizedDescription))
+            }
+        }
+    }
+
+    private func toggleBookmark(at line: Int) {
+        let existing = coordinator.getBookmarks()
+        if let bookmark = existing.first(where: { $0.lineNumber == line }) {
+            coordinator.deleteBookmark(bookmark.id)
+        } else {
+            coordinator.addBookmark(lineNumber: line)
+        }
+        bookmarkedLines = Set(coordinator.getBookmarks().map(\.lineNumber))
+    }
+
+    private func refreshBookmarks() {
+        bookmarkedLines = Set(coordinator.getBookmarks().map(\.lineNumber))
+    }
+
+    /// Scans for `<!-- feedback -->` and CriticMarkup highlight comments,
+    /// mapping them to 1-based line numbers for gutter indicators.
+    func refreshCommentedLines(in content: String) {
+        var result: Set<Int> = []
+        for (index, line) in content.components(separatedBy: "\n").enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("<!-- feedback") && trimmed.hasSuffix("-->") && index > 0 {
+                result.insert(index) // the line BEFORE the comment
+            }
+            if line.contains("{==") && line.contains("{>>") {
+                result.insert(index + 1)
+            }
+        }
+        commentedLines = result
     }
 
     // MARK: - Empty State
@@ -190,6 +306,7 @@ struct MarkdownView: View {
             document.update(source: newText)
         }
         coordinator.updateDocumentContent(document.source)
+        refreshCommentedLines(in: document.source)
         SaveCoordinator.shared.scheduleSave(for: document, fileWatcher: fileWatcher)
     }
 
@@ -219,7 +336,47 @@ struct MarkdownView: View {
         await coordinator.loadDocument()
         if coordinator.document.errorMessage == nil {
             startWatching(fileURL)
+            refreshBookmarks()
+            refreshCommentedLines(in: coordinator.document.content)
         }
+    }
+
+    // MARK: - Go To Line (⌘G, US-P4.2)
+
+    private func presentGoToLine() {
+        let alert = NSAlert()
+        alert.messageText = "Go to Line"
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+        field.placeholderString = "Line number"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Go")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn, let line = Int(field.stringValue), line > 0 else { return }
+        scrollToLine(line)
+    }
+
+    private func scrollToLine(_ line: Int) {
+        guard let window = NSApp.keyWindow,
+              let textView = firstTextView(in: window.contentView) else { return }
+        let ns = textView.string as NSString
+        var current = 1, location = 0
+        ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length),
+                               options: [.byLines, .substringNotRequired]) { _, lineRange, _, stop in
+            if current == line { location = lineRange.location; stop.pointee = true }
+            current += 1
+        }
+        textView.scrollRangeToVisible(NSRange(location: min(location, ns.length), length: 0))
+        textView.setSelectedRange(NSRange(location: min(location, ns.length), length: 0))
+        window.makeFirstResponder(textView)
+    }
+
+    private func firstTextView(in view: NSView?) -> NSTextView? {
+        guard let view else { return nil }
+        if let tv = view as? NSTextView { return tv }
+        for sub in view.subviews {
+            if let found = firstTextView(in: sub) { return found }
+        }
+        return nil
     }
 
     // MARK: - External Changes (G3)
@@ -358,5 +515,33 @@ struct ClashPill: View {
         .shadow(radius: 4, y: 2)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Conflicting external changes. Choose Keep Mine or Take Theirs.")
+    }
+}
+
+// MARK: - Comment menu target (NSMenu needs an ObjC target)
+
+@MainActor
+private final class CommentMenuTarget: NSObject {
+    static let shared = CommentMenuTarget()
+    var onAdd: (() -> Void)?
+    @objc func add(_ sender: NSMenuItem) { onAdd?() }
+}
+
+// MARK: - Reading Progress Badge (G4-P4)
+
+/// Small overlay showing how far through the document the reader has scrolled.
+struct ReadingProgressBadge: View {
+    let progress: Double
+
+    var body: some View {
+        if progress > 0.001 {
+            Text("\(Int((progress * 100).rounded()))%")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.regularMaterial, in: Capsule())
+                .accessibilityLabel("Reading progress \(Int((progress * 100).rounded())) percent")
+        }
     }
 }

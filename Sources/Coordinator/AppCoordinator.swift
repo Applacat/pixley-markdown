@@ -250,6 +250,18 @@ public final class AppCoordinator {
         metadata?.getMetadata(for: url)?.scrollPosition ?? 0.0
     }
 
+    /// Cross-launch editor scroll offset (absolute points) keyed by file path
+    /// (G4-P4). The engine restores in-session per document itself; these
+    /// persist the offset across app launches via file metadata.
+    public func persistEditorScroll(_ offset: Double, path: String) {
+        metadata?.saveScrollPosition(offset, for: URL(fileURLWithPath: path))
+    }
+
+    public func restoredEditorScroll(path: String) -> Double? {
+        let v = metadata?.getMetadata(for: URL(fileURLWithPath: path))?.scrollPosition ?? 0
+        return v > 0 ? v : nil
+    }
+
     /// Toggles favorite status for a file
     public func toggleFavorite(for url: URL) {
         guard let repo = metadata else { return }

@@ -67,6 +67,9 @@ final class NativeTextViewContainer: NSView {
         defer { isRestacking = false }
 
         let w = bounds.width
+        // Host gutter reservation (full-width mode only): shift the text column
+        // right and narrow it so a left accessory has its own strip.
+        let leftInset = textView.configuration.readingWidth != nil ? 0 : textView.configuration.leftContentInset
         // Width propagation happens ONLY from the scroll-view-driven path; a height-only
         // restack must never resize the text view (that would re-measure → loop).
         if propagateWidth {
@@ -74,13 +77,13 @@ final class NativeTextViewContainer: NSView {
                 // Reading column: the column keeps its fixed width; re-center its X
                 // (and shift the wide-table overlay insets) instead of resizing.
                 textView.centerReadingColumn(forClipWidth: w)
-            } else if abs(textView.frame.width - w) > 0.5 {
-                textView.setFrameSize(NSSize(width: w, height: textView.frame.height))
+            } else if abs(textView.frame.width - (w - leftInset)) > 0.5 {
+                textView.setFrameSize(NSSize(width: w - leftInset, height: textView.frame.height))
             }
         }
         // Y: below the header band. X is owned by the reading-column centering
-        // (0 in full-width mode) — preserve it here.
-        let x = textView.configuration.readingWidth != nil ? textView.frame.origin.x : 0
+        // (the gutter inset in full-width mode) — preserve it here.
+        let x = textView.configuration.readingWidth != nil ? textView.frame.origin.x : leftInset
         if abs(textView.frame.origin.y - headerHeight) > 0.01 || abs(textView.frame.origin.x - x) > 0.01 {
             let deltaY = headerHeight - textView.frame.origin.y
             textView.setFrameOrigin(NSPoint(x: x, y: headerHeight))

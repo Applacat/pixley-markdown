@@ -69,6 +69,12 @@ public struct MarkdownEditorConfiguration: Sendable {
     /// Stays editable, but smart input (list continuation, auto-wrap, ⇧⇥) is off.
     /// Runtime-switchable; a flip rebuilds immediately and drops the document's
     /// undo stack (actions from the other mode would replay at stale ranges).
+    /// Points reserved on the LEFT of the text column for a host accessory
+    /// (e.g. a line-number gutter installed via `onScrollViewReady`). The text
+    /// view is shifted right and narrowed by this amount so the accessory has
+    /// its own strip and never overlaps content. Ignored in reading-column mode.
+    public var leftContentInset: CGFloat
+
     public var rawSourceMode: Bool
     /// Opt-in constructs beyond pure markdown (e.g. `==highlight==`). Empty by
     /// default: unregistered syntax stays literal text. Order defines match
@@ -108,10 +114,12 @@ public struct MarkdownEditorConfiguration: Sendable {
         readingWidth: CGFloat? = nil,
         spellChecking: SpellCheckingPolicy = .default,
         heightBehavior: HeightBehavior = .scrolls,
+        leftContentInset: CGFloat = 0,
         rawSourceMode: Bool = false,
         extensions: [any MarkdownExtension] = [],
         cursorFollowsSpanInk: Bool = false
     ) {
+        self.leftContentInset = leftContentInset
         self.theme = theme
         self.services = services
         self.markers = markers

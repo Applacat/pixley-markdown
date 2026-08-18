@@ -144,6 +144,10 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
     /// Called when a click hits an interactive glyph/zone: (opaque identifier,
     /// range rect in window coordinates). Return `true` if handled.
     public var onInteractiveElementClick: ((String, NSRect) -> Bool)?
+    /// Fired once, after the scroll view + text view are built, so the host can
+    /// install accessories (e.g. a line-number gutter ruler). The host owns the
+    /// lifetime of whatever it attaches.
+    public var onScrollViewReady: ((NSScrollView, NSTextView) -> Void)?
 
     public init(
         text: Binding<String>,
@@ -171,7 +175,8 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         restoreScrollOffset: ((String) -> CGFloat?)? = nil,
         isCursorExcluded: ((CGPoint) -> Bool)? = nil,
         onInteractiveOverlay: ((NSTextStorage, NSRange) -> Void)? = nil,
-        onInteractiveElementClick: ((String, NSRect) -> Bool)? = nil
+        onInteractiveElementClick: ((String, NSRect) -> Bool)? = nil,
+        onScrollViewReady: ((NSScrollView, NSTextView) -> Void)? = nil
     ) {
         self._text = text
         self._isWikiLinkActive = isWikiLinkActive
@@ -199,6 +204,7 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         self.isCursorExcluded = isCursorExcluded
         self.onInteractiveOverlay = onInteractiveOverlay
         self.onInteractiveElementClick = onInteractiveElementClick
+        self.onScrollViewReady = onScrollViewReady
     }
 
     public func sizeThatFits(
@@ -398,6 +404,10 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
             context.coordinator.updateCodeBlockSelection(textView: textView)
         }
         reconcileHeader(textView: textView, context: context)
+        // Host accessory installation (e.g. a line-number gutter). Fired once,
+        // after the scroll view + text view are fully wired; the host owns
+        // whatever it attaches (ruler, overlay) and its lifetime.
+        onScrollViewReady?(scrollView, textView)
         return scrollView
     }
 

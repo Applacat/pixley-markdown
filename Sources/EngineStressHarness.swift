@@ -28,6 +28,7 @@ enum EngineStressHarness {
         @ObservedObject var state: HarnessState
         let documentId: String
         let onEdited: ((String, String) -> Void)?
+        var onReady: ((NSScrollView, NSTextView) -> Void)? = nil
 
         var body: some View {
             NativeTextViewWrapper(
@@ -40,6 +41,7 @@ enum EngineStressHarness {
                     }
                 ),
                 configuration: MarkdownEditorConfiguration(
+                    leftContentInset: onReady != nil ? PixleyGutterRulerView.width : 0,
                     rawSourceMode: state.rawSource,
                     extensions: CriticMarkupExtensions.all()),
                 documentId: documentId,
@@ -47,7 +49,8 @@ enum EngineStressHarness {
                 // Same production overlay so the harness exercises the real seam.
                 onInteractiveOverlay: { storage, range in
                     PixleyElementStyler.overlay(storage: storage, range: range)
-                }
+                },
+                onScrollViewReady: onReady
             )
             .frame(minWidth: 720, minHeight: 520)
         }
@@ -435,9 +438,49 @@ enum EngineStressHarness {
         }
         criticWindow.close()
 
+        // US-P4.1: the TextKit 2 gutter enumerates the right line numbers.
+        await runGutterCheck(fail: fail)
+
         // Part B: byte-exact writes through InteractionHandler (the same path
         // clicks route to), independent of presentation.
         await runInteractiveWriteChecks(fail: fail)
+    }
+
+    private static func runGutterCheck(fail: (String) -> Void) async {
+        let doc = (1...12).map { "Line \($0) content here." }.joined(separator: "\n") + "\n"
+        let state = HarnessState(); state.text = doc
+        let gutter = GutterController()
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 740, height: 900),
+            styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: HostView(
+            state: state, documentId: "gutter",
+            onEdited: nil, onReady: { sv, tv in gutter.install(on: sv, textView: tv) { _ in } }))
+        window.makeKeyAndOrderFront(nil)
+        try? await Task.sleep(for: .milliseconds(700))
+
+        gutter.update(bookmarked: [3], commented: [6])
+        try? await Task.sleep(for: .milliseconds(200))
+        let lines = gutter.visibleLineNumbers()
+        if lines.isEmpty { fail("US-P4.1: gutter produced no line numbers") }
+        // A tall window shows the whole 12-line doc, numbered 1…12 in order.
+        else if lines.first != 1 { fail("US-P4.1: gutter first line is \(lines.first!), expected 1") }
+        else if lines != lines.sorted() { fail("US-P4.1: gutter line numbers not monotonic: \(lines)") }
+        else if !lines.contains(12) { fail("US-P4.1: gutter missing line 12 (got \(lines.count) lines)") }
+
+        // Snapshot for visual confirmation (a gutter is a visual feature).
+        if CommandLine.arguments.contains("--shot"), let view = window.contentView,
+           let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+            view.cacheDisplay(in: view.bounds, to: rep)
+            if let png = rep.representation(using: .png, properties: [:]) {
+                let path = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("gutter-shot.png")
+                try? png.write(to: path)
+                print("GUTTER-SHOT \(path.path)")
+            }
+        }
+        window.close()
     }
 
     private static func runInteractiveWriteChecks(fail: (String) -> Void) async {
