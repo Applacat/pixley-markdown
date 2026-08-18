@@ -114,6 +114,12 @@ enum PixleyElementStyler {
         // A subtle chip: tinted background + accent ink signals "clickable".
         storage.addAttribute(.backgroundColor, value: NSColor.controlAccentColor.withAlphaComponent(0.16), range: labelNS)
         storage.addAttribute(.foregroundColor, value: NSColor.controlAccentColor, range: labelNS)
+        // A trailing chevron so it reads as a native dropdown (D-F: styled
+        // text, no attachment). Anchored on the label's last character.
+        if labelNS.length > 0 {
+            let lastChar = NSRange(location: NSMaxRange(labelNS) - 1, length: 1)
+            storage.addAttribute(.interactiveAccessory, value: "chevron.down", range: lastChar)
+        }
     }
 
     // MARK: - Fill-in (field)

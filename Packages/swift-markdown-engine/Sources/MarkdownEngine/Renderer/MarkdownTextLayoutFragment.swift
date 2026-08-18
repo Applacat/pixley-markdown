@@ -723,6 +723,28 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
                 configured.draw(in: rect)
             }
         }
+
+        // Trailing accessory symbols (e.g. a dropdown chevron) — drawn just
+        // past the range's right edge, text left visible.
+        ts.enumerateAttribute(.interactiveAccessory, in: range, options: []) { [weak self] value, attrRange, _ in
+            guard let self, let symbolName = value as? String,
+                  let end = self.drawPosition(forDocumentCharAt: NSMaxRange(attrRange), point: point)
+                    ?? self.drawPosition(forDocumentCharAt: max(attrRange.location, NSMaxRange(attrRange) - 1), point: point)
+            else { return }
+            let side = TaskCheckboxGeometry.size(for: font) * 0.72
+            let ascent = max(0, font.ascender)
+            let descent = max(0, -font.descender)
+            let centerY = end.baselineY + (descent - ascent) / 2
+            let gap = side * 0.35
+            let rect = CGRect(x: end.x + gap, y: centerY - side / 2, width: side, height: side)
+            guard !rect.isEmpty, !rect.isNull else { return }
+            if let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) {
+                let sizeConfig = NSImage.SymbolConfiguration(pointSize: rect.height, weight: .semibold)
+                let colorConfig = NSImage.SymbolConfiguration(hierarchicalColor: configuration.theme.mutedText)
+                let configured = symbol.withSymbolConfiguration(sizeConfig.applying(colorConfig)) ?? symbol
+                configured.draw(in: rect)
+            }
+        }
     }
 
     private func drawTaskCheckboxes(at point: CGPoint, in context: CGContext) {
