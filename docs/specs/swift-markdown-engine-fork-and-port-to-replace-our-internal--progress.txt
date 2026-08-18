@@ -128,17 +128,33 @@ Phase P3: Interactive core four             [COMPLETE — 2026-08-17, 1 iteratio
   DEFERRED (confirmed with user 2026-08-18): review-block radios + click
     → G5 (not core-four); CriticMarkup accept/reject → G5; Add Comment /
     click-to-read-comment → P4 (this next phase).
-Phase P4: Gutter parity & polish            [IN PROGRESS — 2026-08-18]
-  Plan (one loop): US-P4.3 code highlighter DONE (PixleyCodeHighlighter,
-  internal SyntaxHighlighter adapter, zero deps, wired via services).
-  TODO: fork hook onScrollViewReady → Pixley LineNumberGutter (TextKit 2
-  NSRulerView: line numbers + bookmark dots + comment indicators + click-
-  to-bookmark); wire bookmarks/comments from coordinator; Add Comment
-  popover; ⌘G go-to-line; reading-progress badge; scroll restoration via
-  the engine's onPersistScrollOffset/restoreScrollOffset. Then US-P4.4
-  close-out (fold issues, QA list).
-  Old ruler was TextKit 1 (layoutManager) — engine is TextKit 2, gutter
-  rewritten against textLayoutManager fragments.
+Phase P4: Gutter parity & polish            [CODE COMPLETE — 2026-08-18, 1 iteration]
+  US-P4.1 DONE: TextKit 2 line-number gutter (PixleyGutterRulerView,
+    NSRulerView) enumerating textLayoutManager fragments (one per source
+    line) for Y positions — the old ruler was TextKit 1 and couldn't run
+    on the engine. Screenshot-verified (numbers 1..N aligned in a reserved
+    left strip). Fork additions: config leftContentInset (the container
+    reserves the gutter strip so text never overlaps — the scroll-view
+    ruler reservation the custom container didn't honor) + onScrollViewReady
+    hook. Harness gutter smoke: line numbers 1..12 monotonic.
+  US-P4.2 DONE: bookmarks (dot + click-toggle via the ruler), comment
+    indicators (<!-- feedback --> + CriticMarkup highlight, blue bubble),
+    Add Comment via right-click → InteractionHandler.setGutterComment,
+    reading-progress badge (scroll fraction), ⌘G go-to-line, cross-launch
+    scroll persistence via engine onPersistScrollOffset/restoreScrollOffset
+    → coordinator metadata (engine already restores in-session).
+  US-P4.3 DONE: PixleyCodeHighlighter — internal SyntaxHighlighter adapter
+    (strings/comments/numbers/shared keyword set across Swift/JS/Py/C),
+    zero new deps (D-H), wired via services from the syntax-theme palette.
+  US-P4.4 DONE: folded issues closed as superseded by the port — #81, #82,
+    #83, #92, #94, #105 (old-renderer defects gone by construction), #84
+    (scroll restore now engine + cross-launch), #93 (Add Comment via
+    InteractionHandler), #104 (gutter alignment — new TextKit 2 gutter).
+  Floor: app 281/281, package 153/153+7, fork 327/327, STRESS-ENGINE PASS.
+  REMAINING (human): the 5-check manual QA list
+    (docs/specs/ralph-renderer-identity-manual-test.md) re-run against the
+    engine + a feel-check of the gutter/bookmarks/comments/date-picker —
+    the one sign-off automation can't give. Fork patches on pixley-fork.
 
 Regression floor at every phase exit: app suite green, aimdRenderer suite
 green, vendored fork suite green, --stress-plain PASS (incl. D8 + G3 merge

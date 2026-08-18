@@ -23,11 +23,20 @@ Spec: `docs/specs/editor-epic.md` · Progress: `docs/specs/editor-epic-progress.
       - [x] P1 Fork & bind — KILL BOX: GO (2026-08-12: corpus byte-exact
             both modes, STRESS-ENGINE PASS, p95 11.9ms/16ms; 2 fork
             patches: D8 undo-clear, undo/redo binding re-sync)
-      - [ ] P2 Surface swap (deletes old editors + block parser,
-            retires swift-markdown dep)
-      - [ ] P3 Interactive core four (hit-test seam)
-      - [ ] P4 Gutter parity + polish
+      - [x] P2 Surface swap (2026-08-12: both modes on the engine; old
+            editors + native renderer + block parser deleted, swift-markdown
+            retired; aimdRenderer dep-free)
+      - [x] P3 Interactive core four (2026-08-17: generic glyph/zone seam;
+            checkbox/choice/status/fill-in clickable; CriticMarkup styled-
+            inert; dogfood polish 08-18: clean fill-in display + date picker,
+            status chevron)
+      - [x] P4 Gutter parity + polish (CODE COMPLETE 2026-08-18: TextKit 2
+            line-number gutter, bookmarks, comment indicators, Add Comment,
+            ⌘G, progress badge, scroll persist, internal code highlighter;
+            folded issues #81-#84/#92-#94/#104/#105 closed)
       Ralph per phase: promise "G4 PHASE P<N> COMPLETE", max 25.
+      REMAINING before G4 fully done: human 5-check manual QA
+      (docs/specs/ralph-renderer-identity-manual-test.md) on the engine.
 - [ ] G5 — Insert palette + polish (#103, #85)
 - [ ] G6 — Done bar: dogfood + round-trip corpus + 2-week zero-loss soak
 
