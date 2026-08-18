@@ -118,6 +118,16 @@ Phase P3: Interactive core four             [COMPLETE — 2026-08-17, 1 iteratio
     click selects; status menu + fill-in popover feel; hover cursors.
   Floor: app 281/281, package 153/153+7, fork 327/327, STRESS-ENGINE PASS
     (p95 11.45ms). Fork patches on branch pixley-fork.
+  DOGFOOD POLISH (2026-08-18, post-loop): fill-ins now display cleanly —
+    the `text:`/`date:`/`file:`/`folder:` storage prefix + `[[ ]]` collapse
+    to clear ink, value carries the zone; date-typed fill-ins open a native
+    NSDatePicker. Status chip gained a trailing chevron (new generic
+    .interactiveAccessory fork seam) so it reads as a dropdown (D-F: no
+    attachment). Dropped CriticMarkup substitution `{~~ ~> ~~}` — the `~>`
+    aborts InlineSyntax's close scan; stays raw until G5.
+  DEFERRED (confirmed with user 2026-08-18): review-block radios + click
+    → G5 (not core-four); CriticMarkup accept/reject → G5; Add Comment /
+    click-to-read-comment → P4 (this next phase).
 Phase P4: Gutter parity & polish            [PENDING]
 
 Regression floor at every phase exit: app suite green, aimdRenderer suite
