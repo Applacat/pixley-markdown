@@ -86,6 +86,29 @@ struct BrowserView: View {
         .modifier(AIChatModifier(coordinator: coordinator))
         .navigationTitle(coordinator.navigation.selectedFile?.deletingPathExtension().lastPathComponent ?? "Pixley Markdown")
         .toolbar {
+            // Insert interactive elements from the window chrome (G5, #109 / D4)
+            ToolbarItem(placement: .automatic) {
+                Menu {
+                    Button {
+                        InsertElement.insert(.addComment)
+                    } label: {
+                        Label(InsertElement.addComment.title, systemImage: InsertElement.addComment.icon)
+                    }
+                    Divider()
+                    ForEach(InsertElement.allCases.filter { $0 != .addComment }, id: \.self) { element in
+                        Button {
+                            InsertElement.insert(element)
+                        } label: {
+                            Label(element.title, systemImage: element.icon)
+                        }
+                    }
+                } label: {
+                    Label("Insert", systemImage: "plus.circle")
+                }
+                .menuIndicator(.visible)
+                .help("Insert an interactive element at the cursor")
+                .disabled(coordinator.navigation.selectedFile == nil)
+            }
             // View mode picker: Plain / Enhanced / Pro
             ToolbarItem(placement: .automatic) {
                 ViewModePicker()

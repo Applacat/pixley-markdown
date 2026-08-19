@@ -141,7 +141,8 @@ final class InteractionHandler {
                 throw WriteError.rangeMismatch
             }
             var modified = current
-            modified.insert(contentsOf: "  [ ] New Option", at: last.range.upperBound)
+            // New option on its OWN blockquote line (readable; matches review).
+            modified.insert(contentsOf: "\n> [ ] New Option", at: last.range.upperBound)
             return modified
         }
     }

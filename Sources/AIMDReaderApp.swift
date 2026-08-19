@@ -83,7 +83,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .filter { $0.isVisible && $0.contentView != nil }
             .max(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })
         if let window = browser,
-           let view = window.contentView,
+           // The frame view (superview of contentView) includes the title bar
+           // + toolbar, so the Insert toolbar shows in the shot.
+           let view = window.contentView?.superview ?? window.contentView,
            let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
             view.cacheDisplay(in: view.bounds, to: rep)
             if let png = rep.representation(using: .png, properties: [:]) {

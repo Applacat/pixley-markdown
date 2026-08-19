@@ -22,6 +22,20 @@ enum InsertElement: String, CaseIterable {
         }
     }
 
+    /// SF Symbol for the window-chrome insert toolbar.
+    var icon: String {
+        switch self {
+        case .addComment: return "text.bubble"
+        case .checkbox:   return "checkmark.square"
+        case .choice:     return "smallcircle.filled.circle"
+        case .fillInText: return "character.textbox"
+        case .fillInDate: return "calendar"
+        case .status:     return "flag"
+        case .review:     return "checkmark.seal"
+        case .feedback:   return "bubble.left"
+        }
+    }
+
     /// ⌥⌘-based to avoid the app's existing ⌘/⇧⌘ shortcuts.
     var shortcut: KeyEquivalent {
         switch self {
@@ -53,7 +67,8 @@ enum InsertElement: String, CaseIterable {
             let t = "- [ ] Task"
             return (t, (t as NSString).range(of: "Task")) // select the placeholder label
         case .choice:
-            let t = "> [ ] Option A  [ ] Option B"
+            // One option per blockquote line (readable, matches the "+" add).
+            let t = "> [ ] Option A\n> [ ] Option B"
             return (t, (t as NSString).range(of: "Option A"))
         case .fillInText:
             let t = "[[enter value]]"
