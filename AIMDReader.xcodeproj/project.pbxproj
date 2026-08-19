@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		004FF0BAA29C0FF933E7A86B /* WindowRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C69A0C58227D3D4FB2CC18 /* WindowRouter.swift */; };
+		031584FF79C628E909959E29 /* InsertElement.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA3AF017690745E91A6CC525 /* InsertElement.swift */; };
 		06EB17BADC52E5813A0F885A /* ChatInputValidatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14F5BBE08BE9405E790F4490 /* ChatInputValidatorTests.swift */; };
 		0ABD92E59DF07334C5E9901D /* AppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46778E27037908E1D84C4D2A /* AppError.swift */; };
 		0BEA5CA3C28DF79C38788886 /* SectionResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 587E8CF1BFF12ECB2250C093 /* SectionResolver.swift */; };
@@ -147,6 +148,7 @@
 		A6B941E0A21C4AA67313D916 /* ChatServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatServiceTests.swift; sourceTree = "<group>"; };
 		A72700B55F5611A9AC19DEB3 /* Welcome */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Welcome; path = Resources/Welcome; sourceTree = SOURCE_ROOT; };
 		A91C9F425B885EA43BE8DAC1 /* StartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartView.swift; sourceTree = "<group>"; };
+		AA3AF017690745E91A6CC525 /* InsertElement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsertElement.swift; sourceTree = "<group>"; };
 		AD91AEC319E8EC4C3903635C /* aimdRenderer */ = {isa = PBXFileReference; lastKnownFileType = folder; name = aimdRenderer; path = Packages/aimdRenderer; sourceTree = SOURCE_ROOT; };
 		B0C69A0C58227D3D4FB2CC18 /* WindowRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowRouter.swift; sourceTree = "<group>"; };
 		B1F8EA971E150D300A334B1A /* FolderTreeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderTreeFilter.swift; sourceTree = "<group>"; };
@@ -244,6 +246,7 @@
 			isa = PBXGroup;
 			children = (
 				39AABAF15E26FFB8F6CBD9AF /* CriticMarkupExtensions.swift */,
+				AA3AF017690745E91A6CC525 /* InsertElement.swift */,
 				0D8FCCA0F0E76DF5B17DD88D /* LineNumberGutter.swift */,
 				B9B702B45D26492BF4598E18 /* MarkdownViewInteractive.swift */,
 				B2AAACDB520840432BA54480 /* PixleyCodeHighlighter.swift */,
@@ -611,6 +614,7 @@
 				9706C359F15E7A8E0DFBE3E6 /* FolderService.swift in Sources */,
 				3D2AD8297895A7DE8FE9F242 /* FolderTreeFilter.swift in Sources */,
 				E5E300FEB131BE8C39834293 /* FolderWatcher.swift in Sources */,
+				031584FF79C628E909959E29 /* InsertElement.swift in Sources */,
 				D8A80879E81D4208F043DD72 /* InteractionHandler.swift in Sources */,
 				3D5283B99383C6453797F8B0 /* InteractiveSheets.swift in Sources */,
 				A04A1E250B5985509B109E01 /* LineNumberGutter.swift in Sources */,

@@ -60,6 +60,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         try? body.write(to: file, atomically: true, encoding: .utf8)
         WindowRouter.shared.openBrowser(BrowserOpenRequest(folderURL: dir, fileURL: file, preferSidebarCollapsed: true))
         try? await Task.sleep(for: .seconds(3)) // browser window + MarkdownView + gutter install
+
+        // G5/#109: exercise the Insert menu's engine in the real editor — focus
+        // the editor, jump to the end, and insert a Status element + a checkbox.
+        func findTV(_ v: NSView?) -> NSTextView? {
+            guard let v else { return nil }
+            if let tv = v as? NSTextView, tv.isEditable { return tv }
+            for s in v.subviews { if let f = findTV(s) { return f } }
+            return nil
+        }
+        if CommandLine.arguments.contains("--insert-demo"),
+           let win = NSApp.keyWindow, let tv = findTV(win.contentView) {
+            win.makeFirstResponder(tv)
+            tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+            InsertElement.insert(.status)
+            InsertElement.insert(.checkbox)
+            try? await Task.sleep(for: .seconds(1))
+        }
+
         // The browser window is the largest visible one (start launcher is smaller).
         let browser = NSApp.windows
             .filter { $0.isVisible && $0.contentView != nil }
@@ -275,6 +293,20 @@ struct PixleyMarkdownApp: App {
                     Self.sendFindPanelAction(NSTextFinder.Action.previousMatch.rawValue)
                 }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
+            }
+
+            // Insert menu — author interactive elements at the caret (G5, #109)
+            CommandMenu("Insert") {
+                let hasDoc = activeCoordinator?.navigation.selectedFile != nil
+                Button(InsertElement.addComment.title) { InsertElement.insert(.addComment) }
+                    .keyboardShortcut(InsertElement.addComment.shortcut, modifiers: [.option, .command])
+                    .disabled(!hasDoc)
+                Divider()
+                ForEach(InsertElement.allCases.filter { $0 != .addComment }, id: \.self) { element in
+                    Button(element.title) { InsertElement.insert(element) }
+                        .keyboardShortcut(element.shortcut, modifiers: [.option, .command])
+                        .disabled(!hasDoc)
+                }
             }
 
             // Navigate menu (interactive element ⌘]/⌘[ navigation) returns in

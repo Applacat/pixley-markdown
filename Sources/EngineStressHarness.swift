@@ -441,9 +441,33 @@ enum EngineStressHarness {
         // US-P4.1: the TextKit 2 gutter enumerates the right line numbers.
         await runGutterCheck(fail: fail)
 
+        // G5/#109: every Insert-menu snippet is detector-recognized.
+        runInsertMenuChecks(fail: fail)
+
         // Part B: byte-exact writes through InteractionHandler (the same path
         // clicks route to), independent of presentation.
         await runInteractiveWriteChecks(fail: fail)
+    }
+
+    private static func runInsertMenuChecks(fail: (String) -> Void) {
+        func detects(_ text: String, _ match: (InteractiveElement) -> Bool) -> Bool {
+            InteractiveElementDetector.detect(in: text).contains(where: match)
+        }
+        for element in InsertElement.allCases {
+            let text = element.snippet(selectedText: "sample").text
+            let ok: Bool
+            switch element {
+            case .checkbox:   ok = detects(text) { if case .checkbox = $0 { return true }; return false }
+            case .choice:     ok = detects(text) { if case .choice = $0 { return true }; return false }
+            case .fillInText: ok = detects(text) { if case .fillIn(let f) = $0 { return f.type == .text }; return false }
+            case .fillInDate: ok = detects(text) { if case .fillIn(let f) = $0 { return f.type == .date }; return false }
+            case .status:     ok = detects(text) { if case .status = $0 { return true }; return false }
+            case .review:     ok = detects(text) { if case .review = $0 { return true }; return false }
+            case .feedback:   ok = detects(text) { if case .feedback = $0 { return true }; return false }
+            case .addComment: ok = text.contains("{==") || text.contains("<!-- feedback") // wrap or feedback
+            }
+            if !ok { fail("G5-insert: \(element.rawValue) markdown not detected — \(text.debugDescription)") }
+        }
     }
 
     private static func runGutterCheck(fail: (String) -> Void) async {

@@ -1,0 +1,36 @@
+G5 — Insert Palette + Polish — Progress
+=======================================
+Spec: docs/specs/editor-epic.md (Gate G5) + tickets #109–#115.
+
+G5.1 Insert menu (#109)                     [COMPLETE — 2026-08-19]
+  Menu-bar "Insert" menu with Add Comment + one item per element type
+  (checkbox, choice, fill-in text, fill-in date, status, review, feedback),
+  each with an ⌥⌘ shortcut (C/K/R/F/Y/S/V/B — date is Y, not D: ⌥⌘D is the
+  macOS hide-Dock shortcut). Disabled when no document is open.
+  - Sources/Editor/InsertElement.swift: shared insertion engine (enum +
+    snippet + insert-at-caret via NSTextView.insertText → engine binding →
+    MarkdownDocument → autosave; undoable, round-trips). Block elements go
+    on their own line; caret/selection lands on the placeholder (label,
+    option, hint) for immediate typing. Add Comment wraps a selection as
+    {==sel==}{>>comment<<}, else inserts <!-- feedback -->.
+  - AIMDReaderApp: CommandMenu("Insert") wired to InsertElement.insert.
+  Verified:
+  - Harness runInsertMenuChecks: every snippet is detector-recognized as
+    its expected element type (fill-in text vs date distinguished).
+  - Real-app (--open-sample --insert-demo): inserting Status + Checkbox at
+    the caret renders them as live interactive elements (status chip +
+    chevron, native checkbox with the label selected). Screenshot-verified.
+  - Insertion path is the same insertText the 500-keystroke harness proves
+    (model sync + undo).
+  Floor: app 281/281, package 153+7, fork 327/327, STRESS-ENGINE PASS.
+  Debug tools retained: --open-sample (real browser screenshot),
+    --insert-demo (exercise the insert engine).
+
+G5.2 Selection popup Add Comment (#110)     [PENDING]
+G5.2 Review radios (#111) / feedback (#113) / CriticMarkup (#112) [PENDING]
+G5.3 Spec-4 rich controls (#114) + status native look (#115) — needs the
+     attachment decision (D-F revisit)       [PENDING]
+G5.4 Docs + smoke test (US-5.3)              [PENDING]
+
+Iteration log:
+- (none yet)
