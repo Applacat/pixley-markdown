@@ -100,6 +100,22 @@ enum PixleyElementStyler {
             // Hide the `[ ]` source glyphs so only the ring shows.
             storage.addAttribute(.foregroundColor, value: NSColor.clear, range: bracketNS)
         }
+
+        // A clickable "+" after the last option to add another (authoring).
+        if let last = choice.options.last {
+            let lastNS = NSRange(last.range, in: slice)
+            if lastNS.location != NSNotFound {
+                let end = base + NSMaxRange(lastNS)
+                if end >= 1, end <= storageLength {
+                    let anchor = NSRange(location: end - 1, length: 1)
+                    let blockLoc = base + NSRange(choice.blockquoteRange, in: slice).location
+                    storage.addAttribute(.interactiveAccessory,
+                                         value: InteractiveAccessory(symbolName: "plus.circle",
+                                                                     identifier: "choice-add:\(blockLoc)"),
+                                         range: anchor)
+                }
+            }
+        }
     }
 
     // MARK: - Status (chip)
@@ -118,7 +134,8 @@ enum PixleyElementStyler {
         // text, no attachment). Anchored on the label's last character.
         if labelNS.length > 0 {
             let lastChar = NSRange(location: NSMaxRange(labelNS) - 1, length: 1)
-            storage.addAttribute(.interactiveAccessory, value: "chevron.down", range: lastChar)
+            storage.addAttribute(.interactiveAccessory,
+                                 value: InteractiveAccessory(symbolName: "chevron.down"), range: lastChar)
         }
     }
 

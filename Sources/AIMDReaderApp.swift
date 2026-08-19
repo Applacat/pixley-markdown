@@ -74,7 +74,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             win.makeFirstResponder(tv)
             tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
             InsertElement.insert(.status)
-            InsertElement.insert(.checkbox)
+            InsertElement.insert(.choice)
             try? await Task.sleep(for: .seconds(1))
         }
 

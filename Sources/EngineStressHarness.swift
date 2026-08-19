@@ -376,6 +376,25 @@ enum EngineStressHarness {
             }
             if glyphCount < 2 { fail("US-P3.2: choice options did not receive interactive glyphs (\(glyphCount))") }
 
+            // Choice carries a clickable "+" accessory to add options.
+            var hasAddAccessory = false
+            storage.enumerateAttribute(.interactiveAccessory,
+                                       in: NSRange(location: 0, length: storage.length)) { v, _, _ in
+                if let a = v as? InteractiveAccessory, a.identifier?.hasPrefix("choice-add") == true { hasAddAccessory = true }
+            }
+            if !hasAddAccessory { fail("G5-add: choice missing the '+' add-option accessory") }
+
+            // Visual confirmation of the '+' on the choice.
+            if CommandLine.arguments.contains("--shot"), let view = window.contentView,
+               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.cacheDisplay(in: view.bounds, to: rep)
+                if let png = rep.representation(using: .png, properties: [:]) {
+                    let path = FileManager.default.temporaryDirectory.appendingPathComponent("choice-shot.png")
+                    try? png.write(to: path)
+                    print("CHOICE-SHOT \(path.path)")
+                }
+            }
+
             // Status label + fill-in become interactive zones.
             var zoneIds: Set<String> = []
             storage.enumerateAttribute(.interactiveZone,
@@ -555,6 +574,24 @@ enum EngineStressHarness {
                 try await h.selectChoice(optionIndex: 1, in: c, displayedContent: out, url: u, onContentUpdated: cb)
             }), out2 != "> [ ] YES  [x] NO\n" {
                 fail("US-P3.2: radio reselect bytes wrong: \(out2.debugDescription)")
+            }
+        }
+
+        // "+" affordance: appending an option grows the choice to 3 (no cap).
+        let addSeed = "> [ ] YES  [ ] NO\n"
+        if let out = await write(addSeed, { h, u, cb in
+            let elements = InteractiveElementDetector.detect(in: addSeed)
+            guard case .choice(let c)? = elements.first(where: { if case .choice = $0 { return true }; return false }) else {
+                fail("G5-add: choice not detected in seed"); return
+            }
+            try await h.addChoiceOption(c, displayedContent: addSeed, url: u, onContentUpdated: cb)
+        }) {
+            if case .choice(let c)? = InteractiveElementDetector.detect(in: out).first(where: {
+                if case .choice = $0 { return true }; return false
+            }) {
+                if c.options.count != 3 { fail("G5-add: choice did not grow to 3 options (\(c.options.count))") }
+            } else {
+                fail("G5-add: choice no longer detects after adding an option: \(out.debugDescription)")
             }
         }
 

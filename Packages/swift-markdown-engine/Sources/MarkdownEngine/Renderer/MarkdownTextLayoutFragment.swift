@@ -727,10 +727,11 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
         // Trailing accessory symbols (e.g. a dropdown chevron) — drawn just
         // past the range's right edge, text left visible.
         ts.enumerateAttribute(.interactiveAccessory, in: range, options: []) { [weak self] value, attrRange, _ in
-            guard let self, let symbolName = value as? String,
+            guard let self, let accessory = value as? InteractiveAccessory,
                   let end = self.drawPosition(forDocumentCharAt: NSMaxRange(attrRange), point: point)
                     ?? self.drawPosition(forDocumentCharAt: max(attrRange.location, NSMaxRange(attrRange) - 1), point: point)
             else { return }
+            let symbolName = accessory.symbolName
             let side = TaskCheckboxGeometry.size(for: font) * 0.72
             let ascent = max(0, font.ascender)
             let descent = max(0, -font.descender)

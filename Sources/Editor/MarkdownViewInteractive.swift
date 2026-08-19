@@ -29,6 +29,17 @@ extension MarkdownView {
             }
             return true
 
+        case "choice-add":
+            guard parts.count == 2, let anchor = Int(parts[1]),
+                  let choice = choice(at: anchor, in: text) else { return false }
+            let handler = interactionHandler, watcher = fileWatcher
+            runWrite(url: url) { onUpdate in
+                try await handler.addChoiceOption(
+                    choice, displayedContent: text, url: url,
+                    fileWatcher: watcher, onContentUpdated: onUpdate)
+            }
+            return true
+
         case "status":
             guard parts.count == 2, let anchor = Int(parts[1]),
                   let status = status(at: anchor, in: text) else { return false }

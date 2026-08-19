@@ -124,6 +124,28 @@ final class InteractionHandler {
         }
     }
 
+    /// Appends a new unselected option to a choice (authoring: the "+" affordance).
+    /// Inserts `  [ ] New Option` right after the last option, so the choice
+    /// stays on its line and re-detects with one more radio.
+    func addChoiceOption(
+        _ choice: ChoiceElement,
+        displayedContent: String,
+        url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let fresh = ElementRelocator.choice(
+                choice, displayed: displayedContent, fresh: current
+            ), let last = fresh.options.last else {
+                throw WriteError.rangeMismatch
+            }
+            var modified = current
+            modified.insert(contentsOf: "  [ ] New Option", at: last.range.upperBound)
+            return modified
+        }
+    }
+
     /// Replaces a fill-in placeholder with a value.
     func fillIn(
         _ element: FillInElement,

@@ -34,10 +34,24 @@ extension NSAttributedString.Key {
     /// Value: `String` (opaque identifier). A clickable text span with no
     /// engine-drawn glyph — the host styles the span itself.
     public static let interactiveZone = NSAttributedString.Key("MarkdownEngineInteractiveZone")
-    /// Value: `String` (SF Symbol name). Draws a small symbol just past the
+    /// Value: ``InteractiveAccessory``. Draws a small symbol just past the
     /// TRAILING edge of the range without hiding the text — a disclosure
-    /// affordance for a zone control (e.g. a `chevron.down` on a dropdown).
+    /// affordance (e.g. a `chevron.down`), or a clickable action (e.g. a `+`
+    /// to add an item) when it carries an identifier.
     public static let interactiveAccessory = NSAttributedString.Key("MarkdownEngineInteractiveAccessory")
+}
+
+/// A small SF Symbol drawn just past a range's trailing edge (text left
+/// visible). Decorative when `identifier` is nil; a clickable action —
+/// hit-tested and routed to `onInteractiveElementClick` — when it isn't.
+public struct InteractiveAccessory: Equatable, Hashable, Sendable {
+    public var symbolName: String
+    public var identifier: String?
+
+    public init(symbolName: String, identifier: String? = nil) {
+        self.symbolName = symbolName
+        self.identifier = identifier
+    }
 }
 
 /// A host-defined control drawn as an SF Symbol inside its text range's box.

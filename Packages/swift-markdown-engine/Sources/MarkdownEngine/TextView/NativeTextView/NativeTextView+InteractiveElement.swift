@@ -35,6 +35,22 @@ extension NativeTextView {
         }
         if let glyphHit { return glyphHit }
 
+        // Clickable accessory (e.g. a `+`) — drawn just past the range's
+        // trailing edge; hit-test that small box to the right.
+        var accessoryHit: (range: NSRange, identifier: String)?
+        storage.enumerateAttribute(.interactiveAccessory, in: scan, options: []) { value, attrRange, stop in
+            guard let accessory = value as? InteractiveAccessory,
+                  let id = accessory.identifier else { return }
+            let r = bridge.boundingRect(forCharacterRange: attrRange, in: textContainer)
+            let side = r.height
+            let box = CGRect(x: r.maxX, y: r.midY - side / 2, width: side * 1.4, height: side)
+            if box.contains(containerPoint) {
+                accessoryHit = (attrRange, id)
+                stop.pointee = true
+            }
+        }
+        if let accessoryHit { return accessoryHit }
+
         var zoneHit: (range: NSRange, identifier: String)?
         storage.enumerateAttribute(.interactiveZone, in: scan, options: []) { value, attrRange, stop in
             guard let identifier = value as? String else { return }
