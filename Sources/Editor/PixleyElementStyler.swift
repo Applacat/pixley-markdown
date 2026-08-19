@@ -43,12 +43,14 @@ enum PixleyElementStyler {
             switch element {
             case .choice(let choice):
                 styleChoice(choice, in: slice, storage: storage, base: base)
+            case .review(let review):
+                styleReview(review, in: slice, storage: storage, base: base)
             case .status(let status):
                 styleStatus(status, in: slice, storage: storage, base: base)
             case .fillIn(let fillIn):
                 styleFillIn(fillIn, in: slice, storage: storage, base: base)
             default:
-                break // checkbox = engine-native; others inert until G5
+                break // checkbox = engine-native; feedback/CriticMarkup inert (G5)
             }
         }
     }
@@ -115,6 +117,26 @@ enum PixleyElementStyler {
                                          range: anchor)
                 }
             }
+        }
+    }
+
+    // MARK: - Review (radio group of status keywords)
+
+    private static func styleReview(_ review: ReviewElement, in slice: String,
+                                    storage: NSTextStorage, base: Int) {
+        let storageLength = storage.length
+        let blockLoc = base + NSRange(review.blockquoteRange, in: slice).location
+        for (index, option) in review.options.enumerated() {
+            let checkNS = NSRange(option.checkRange, in: slice)
+            guard checkNS.location != NSNotFound, base + checkNS.location >= 1 else { continue }
+            let bracketNS = NSRange(location: base + checkNS.location - 1, length: checkNS.length + 2)
+            guard NSMaxRange(bracketNS) <= storageLength else { continue }
+            let glyph = InteractiveGlyph(
+                symbolName: option.isSelected ? selectedSymbol : unselectedSymbol,
+                filled: option.isSelected,
+                identifier: "review:\(blockLoc):\(index)")
+            storage.addAttribute(.interactiveGlyph, value: glyph, range: bracketNS)
+            storage.addAttribute(.foregroundColor, value: NSColor.clear, range: bracketNS)
         }
     }
 

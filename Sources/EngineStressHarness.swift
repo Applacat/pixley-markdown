@@ -463,9 +463,38 @@ enum EngineStressHarness {
         // G5/#109: every Insert-menu snippet is detector-recognized.
         runInsertMenuChecks(fail: fail)
 
+        // G5/#111: review blocks get interactive radio glyphs.
+        await runReviewOverlayCheck(fail: fail)
+
         // Part B: byte-exact writes through InteractionHandler (the same path
         // clicks route to), independent of presentation.
         await runInteractiveWriteChecks(fail: fail)
+    }
+
+    private static func runReviewOverlayCheck(fail: (String) -> Void) async {
+        let seed = "Review:\n\n> - [ ] APPROVED\n> - [x] PASS — 2026-07-23\n> - [ ] FAIL\n> - [ ] N/A\n"
+        let state = HarnessState(); state.text = seed
+        let window = makeWindow(state, rawSource: false, documentId: "review")
+        try? await Task.sleep(for: .milliseconds(500))
+        if let tv = findTextView(in: window.contentView) as? NSTextView, let storage = tv.textStorage {
+            var reviewGlyphs = 0
+            storage.enumerateAttribute(.interactiveGlyph,
+                                       in: NSRange(location: 0, length: storage.length)) { v, _, _ in
+                if let g = v as? InteractiveGlyph, g.identifier.hasPrefix("review:") { reviewGlyphs += 1 }
+            }
+            if reviewGlyphs != 4 { fail("G5-review: expected 4 review radio glyphs, got \(reviewGlyphs)") }
+            if CommandLine.arguments.contains("--shot"), let view = window.contentView,
+               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.cacheDisplay(in: view.bounds, to: rep)
+                if let png = rep.representation(using: .png, properties: [:]) {
+                    let path = FileManager.default.temporaryDirectory.appendingPathComponent("review-shot.png")
+                    try? png.write(to: path); print("REVIEW-SHOT \(path.path)")
+                }
+            }
+        } else {
+            fail("G5-review: no text storage in review editor")
+        }
+        window.close()
     }
 
     private static func runInsertMenuChecks(fail: (String) -> Void) {
@@ -606,6 +635,35 @@ enum EngineStressHarness {
         }) {
             if !out.contains("**Status:** DONE") {
                 fail("US-P3.2: advanceStatus lost the prefix or state: \(out.debugDescription)")
+            }
+        }
+
+        // Review (#111): selecting an option acts as a single-select radio and
+        // re-detects; a note-requiring status carries the note.
+        let reviewSeed = "> - [ ] APPROVED\n> - [ ] PASS\n> - [ ] FAIL\n> - [ ] N/A\n"
+        func detectReview(_ t: String) -> ReviewElement? {
+            for case .review(let r) in InteractiveElementDetector.detect(in: t) { return r }
+            return nil
+        }
+        // Select PASS (index 1, no notes).
+        if let out = await write(reviewSeed, { h, u, cb in
+            guard let r = detectReview(reviewSeed) else { fail("G5-review: not detected in seed"); return }
+            try await h.selectReview(optionIndex: 1, in: r, displayedContent: reviewSeed, url: u, onContentUpdated: cb)
+        }) {
+            guard let r = detectReview(out) else { fail("G5-review: no longer detects after select: \(out.debugDescription)"); return }
+            if r.selectedStatus != .pass { fail("G5-review: PASS not selected (\(String(describing: r.selectedStatus)))") }
+            if r.options.filter({ $0.isSelected }).count != 1 { fail("G5-review: not single-select") }
+        }
+        // Select FAIL (index 2) with a note → note round-trips.
+        if let out = await write(reviewSeed, { h, u, cb in
+            guard let r = detectReview(reviewSeed) else { return }
+            try await h.selectReview(optionIndex: 2, notes: "needs work", in: r, displayedContent: reviewSeed, url: u, onContentUpdated: cb)
+        }) {
+            if !out.contains("needs work") { fail("G5-review: FAIL note not written: \(out.debugDescription)") }
+            guard let r = detectReview(out) else { fail("G5-review: note broke detection: \(out.debugDescription)"); return }
+            let failOpt = r.options.first { $0.status == .fail }
+            if failOpt?.isSelected != true || failOpt?.notes?.contains("needs work") != true {
+                fail("G5-review: FAIL note not re-detected (\(String(describing: failOpt?.notes)))")
             }
         }
 

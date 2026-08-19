@@ -27,7 +27,16 @@ G5.1 Insert menu (#109)                     [COMPLETE — 2026-08-19]
     --insert-demo (exercise the insert engine).
 
 G5.2 Selection popup Add Comment (#110)     [PENDING]
-G5.2 Review radios (#111) / feedback (#113) / CriticMarkup (#112) [PENDING]
+G5.2 Review radios (#111)                    [COMPLETE — 2026-08-19]
+  PixleyElementStyler.styleReview: each review option's [ ] becomes a radio
+  glyph (reuses the choice pattern; selected option filled), id
+  "review:<blockLoc>:<optIdx>". Router: click → selectReview (single-select,
+  detector-anchored, byte-exact, re-detects); note-requiring statuses
+  (FAIL / PASS WITH NOTES / BLOCKED) open a notes popover → selectReview
+  with the note (written as "— <date>: <note>", re-detected). Verified:
+  harness review write checks (radio single-select + note round-trip) +
+  4-glyph overlay assert + screenshot (◯ APPROVED / ● PASS / ◯ FAIL / ◯ N/A).
+G5.2 Feedback (#113) / CriticMarkup (#112)   [PENDING]
 G5.3 Spec-4 rich controls (#114) + status native look (#115) — needs the
      attachment decision (D-F revisit)       [PENDING]
 G5.4 Docs + smoke test (US-5.3)              [PENDING]

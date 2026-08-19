@@ -52,6 +52,30 @@ extension MarkdownView {
             presentFillInPopover(fillIn, url: url, text: text, windowRect: windowRect)
             return true
 
+        case "review":
+            guard parts.count == 3, let anchor = Int(parts[1]), let optIdx = Int(parts[2]),
+                  let review = review(at: anchor, in: text),
+                  optIdx < review.options.count else { return false }
+            let handler = interactionHandler, watcher = fileWatcher
+            let status = review.options[optIdx].status
+            if status.promptsForNotes {
+                // FAIL / PASS WITH NOTES / BLOCKED — capture a note first.
+                presentNotesPopover(prompt: "\(status.rawValue) — note", windowRect: windowRect) { note in
+                    runWrite(url: url) { onUpdate in
+                        try await handler.selectReview(
+                            optionIndex: optIdx, notes: note, in: review, displayedContent: text,
+                            url: url, fileWatcher: watcher, onContentUpdated: onUpdate)
+                    }
+                }
+            } else {
+                runWrite(url: url) { onUpdate in
+                    try await handler.selectReview(
+                        optionIndex: optIdx, in: review, displayedContent: text,
+                        url: url, fileWatcher: watcher, onContentUpdated: onUpdate)
+                }
+            }
+            return true
+
         default:
             return false
         }
@@ -75,6 +99,28 @@ extension MarkdownView {
         for case .fillIn(let f) in InteractiveElementDetector.detect(in: text)
         where NSRange(f.range, in: text).location == anchor { return f }
         return nil
+    }
+
+    private func review(at anchor: Int, in text: String) -> ReviewElement? {
+        for case .review(let r) in InteractiveElementDetector.detect(in: text)
+        where NSRange(r.blockquoteRange, in: text).location == anchor { return r }
+        return nil
+    }
+
+    // MARK: - Notes popover (review statuses that require a note)
+
+    private func presentNotesPopover(prompt: String, windowRect: NSRect,
+                                     onCommit: @escaping (String) -> Void) {
+        guard let contentView = NSApp.keyWindow?.contentView else { return }
+        let popover = NSPopover()
+        popover.behavior = .transient
+        let controller = FillInEditController(initialValue: "", hint: prompt, isDate: false) { note in
+            popover.close()
+            onCommit(note)
+        }
+        popover.contentViewController = controller
+        popover.show(relativeTo: contentView.convert(windowRect, from: nil),
+                     of: contentView, preferredEdge: .maxY)
     }
 
     // MARK: - Status menu
