@@ -371,3 +371,42 @@ under ARC. Engine publishes $text a beat after typing (async) — settle
 (AppKit bypasses didChangeText) — fork patch re-syncs via
 NSUndoManagerDidUndo/RedoChange. Giant single paragraphs (no blank lines)
 degrade block-scoped restyle (~460ms/keystroke at 258KB) — G6 watch item.
+
+## 2026-08-19 — DELTA: harness-green ≠ app-works (verify in the real app)
+
+BELIEVED: a passing plain-window `--stress-engine` harness means the UI
+works in the app. ACTUAL: the harness window doesn't reproduce the browser's
+SwiftUI NavigationSplitView — the line-number gutter passed the harness but
+was invisible in the real app (NSRulerView space reservation never happened
+in the nested split; and `onScrollViewReady` fired at 0×0 then again on the
+live view). DELTA: verify UI changes in the REAL app before claiming done.
+Tool: `--open-sample [--insert-demo] [--shot]` launched via `open` (kill the
+Xcode-held instance first; launching the binary directly makes no windows).
+
+## 2026-08-19 — AHA: the interactive-element seam is the reuse unit
+
+Adding a new interactive element = one overlay case (PixleyElementStyler →
+`.interactiveGlyph`/`.interactiveZone`/`.interactiveAccessory`) + one click
+case (MarkdownViewInteractive → InteractionHandler) + a harness check (+
+`--shot`). Review radios reused the choice pattern almost wholesale. The
+detector already models N options / all element types — most "it doesn't
+work" gaps are missing OVERLAY/affordance, not model limits (e.g. choice
+"can't add >2" was just a missing "+").
+
+## 2026-08-19 — DECISION (pending): attachments vs styled text for rich controls
+
+G5.3 (#114 slider/stepper/toggle/color, #115 status native look) needs a
+choice: NSTextAttachment view-providers (truly native widgets, reopens the
+attachment path) vs the styled-text hit-test seam (used for the core four).
+LEANING: hybrid — attachments for the rich widgets, styled text for
+checkbox/choice/fill-in/CriticMarkup. REVISIT-IF: perf or selection/copy
+fidelity suffers with attachments. Make this call BEFORE starting #114.
+
+## 2026-08-19 — CONTEXT: editor state
+
+G4 engine port COMPLETE (P1–P4). G5 in progress: #109 insert menu (menu +
+window-chrome toolbar) DONE; #111 review radios DONE. Remaining: #113
+feedback, #112 CriticMarkup, #114 spec-4, #115 status look, #110 selection
+popup, US-5.3 docs, G6 soak. Fork: Applacat/swift-markdown-engine (branch
+pixley-fork), vendored subtree. Progress: docs/specs/g5-progress.txt.
+Non-editor bug open: #108 recents click deletes instead of opening.
