@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import MarkdownEngine
 
 // MARK: - App Delegate
 
@@ -31,6 +32,94 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             Task { await Self.openSampleAndSnapshot() }
         }
+
+        // Debug: open the real welcome CriticMarkup page in the browser and,
+        // for each suggestion span, replicate the engine's interactiveHit
+        // (glyph → accessory → zone; first rect containing the point) to see
+        // which identifier actually intercepts a click. Reproduces the
+        // browser-only "addition doesn't work" report the plain harness can't.
+        if CommandLine.arguments.contains("--critic-probe") {
+            NSApp.activate(ignoringOtherApps: true)
+            Task { await Self.criticProbe() }
+        }
+    }
+
+    private static func criticProbe() async {
+        try? await Task.sleep(for: .seconds(2))
+        guard let welcomeURL = WelcomeManager.ensureWelcomeFolder() else {
+            print("CRITIC-PROBE no welcome folder"); exit(1)
+        }
+        let file = welcomeURL.appendingPathComponent("03-Interactive-Controls.md")
+        WindowRouter.shared.openBrowser(BrowserOpenRequest(folderURL: welcomeURL, fileURL: file, preferSidebarCollapsed: true))
+        try? await Task.sleep(for: .seconds(3))
+
+        func findTV(_ v: NSView?) -> NSTextView? {
+            guard let v else { return nil }
+            if let tv = v as? NSTextView, tv.textStorage?.length ?? 0 > 0 { return tv }
+            for s in v.subviews { if let f = findTV(s) { return f } }
+            return nil
+        }
+        let browser = NSApp.windows
+            .filter { $0.isVisible && $0.contentView != nil }
+            .max(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })
+        guard let win = browser, let tv = findTV(win.contentView),
+              let storage = tv.textStorage, let tlm = tv.textLayoutManager,
+              let tcm = tlm.textContentManager else {
+            print("CRITIC-PROBE no editor"); exit(1)
+        }
+        let ns = storage.string as NSString
+        func rect(_ range: NSRange) -> CGRect {
+            guard range.location != NSNotFound,
+                  let start = tcm.location(tcm.documentRange.location, offsetBy: range.location),
+                  let end = tcm.location(start, offsetBy: range.length),
+                  let tr = NSTextRange(location: start, end: end) else { return .null }
+            var acc = CGRect.null
+            tlm.enumerateTextSegments(in: tr, type: .standard, options: []) { _, seg, _, _ in
+                acc = acc.isNull ? seg : acc.union(seg); return true
+            }
+            return acc
+        }
+        // Replicate interactiveHit: first glyph, then accessory, then zone whose
+        // rect contains `p`. Returns the intercepting identifier + kind.
+        func hit(at p: CGPoint) -> String {
+            let scan = NSRange(location: 0, length: storage.length)
+            var result = "none"
+            for (key, kind) in [(NSAttributedString.Key.interactiveGlyph, "glyph"),
+                                (.interactiveAccessory, "accessory"),
+                                (.interactiveZone, "zone")] {
+                var found: String?
+                storage.enumerateAttribute(key, in: scan, options: []) { value, r, stop in
+                    var id: String?
+                    if let g = value as? InteractiveGlyph { id = g.identifier }
+                    else if let a = value as? InteractiveAccessory { id = a.identifier }
+                    else if let s = value as? String { id = s }
+                    guard id != nil else { return }
+                    // Accessory box sits just past the trailing edge.
+                    let rc = rect(r)
+                    let box = kind == "accessory"
+                        ? CGRect(x: rc.maxX, y: rc.midY - rc.height / 2, width: rc.height * 1.4, height: rc.height)
+                        : rc
+                    if !box.isNull, box.contains(p) { found = "\(kind):\(id!)"; stop.pointee = true }
+                }
+                if let found { result = found; break }
+            }
+            return result
+        }
+        var out = "CRITIC-PROBE (03-Interactive-Controls.md)\n"
+        for (label, word) in [("addition", "new text to add"),
+                              ("deletion", "text to remove"),
+                              ("substitution", "old text")] {
+            let r = ns.range(of: word)
+            let rc = rect(r)
+            let center = CGPoint(x: rc.midX, y: rc.midY)
+            let zoneAttr = r.location != NSNotFound
+                ? (storage.attribute(.interactiveZone, at: r.location, effectiveRange: nil) as? String ?? "nil")
+                : "notfound"
+            out += "\(label): rect=\(rc.isNull ? "NULL" : "\(Int(rc.minX)),\(Int(rc.minY)) \(Int(rc.width))x\(Int(rc.height))") attr=\(zoneAttr) hit=\(hit(at: center))\n"
+        }
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("critic-probe.txt")
+        try? out.write(to: path, atomically: true, encoding: .utf8)
+        exit(0)
     }
 
     private static func openSampleAndSnapshot() async {

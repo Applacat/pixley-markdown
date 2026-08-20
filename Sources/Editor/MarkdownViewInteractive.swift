@@ -131,8 +131,22 @@ extension MarkdownView {
                     in: url, fileWatcher: watcher, onContentUpdated: onUpdate)
             }
         }
+        // Spell out each option's actual effect. "Accept" on an addition keeps
+        // the text (so nothing visibly leaves), which reads as a no-op unless
+        // the label says so; deletion/substitution are the inverse.
+        let options: [(title: String, accept: Bool)]
+        switch suggestion.type {
+        case .addition:
+            options = [("Accept — keep added text", true), ("Reject — remove it", false)]
+        case .deletion:
+            options = [("Accept — delete text", true), ("Reject — keep text", false)]
+        case .substitution:
+            options = [("Accept — use new text", true), ("Reject — keep old text", false)]
+        case .highlight:
+            options = [("Accept", true), ("Reject", false)]
+        }
         let menu = NSMenu()
-        for (title, accept) in [("Accept", true), ("Reject", false)] {
+        for (title, accept) in options {
             let item = NSMenuItem(title: title, action: #selector(SuggestionMenuTarget.pick(_:)), keyEquivalent: "")
             item.target = SuggestionMenuTarget.shared
             item.representedObject = accept

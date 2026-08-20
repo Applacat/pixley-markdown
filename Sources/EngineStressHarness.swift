@@ -438,7 +438,8 @@ enum EngineStressHarness {
         // deletion, and SUBSTITUTION each carry a suggestion zone (substitution
         // used to render raw). Highlight stays inert.
         let criticState = HarnessState()
-        criticState.text = "A {++add++} and {--del--} and {~~old~>new~~} here.\n"
+        // Exact welcome-doc format: list items with prose prefixes (03-Interactive-Controls.md).
+        criticState.text = "- Addition: {++new text to add++}\n- Deletion: {--text to remove--}\n- Substitution: {~~old text~>new text~~}\n"
         let criticWindow = makeWindow(criticState, rawSource: false, documentId: "critic")
         try? await Task.sleep(for: .milliseconds(500))
         if let tv = findTextView(in: criticWindow.contentView) as? NSTextView,
@@ -449,9 +450,35 @@ enum EngineStressHarness {
                 return (storage.attribute(.interactiveZone, at: r.location, effectiveRange: nil) as? String)?
                     .hasPrefix("suggestion:") == true
             }
-            if !zone(at: "add") { fail("#112: addition not interactive") }
-            if !zone(at: "del") { fail("#112: deletion not interactive") }
-            if !zone(at: "old") { fail("#112: substitution not interactive (still raw?)") }
+            if !zone(at: "new text to add") { fail("#112: addition not interactive") }
+            if !zone(at: "text to remove") { fail("#112: deletion not interactive") }
+            if !zone(at: "old text") { fail("#112: substitution not interactive (still raw?)") }
+
+            // Real-app hit condition: the zone's rendered rect must be non-empty
+            // and its own center must map back to a char still carrying the zone
+            // (this is what interactiveHit does — the attribute existing is not
+            // enough if boundingRect is degenerate). Probe each type's rect.
+            if let tlm = tv.textLayoutManager, let tcm = tlm.textContentManager {
+                func rect(forWord word: String) -> CGRect {
+                    let r = (storage.string as NSString).range(of: word)
+                    guard r.location != NSNotFound,
+                          let start = tcm.location(tcm.documentRange.location, offsetBy: r.location),
+                          let end = tcm.location(start, offsetBy: r.length),
+                          let tr = NSTextRange(location: start, end: end) else { return .null }
+                    var acc = CGRect.null
+                    tlm.enumerateTextSegments(in: tr, type: .standard, options: []) { _, seg, _, _ in
+                        acc = acc.isNull ? seg : acc.union(seg); return true
+                    }
+                    return acc
+                }
+                for (label, word) in [("addition", "new text to add"), ("deletion", "text to remove"), ("substitution", "old text")] {
+                    let rc = rect(forWord: word)
+                    print("CRITIC-RECT \(label): \(rc.isNull ? "NULL" : "\(Int(rc.minX)),\(Int(rc.minY)) \(Int(rc.width))x\(Int(rc.height))")")
+                    if rc.isNull || rc.width < 2 || rc.height < 2 {
+                        fail("#112: \(label) zone rect is degenerate (\(rc)) — not clickable")
+                    }
+                }
+            }
             if CommandLine.arguments.contains("--shot"), let view = criticWindow.contentView,
                let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                 view.cacheDisplay(in: view.bounds, to: rep)
