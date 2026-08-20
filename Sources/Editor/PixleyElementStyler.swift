@@ -49,8 +49,10 @@ enum PixleyElementStyler {
                 styleStatus(status, in: slice, storage: storage, base: base)
             case .fillIn(let fillIn):
                 styleFillIn(fillIn, in: slice, storage: storage, base: base)
+            case .suggestion(let suggestion):
+                styleSuggestion(suggestion, in: slice, storage: storage, base: base)
             default:
-                break // checkbox = engine-native; feedback/CriticMarkup inert (G5)
+                break // checkbox = engine-native; feedback inert until #113
             }
         }
     }
@@ -159,6 +161,45 @@ enum PixleyElementStyler {
             storage.addAttribute(.interactiveAccessory,
                                  value: InteractiveAccessory(symbolName: "chevron.down"), range: lastChar)
         }
+    }
+
+    // MARK: - CriticMarkup suggestions (#112)
+
+    /// Styles a CriticMarkup suggestion and makes edit forms clickable
+    /// (accept/reject). Addition/deletion/substitution have clean 3-char
+    /// `{XX … XX}` markers — hidden so the content shows styled; highlight
+    /// (`{==…==}{>>…<<}`) is styled inert (its comment is #113/#110).
+    private static func styleSuggestion(_ s: SuggestionElement, in slice: String,
+                                        storage: NSTextStorage, base: Int) {
+        let sliceNS = NSRange(s.range, in: slice)
+        guard sliceNS.location != NSNotFound else { return }
+        let ns = NSRange(location: base + sliceNS.location, length: sliceNS.length)
+        guard NSMaxRange(ns) <= storage.length else { return }
+
+        if s.type == .highlight {
+            storage.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.22), range: ns)
+            return
+        }
+        guard ns.length > 6 else { return }
+        let open = 3, close = 3
+        let content = NSRange(location: ns.location + open, length: ns.length - open - close)
+        guard content.length > 0 else { return }
+
+        let (bg, typeChar): (NSColor, String)
+        switch s.type {
+        case .addition:     (bg, typeChar) = (.systemGreen, "a")
+        case .deletion:     (bg, typeChar) = (.systemRed, "d")
+        case .substitution: (bg, typeChar) = (.systemOrange, "s")
+        case .highlight:    return
+        }
+        hide(NSRange(location: ns.location, length: open), in: storage)
+        hide(NSRange(location: NSMaxRange(ns) - close, length: close), in: storage)
+        storage.addAttribute(.backgroundColor, value: bg.withAlphaComponent(0.20), range: content)
+        if s.type == .deletion {
+            storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: content)
+            storage.addAttribute(.strikethroughColor, value: NSColor.systemRed, range: content)
+        }
+        storage.addAttribute(.interactiveZone, value: "suggestion:\(ns.location):\(typeChar)", range: content)
     }
 
     // MARK: - Fill-in (field)

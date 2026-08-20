@@ -36,7 +36,22 @@ G5.2 Review radios (#111)                    [COMPLETE — 2026-08-19]
   with the note (written as "— <date>: <note>", re-detected). Verified:
   harness review write checks (radio single-select + note round-trip) +
   4-glyph overlay assert + screenshot (◯ APPROVED / ● PASS / ◯ FAIL / ◯ N/A).
-G5.2 Feedback (#113) / CriticMarkup (#112)   [PENDING]
+G5.2 CriticMarkup accept/reject (#112)       [COMPLETE — 2026-08-20]
+  Moved CriticMarkup OFF the engine InlineSyntax extensions (which can't do
+  substitution — `~` in `~>` aborts the span scan) ONTO the Pixley overlay
+  via the detector's SuggestionElement (regex — handles all forms). Deleted
+  CriticMarkupExtensions.swift; config extensions now []. styleSuggestion:
+  addition green / deletion red-strikethrough / substitution orange
+  (markers hidden, so substitution shows styled, not raw) / highlight yellow
+  inert; add/del/sub get an .interactiveZone "suggestion:<loc>:<a|d|s>".
+  Click → Accept/Reject menu → InteractionHandler.resolveSuggestion:
+  addition accept→text/reject→∅; deletion accept→∅/reject→text;
+  substitution accept→new/reject→old. Relocates by finding the span's exact
+  source text; byte-exact, undoable, resolves to prose (no longer detects).
+  Verified: harness accept/reject byte checks (all forms + both sides),
+  interactivity asserts (add/del/SUB all zoned), screenshot (add green /
+  del strikethrough / old~>new orange).
+G5.2 Feedback (#113)                          [PENDING]
 G5.3 Spec-4 rich controls (#114) + status native look (#115) — needs the
      attachment decision (D-F revisit)       [PENDING]
 G5.4 Docs + smoke test (US-5.3)              [PENDING]

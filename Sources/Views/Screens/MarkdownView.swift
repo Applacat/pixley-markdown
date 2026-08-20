@@ -109,7 +109,7 @@ struct MarkdownView: View {
                         fontSize: CGFloat(settings.rendering.fontSize))),
                 leftContentInset: PixleyGutterView.width,
                 rawSourceMode: settings.behavior.interactiveMode == .plain,
-                extensions: CriticMarkupExtensions.all()
+                extensions: []
             ),
             fontSize: CGFloat(settings.rendering.fontSize),
             documentId: coordinator.navigation.selectedFile?.path ?? "no-document",

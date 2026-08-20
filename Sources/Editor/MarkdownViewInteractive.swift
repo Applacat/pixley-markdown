@@ -52,6 +52,12 @@ extension MarkdownView {
             presentFillInPopover(fillIn, url: url, text: text, windowRect: windowRect)
             return true
 
+        case "suggestion":
+            guard parts.count == 3, let anchor = Int(parts[1]),
+                  let suggestion = suggestion(at: anchor, in: text) else { return false }
+            presentAcceptRejectMenu(suggestion, url: url, text: text, windowRect: windowRect)
+            return true
+
         case "review":
             guard parts.count == 3, let anchor = Int(parts[1]), let optIdx = Int(parts[2]),
                   let review = review(at: anchor, in: text),
@@ -105,6 +111,37 @@ extension MarkdownView {
         for case .review(let r) in InteractiveElementDetector.detect(in: text)
         where NSRange(r.blockquoteRange, in: text).location == anchor { return r }
         return nil
+    }
+
+    private func suggestion(at anchor: Int, in text: String) -> SuggestionElement? {
+        for case .suggestion(let s) in InteractiveElementDetector.detect(in: text)
+        where NSRange(s.range, in: text).location == anchor { return s }
+        return nil
+    }
+
+    // MARK: - Accept / Reject menu (CriticMarkup, #112)
+
+    private func presentAcceptRejectMenu(_ suggestion: SuggestionElement, url: URL,
+                                         text: String, windowRect: NSRect) {
+        let handler = interactionHandler, watcher = fileWatcher
+        func resolve(_ accept: Bool) {
+            runWrite(url: url) { onUpdate in
+                try await handler.resolveSuggestion(
+                    suggestion, accept: accept, displayedContent: text,
+                    in: url, fileWatcher: watcher, onContentUpdated: onUpdate)
+            }
+        }
+        let menu = NSMenu()
+        for (title, accept) in [("Accept", true), ("Reject", false)] {
+            let item = NSMenuItem(title: title, action: #selector(SuggestionMenuTarget.pick(_:)), keyEquivalent: "")
+            item.target = SuggestionMenuTarget.shared
+            item.representedObject = accept
+            SuggestionMenuTarget.shared.onPick = { resolve($0) }
+            menu.addItem(item)
+        }
+        guard let contentView = NSApp.keyWindow?.contentView else { return }
+        let viewRect = contentView.convert(windowRect, from: nil)
+        menu.popUp(positioning: nil, at: NSPoint(x: viewRect.minX, y: viewRect.minY), in: contentView)
     }
 
     // MARK: - Notes popover (review statuses that require a note)
@@ -213,6 +250,17 @@ private final class StatusMenuTarget: NSObject {
     @objc func pick(_ sender: NSMenuItem) {
         guard let state = sender.representedObject as? String else { return }
         onPick?(state)
+    }
+}
+
+@MainActor
+private final class SuggestionMenuTarget: NSObject {
+    static let shared = SuggestionMenuTarget()
+    var onPick: ((Bool) -> Void)?
+
+    @objc func pick(_ sender: NSMenuItem) {
+        guard let accept = sender.representedObject as? Bool else { return }
+        onPick?(accept)
     }
 }
 

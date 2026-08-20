@@ -147,6 +147,37 @@ final class InteractionHandler {
         }
     }
 
+    /// Accepts or rejects a CriticMarkup suggestion (#112), replacing the whole
+    /// `{...}` span with its resolution:
+    ///   addition     accept → added text,  reject → nothing
+    ///   deletion     accept → nothing,     reject → the text
+    ///   substitution accept → new text,    reject → old text
+    /// Relocates by finding the span's exact source text in the fresh content,
+    /// so it's byte-exact and re-detectable (the span vanishes, resolved to prose).
+    func resolveSuggestion(
+        _ element: SuggestionElement,
+        accept: Bool,
+        displayedContent: String,
+        in url: URL,
+        fileWatcher: FileWatcher? = nil,
+        onContentUpdated: ((String) -> Void)? = nil
+    ) async throws {
+        let spanText = String(displayedContent[element.range])
+        let replacement: String
+        switch element.type {
+        case .addition:     replacement = accept ? (element.newText ?? "") : ""
+        case .deletion:     replacement = accept ? "" : (element.oldText ?? "")
+        case .substitution: replacement = accept ? (element.newText ?? "") : (element.oldText ?? "")
+        case .highlight:    replacement = element.oldText ?? "" // both keep the text, drop the annotation
+        }
+        try await serializedWrite(to: url, displayedContent: displayedContent, fileWatcher: fileWatcher, onContentUpdated: onContentUpdated) { current in
+            guard let r = current.range(of: spanText) else { throw WriteError.rangeMismatch }
+            var modified = current
+            modified.replaceSubrange(r, with: replacement)
+            return modified
+        }
+    }
+
     /// Replaces a fill-in placeholder with a value.
     func fillIn(
         _ element: FillInElement,

@@ -43,7 +43,7 @@ enum EngineStressHarness {
                 configuration: MarkdownEditorConfiguration(
                     leftContentInset: onReady != nil ? PixleyGutterView.width : 0,
                     rawSourceMode: state.rawSource,
-                    extensions: CriticMarkupExtensions.all()),
+                    extensions: []),
                 documentId: documentId,
                 isEditable: true,
                 // Same production overlay so the harness exercises the real seam.
@@ -434,26 +434,34 @@ enum EngineStressHarness {
         }
         window.close()
 
-        // US-P3.4: CriticMarkup styles (has a background) but is INERT — no
-        // interactive glyph/zone under it, so no hover cursor / click.
+        // #112: CriticMarkup styles AND is now interactive — addition,
+        // deletion, and SUBSTITUTION each carry a suggestion zone (substitution
+        // used to render raw). Highlight stays inert.
         let criticState = HarnessState()
-        criticState.text = "The API {++needs auth++} and {==a span==}{>>note<<}.\n"
+        criticState.text = "A {++add++} and {--del--} and {~~old~>new~~} here.\n"
         let criticWindow = makeWindow(criticState, rawSource: false, documentId: "critic")
         try? await Task.sleep(for: .milliseconds(500))
         if let tv = findTextView(in: criticWindow.contentView) as? NSTextView,
            let storage = tv.textStorage {
-            let str = storage.string as NSString
-            let insertionRange = str.range(of: "needs auth")
-            if insertionRange.location != NSNotFound {
-                let hasBackground = storage.attribute(.backgroundColor, at: insertionRange.location, effectiveRange: nil) != nil
-                    || storage.attribute(.markdownBlockBackground, at: insertionRange.location, effectiveRange: nil) != nil
-                if !hasBackground { fail("US-P3.4: CriticMarkup addition not styled (no background)") }
-                let isInteractive = storage.attribute(.interactiveZone, at: insertionRange.location, effectiveRange: nil) != nil
-                    || storage.attribute(.interactiveGlyph, at: insertionRange.location, effectiveRange: nil) != nil
-                if isInteractive { fail("US-P3.4: CriticMarkup is interactive — must be inert until G5") }
+            func zone(at word: String) -> Bool {
+                let r = (storage.string as NSString).range(of: word)
+                guard r.location != NSNotFound else { return false }
+                return (storage.attribute(.interactiveZone, at: r.location, effectiveRange: nil) as? String)?
+                    .hasPrefix("suggestion:") == true
+            }
+            if !zone(at: "add") { fail("#112: addition not interactive") }
+            if !zone(at: "del") { fail("#112: deletion not interactive") }
+            if !zone(at: "old") { fail("#112: substitution not interactive (still raw?)") }
+            if CommandLine.arguments.contains("--shot"), let view = criticWindow.contentView,
+               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.cacheDisplay(in: view.bounds, to: rep)
+                if let png = rep.representation(using: .png, properties: [:]) {
+                    let path = FileManager.default.temporaryDirectory.appendingPathComponent("critic-shot.png")
+                    try? png.write(to: path); print("CRITIC-SHOT \(path.path)")
+                }
             }
         } else {
-            fail("US-P3.4: critic editor produced no text storage")
+            fail("#112: critic editor produced no text storage")
         }
         criticWindow.close()
 
@@ -665,6 +673,48 @@ enum EngineStressHarness {
             if failOpt?.isSelected != true || failOpt?.notes?.contains("needs work") != true {
                 fail("G5-review: FAIL note not re-detected (\(String(describing: failOpt?.notes)))")
             }
+        }
+
+        // CriticMarkup accept/reject (#112): the span resolves to prose, no
+        // longer detects as a suggestion, and picks the right side.
+        func firstSuggestion(_ t: String) -> SuggestionElement? {
+            for case .suggestion(let s) in InteractiveElementDetector.detect(in: t) { return s }
+            return nil
+        }
+        func stillHasSuggestion(_ t: String) -> Bool { firstSuggestion(t) != nil }
+        // Addition: accept keeps the text, reject removes it.
+        if let out = await write("A {++needs auth++} B\n", { h, u, cb in
+            guard let s = firstSuggestion("A {++needs auth++} B\n") else { fail("#112: addition not detected"); return }
+            try await h.resolveSuggestion(s, accept: true, displayedContent: "A {++needs auth++} B\n", in: u, onContentUpdated: cb)
+        }) {
+            if out != "A needs auth B\n" { fail("#112: addition accept bytes wrong: \(out.debugDescription)") }
+            if stillHasSuggestion(out) { fail("#112: suggestion survived accept") }
+        }
+        if let out = await write("A {++needs auth++} B\n", { h, u, cb in
+            guard let s = firstSuggestion("A {++needs auth++} B\n") else { return }
+            try await h.resolveSuggestion(s, accept: false, displayedContent: "A {++needs auth++} B\n", in: u, onContentUpdated: cb)
+        }), out != "A  B\n" {
+            fail("#112: addition reject bytes wrong: \(out.debugDescription)")
+        }
+        // Deletion: accept removes, reject keeps.
+        if let out = await write("A {--gone--} B\n", { h, u, cb in
+            guard let s = firstSuggestion("A {--gone--} B\n") else { return }
+            try await h.resolveSuggestion(s, accept: true, displayedContent: "A {--gone--} B\n", in: u, onContentUpdated: cb)
+        }), out != "A  B\n" {
+            fail("#112: deletion accept bytes wrong: \(out.debugDescription)")
+        }
+        // Substitution: accept → new, reject → old.
+        if let out = await write("A {~~old~>new~~} B\n", { h, u, cb in
+            guard let s = firstSuggestion("A {~~old~>new~~} B\n") else { fail("#112: substitution not detected"); return }
+            try await h.resolveSuggestion(s, accept: true, displayedContent: "A {~~old~>new~~} B\n", in: u, onContentUpdated: cb)
+        }), out != "A new B\n" {
+            fail("#112: substitution accept bytes wrong: \(out.debugDescription)")
+        }
+        if let out = await write("A {~~old~>new~~} B\n", { h, u, cb in
+            guard let s = firstSuggestion("A {~~old~>new~~} B\n") else { return }
+            try await h.resolveSuggestion(s, accept: false, displayedContent: "A {~~old~>new~~} B\n", in: u, onContentUpdated: cb)
+        }), out != "A old B\n" {
+            fail("#112: substitution reject bytes wrong: \(out.debugDescription)")
         }
 
         // Fill-in: value is wrapped with its typed prefix (re-detectable).

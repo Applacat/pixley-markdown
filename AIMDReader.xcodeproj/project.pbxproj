@@ -60,7 +60,6 @@
 		BAA33678D4992D0D4FF7B0B4 /* EngineStressHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDD6C8C84F86ACD7B03928DA /* EngineStressHarness.swift */; };
 		BB174584FE104D70D385E20E /* FileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FF93B49ABA3FCB6C03C7C38 /* FileWatcher.swift */; };
 		BC04BAD3F95C917D34BB426D /* Welcome in Resources */ = {isa = PBXBuildFile; fileRef = A72700B55F5611A9AC19DEB3 /* Welcome */; };
-		BCAE2F0DFED719725A041B72 /* CriticMarkupExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39AABAF15E26FFB8F6CBD9AF /* CriticMarkupExtensions.swift */; };
 		BEEFBEB46ACBF94B9377CCC3 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C78C33F2E9C456D069393467 /* MarkdownView.swift */; };
 		BF44B15895467314278C594F /* PopoverControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A70093718A58E9919D50A1B /* PopoverControllers.swift */; };
 		BFD9484897D734404ED58CA7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7B6BCC5252188EB88279BA7C /* Assets.xcassets */; };
@@ -110,7 +109,6 @@
 		274A5C0180A575FCC4A276D6 /* CoordinatorRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinatorRegistry.swift; sourceTree = "<group>"; };
 		2D6D24A7B40EC1E0A971E466 /* CheckboxAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckboxAttachment.swift; sourceTree = "<group>"; };
 		338DDB8D3169514ADC46291F /* swift-markdown-engine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "swift-markdown-engine"; path = "Packages/swift-markdown-engine"; sourceTree = SOURCE_ROOT; };
-		39AABAF15E26FFB8F6CBD9AF /* CriticMarkupExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriticMarkupExtensions.swift; sourceTree = "<group>"; };
 		3C15774EAB6076619F935729 /* FolderTreeFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderTreeFilterTests.swift; sourceTree = "<group>"; };
 		3F21550DE85BCDF86287B259 /* NSTextViewDelegateIsolationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NSTextViewDelegateIsolationTests.swift; sourceTree = "<group>"; };
 		3FA41EFFEF6B2CD1A2380479 /* ChatSummaryRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSummaryRepository.swift; sourceTree = "<group>"; };
@@ -245,7 +243,6 @@
 		53399952B832D2EB44123F89 /* Editor */ = {
 			isa = PBXGroup;
 			children = (
-				39AABAF15E26FFB8F6CBD9AF /* CriticMarkupExtensions.swift */,
 				AA3AF017690745E91A6CC525 /* InsertElement.swift */,
 				0D8FCCA0F0E76DF5B17DD88D /* LineNumberGutter.swift */,
 				B9B702B45D26492BF4598E18 /* MarkdownViewInteractive.swift */,
@@ -604,7 +601,6 @@
 				DA51DA0EE6E4AA31FA78462D /* ChatView.swift in Sources */,
 				C7CF651077E69C6ABF23868B /* ContentView.swift in Sources */,
 				30D8E7A724ECFDE90A355184 /* CoordinatorRegistry.swift in Sources */,
-				BCAE2F0DFED719725A041B72 /* CriticMarkupExtensions.swift in Sources */,
 				BAA33678D4992D0D4FF7B0B4 /* EngineStressHarness.swift in Sources */,
 				DF2644809B674011702FD2C7 /* ErrorBanner.swift in Sources */,
 				4FF14DC875CAB3986FAF852B /* FileMetadata.swift in Sources */,
