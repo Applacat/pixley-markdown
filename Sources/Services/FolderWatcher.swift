@@ -22,6 +22,10 @@ final class FolderWatcher {
         self.onChange = onChange
     }
 
+    isolated deinit {
+        stop()
+    }
+
     /// Start watching the folder at `url` recursively via FSEvents.
     /// Stops any previous watch automatically.
     func watch(_ url: URL) {
